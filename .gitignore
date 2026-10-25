@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.db
+.env
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# archify 生成的架构图工作产物，可重新生成，不入库
+archify-work/
+
+# 离线评测语料（pr_diff_100 / prompt_evolution_130），仅本地保留，不入库
+evaluation_data/
+
+# 评测实验输出，可重新生成，不入库
+output/
+
+# 个人学习材料，仅本地保留，不入库
+EVO-Python-语法教学.md
+EVO-源码学习计划书.md
+TrajectIQ-代码导读.md
