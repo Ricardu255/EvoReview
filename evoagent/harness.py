@@ -8,7 +8,8 @@ from .reviewer import Reviewer
 from .runtime import (
     AgentRuntime, RuntimeBudgetExceeded, RuntimeCancelled, RuntimeNode,
 )
-from .store import TaskStore, utc_now
+from .store_contract import StoreProtocol
+from .time_utils import utc_now
 
 
 ALLOWED = {
@@ -38,7 +39,7 @@ class ReviewHarness:
     node_order = ("planning", "executing", "reviewing")
 
     def __init__(
-        self, store: TaskStore, reviewer: Reviewer, max_steps: int = 8,
+        self, store: StoreProtocol, reviewer: Reviewer, max_steps: int = 8,
         timeout_seconds: int = 120, node_retries: int = 2, observability=None,
     ):
         self.store = store

@@ -107,6 +107,8 @@ class ProductionFeatureTests(unittest.TestCase):
         self.assertEqual("boom", task["error"])
 
     def test_canary_assignment_and_error_budget_rollback(self):
+        self.store.save_skill_version("skill", "stable", .5, True, "tenant")
+        self.store.save_skill_version("skill", "candidate", .6, False, "tenant")
         release = ReleaseManager(self.store)
         release.configure("tenant", "skill", {
             "stable_version": 1, "candidate_version": 2,

@@ -1,4 +1,5 @@
 import hashlib
+import copy
 import json
 import re
 import threading
@@ -8,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 from .diff_parser import parse_unified_diff
 from .evaluation_harness import one_to_one_match
 from .finding_identity import canonical_identity, is_valid_cwe
-from .store import utc_now
+from .time_utils import utc_now
 
 
 DEFAULT_PROMPT = (
@@ -220,9 +221,11 @@ class EvolutionEngine:
         self, store, reviewer_factory: Optional[Callable[[str], object]] = None,
         min_cases: int = 3, max_cases: int = 5, min_improvement: float = 0.01,
         min_holdout_cases: int = 0, max_metric_regression: float = 0.0,
-        seed_defaults: bool = True, candidate_generator=None,
+        seed_defaults: bool = True, candidate_generator=None, tenant_id: str = "default",
     ):
         self.store = store
+        self.tenant_id = tenant_id
+        self.seed_defaults = seed_defaults
         self.reviewer_factory = reviewer_factory
         self.min_cases = min_cases
         self.max_cases = max_cases
@@ -238,8 +241,17 @@ class EvolutionEngine:
         for case in DEFAULT_EVALUATION_CASES:
             self.store.save_evaluation_case(
                 case["name"], case.get("split", "validation"), case["diff"],
-                case["expected"], "builtin", True
+                case["expected"], "builtin", True, self.tenant_id
             )
+
+    def for_tenant(self, tenant_id: str):
+        if tenant_id == self.tenant_id:
+            return self
+        scoped = copy.copy(self)
+        scoped.tenant_id = tenant_id
+        if scoped.seed_defaults:
+            scoped._seed_default_cases()
+        return scoped
 
     @staticmethod
     def validate_case(name: str, diff: str, expected: list, split: str = "validation") -> None:
@@ -294,7 +306,7 @@ class EvolutionEngine:
         name = name.strip()
         split = split.strip().lower()
         self.validate_case(name, diff, expected, split)
-        return self.store.save_evaluation_case(name, split, diff, expected, source[:120], True)
+        return self.store.save_evaluation_case(name, split, diff, expected, source[:120], True, self.tenant_id)
 
     def safety_evaluate(self, prompt: str) -> Dict[str, Any]:
         normalized = prompt.strip()
@@ -311,8 +323,8 @@ class EvolutionEngine:
         }
 
     def status(self) -> Dict[str, Any]:
-        cases = self.store.list_evaluation_cases("validation", True, self.max_cases)
-        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases)
+        cases = self.store.list_evaluation_cases("validation", True, self.max_cases, self.tenant_id)
+        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases, self.tenant_id)
         return {
             "model_configured": self.reviewer_factory is not None,
             "validation_cases": len(cases),
@@ -345,7 +357,7 @@ class EvolutionEngine:
         activation_policy: str = "auto",
     ) -> Dict[str, Any]:
         safety = self.safety_evaluate(prompt)
-        active = self.store.get_active_skill_version(skill_name)
+        active = self.store.get_active_skill_version(skill_name, self.tenant_id)
         if active and prompt.strip() == active["prompt"].strip():
             return {
                 "version": {
@@ -364,8 +376,8 @@ class EvolutionEngine:
                 "run_id": None,
             }
         baseline_prompt = active["prompt"] if active else DEFAULT_PROMPT
-        cases = self.store.list_evaluation_cases("validation", True, self.max_cases)
-        holdout_cases = self.store.list_evaluation_cases("holdout", True, self.max_cases)
+        cases = self.store.list_evaluation_cases("validation", True, self.max_cases, self.tenant_id)
+        holdout_cases = self.store.list_evaluation_cases("holdout", True, self.max_cases, self.tenant_id)
 
         decision = "deferred"
         reason = ""
@@ -432,10 +444,11 @@ class EvolutionEngine:
                 reason = "; ".join(reasons)
 
         version = self.store.save_skill_version(
-            skill_name, prompt.strip(), candidate_metrics["score"], decision == "activated"
+            skill_name, prompt.strip(), candidate_metrics["score"], decision == "activated", self.tenant_id
         )
         run = {
             "id": str(uuid.uuid4()),
+            "tenant_id": self.tenant_id,
             "skill_name": skill_name,
             "candidate_version": version["version"],
             "baseline_version": active["version"] if active else None,
@@ -479,13 +492,15 @@ class EvolutionEngine:
 
     def rollback(self, skill_name: str, version: int) -> bool:
         with self._lock:
-            return self.store.activate_skill_version(skill_name, version)
+            return self.store.activate_skill_version(skill_name, version, self.tenant_id)
 
     def auto_propose(
         self, skill_name: str = "llm-review", tenant_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        cases = self.store.list_failure_cases(True, 100, tenant_id)
-        active = self.store.get_active_skill_version(skill_name)
+        if tenant_id is not None and tenant_id != self.tenant_id:
+            return self.for_tenant(tenant_id).auto_propose(skill_name)
+        cases = self.store.list_failure_cases(True, 100, self.tenant_id)
+        active = self.store.get_active_skill_version(skill_name, self.tenant_id)
         base = active["prompt"] if active else DEFAULT_PROMPT
         if self.candidate_generator is not None and cases:
             generated = self.candidate_generator.generate(cases, base)
@@ -509,7 +524,7 @@ class EvolutionEngine:
                 "holdout_sha256": self.status()["holdout_dataset_fingerprint"],
             }
             if result.get("run_id"):
-                runs = self.store.list_evolution_runs(200)
+                runs = self.store.list_evolution_runs(200, self.tenant_id)
                 run = next((item for item in runs if item["id"] == result["run_id"]), None)
                 if run:
                     metrics = dict(run["metrics"])
@@ -525,7 +540,7 @@ class EvolutionEngine:
                         "source_code_changes_allowed": False,
                     }
                     self.store.update_evolution_run(
-                        result["run_id"], result["decision"], metrics
+                        result["run_id"], result["decision"], metrics, self.tenant_id
                     )
             return result
         counts = {}

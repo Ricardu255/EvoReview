@@ -104,6 +104,7 @@ class Settings:
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
     default_tenant_id: str = "default"
+    repository_roots_json: str = "{}"
     session_ttl_seconds: int = 3600
     webhook_max_age_seconds: int = 600
     queue_max_attempts: int = 3
@@ -277,6 +278,7 @@ class Settings:
             bootstrap_admin_username=os.getenv("EVOAGENT_BOOTSTRAP_ADMIN_USERNAME", ""),
             bootstrap_admin_password=os.getenv("EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD", ""),
             default_tenant_id=os.getenv("EVOAGENT_DEFAULT_TENANT_ID", "default"),
+            repository_roots_json=os.getenv("EVOAGENT_REPOSITORY_ROOTS_JSON", "{}"),
             session_ttl_seconds=_int("EVOAGENT_SESSION_TTL_SECONDS", 3600),
             webhook_max_age_seconds=_int("EVOAGENT_WEBHOOK_MAX_AGE_SECONDS", 600),
             queue_max_attempts=_int("EVOAGENT_QUEUE_MAX_ATTEMPTS", 3),

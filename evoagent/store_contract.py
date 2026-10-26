@@ -86,6 +86,9 @@ class StoreProtocol(Protocol):
     def is_cancelled(self, task_id: str) -> bool:
         ...
 
+    def prepare_resume(self, task_id: str, tenant_id: str) -> bool:
+        ...
+
     def cancel(self, task_id: str, event: TraceEvent) -> None:
         ...
 
@@ -134,43 +137,46 @@ class StoreProtocol(Protocol):
     # Prompt evolution --------------------------------------------------
     def save_evaluation_case(
         self, name: str, split: str, diff: str, expected: list,
-        source: str = "manual", active: bool = True,
+        source: str = "manual", active: bool = True, tenant_id: str = "default",
     ) -> Dict[str, Any]:
         ...
 
     def list_evaluation_cases(
         self, split: Optional[str] = None, active_only: bool = True,
-        limit: int = 100,
+        limit: int = 100, tenant_id: str = "default",
     ) -> list:
         ...
 
     def save_evolution_run(self, run: Dict[str, Any]) -> Dict[str, Any]:
         ...
 
-    def list_evolution_runs(self, limit: int = 50) -> list:
+    def list_evolution_runs(self, limit: int = 50, tenant_id: str = "default") -> list:
         ...
 
     def update_evolution_run(
-        self, run_id: str, decision: str, metrics: Dict[str, Any],
+        self, run_id: str, decision: str, metrics: Dict[str, Any], tenant_id: str = "default",
     ) -> bool:
         ...
 
     # Skill versions and artifacts --------------------------------------
     def save_skill_version(
         self, skill_name: str, prompt: str, score: float,
-        activate: bool = False,
+        activate: bool = False, tenant_id: str = "default",
     ) -> Dict[str, Any]:
         ...
 
     def get_active_skill_version(
-        self, skill_name: str,
+        self, skill_name: str, tenant_id: str = "default",
     ) -> Optional[Dict[str, Any]]:
         ...
 
-    def list_skill_versions(self, skill_name: str) -> list:
+    def get_skill_version(self, skill_name: str, version: int, tenant_id: str = "default") -> Optional[Dict[str, Any]]:
         ...
 
-    def activate_skill_version(self, skill_name: str, version: int) -> bool:
+    def list_skill_versions(self, skill_name: str, tenant_id: str = "default") -> list:
+        ...
+
+    def activate_skill_version(self, skill_name: str, version: int, tenant_id: str = "default") -> bool:
         ...
 
     def save_skill_artifact(
@@ -220,11 +226,17 @@ class StoreProtocol(Protocol):
     # Webhook idempotency -------------------------------------------------
     def claim_webhook(
         self, delivery_id: str, tenant_id: str, event_type: str,
-        payload_sha256: str,
+        payload_sha256: str, claim_token: str = "", lease_seconds: int = 300,
     ) -> bool:
         ...
 
-    def complete_webhook(self, delivery_id: str, task_id: Optional[str]) -> None:
+    def complete_webhook(self, delivery_id: str, task_id: Optional[str], claim_token: Optional[str] = None) -> None:
+        ...
+
+    def bind_webhook_task(self, delivery_id: str, task_id: str, claim_token: str) -> None:
+        ...
+
+    def release_webhook(self, delivery_id: str, claim_token: str) -> None:
         ...
 
     def get_webhook(self, delivery_id: str) -> Optional[Dict[str, Any]]:

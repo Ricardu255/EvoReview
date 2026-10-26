@@ -1,5 +1,8 @@
 """Durable task delivery with ACK, leases, retry backoff and a dead-letter queue."""
 import json
+import hashlib
+from collections import OrderedDict
+from contextlib import contextmanager
 import queue
 import socket
 import threading
@@ -13,10 +16,17 @@ class PermanentTaskError(RuntimeError):
     """An error that must not be retried."""
 
 
+class DeliveryBusy(RuntimeError):
+    """Another worker owns this logical delivery; leave the stream entry pending."""
+
+
 class TaskQueue:
     STREAM = "evoagent:review:stream"
     DLQ = "evoagent:review:dlq"
     GROUP = "evoagent-workers"
+    RENEW_LOCK = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end"
+    RELEASE_LOCK = "if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end"
+    COMPLETE = "if redis.call('get',KEYS[1]) == ARGV[1] then redis.call('set',KEYS[2],'1','EX',ARGV[2]); return 1 else return 0 end"
 
     def __init__(
         self, handler: Callable[[Dict[str, Any]], None], workers: int = 2,
@@ -32,6 +42,8 @@ class TaskQueue:
         self._redis = None
         self._memory: queue.Queue = queue.Queue()
         self._memory_dlq = []
+        self._active = set()
+        self._completed = OrderedDict()
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.consumer = "%s-%s" % (socket.gethostname(), uuid.uuid4().hex[:8])
@@ -67,11 +79,93 @@ class TaskQueue:
             self._executor.submit(self._deliver, envelope)
         return envelope["message_id"]
 
-    def _deliver(self, envelope: Dict[str, Any]) -> bool:
+    @staticmethod
+    def _delivery_key(envelope):
+        payload = envelope.get("payload") or {}
+        return hashlib.sha256(json.dumps([
+            payload.get("tenant_id", "default"), envelope["message_id"],
+        ], separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    @contextmanager
+    def _delivery_claim(self, envelope, redis_id=""):
+        key = self._delivery_key(envelope)
+        if not self._redis:
+            with self._lock:
+                if self._completed.get(key, 0) > time.time():
+                    cached = True
+                else:
+                    cached = False
+                    if key in self._active:
+                        raise DeliveryBusy("delivery is already running")
+                    self._active.add(key)
+            try:
+                yield None if cached else {"key": key}
+            finally:
+                if not cached:
+                    with self._lock:
+                        self._active.discard(key)
+            return
+        lock_key, done_key = "evoagent:delivery:lock:" + key, "evoagent:delivery:done:" + key
+        if self._redis.get(done_key):
+            yield None
+            return
+        token = uuid.uuid4().hex
+        lease_ms = max(100, int(self.lease_seconds * 1000))
+        if not self._redis.set(lock_key, token, nx=True, px=lease_ms):
+            raise DeliveryBusy("delivery is owned by another worker")
+        stopped, lost = threading.Event(), threading.Event()
+
+        def renew():
+            while not stopped.wait(lease_ms / 3000):
+                try:
+                    if not self._redis.eval(self.RENEW_LOCK, 1, lock_key, token, lease_ms):
+                        lost.set()
+                        return
+                    if redis_id:
+                        self._redis.xclaim(self.STREAM, self.GROUP, self.consumer, 0, [redis_id], justid=True)
+                except Exception:
+                    lost.set()
+                    return
+
+        heartbeat = threading.Thread(target=renew, name="evoagent-lease", daemon=True)
+        heartbeat.start()
+        try:
+            yield None if self._redis.get(done_key) else {
+                "key": key, "lock_key": lock_key, "done_key": done_key,
+                "token": token, "lost": lost,
+            }
+        finally:
+            stopped.set()
+            heartbeat.join(timeout=1)
+            try:
+                self._redis.eval(self.RELEASE_LOCK, 1, lock_key, token)
+            except Exception:
+                pass  # An abandoned lock expires; never delete a new owner's lock.
+
+    def _mark_completed(self, claim):
+        if self._redis:
+            if claim["lost"].is_set() or not self._redis.eval(
+                self.COMPLETE, 2, claim["lock_key"], claim["done_key"], claim["token"], 86400,
+            ):
+                raise DeliveryBusy("delivery lease was lost before completion")
+        else:
+            with self._lock:
+                self._completed[claim["key"]] = time.time() + 86400
+                while len(self._completed) > 10000:
+                    self._completed.popitem(last=False)
+
+    def _deliver(self, envelope: Dict[str, Any], redis_id: str = "") -> bool:
+        with self._delivery_claim(envelope, redis_id) as claim:
+            if claim is None:
+                return True
+            return self._deliver_owned(envelope, claim)
+
+    def _deliver_owned(self, envelope, claim) -> bool:
         envelope["attempt"] = int(envelope.get("attempt", 0)) + 1
         try:
             self.handler(envelope["payload"])
-            return True
+        except DeliveryBusy:
+            raise
         except PermanentTaskError as exc:
             self._dead_letter(envelope, str(exc))
             return False
@@ -88,6 +182,8 @@ class TaskQueue:
                 timer.daemon = True
                 timer.start()
             return False
+        self._mark_completed(claim)
+        return True
 
     def _submit_memory(self, envelope: Dict[str, Any]) -> None:
         if not self._stop.is_set():
@@ -95,10 +191,14 @@ class TaskQueue:
 
     def _redis_worker(self) -> None:
         while not self._stop.is_set():
-            self._reclaim_stale()
-            messages = self._redis.xreadgroup(
-                self.GROUP, self.consumer, {self.STREAM: ">"}, count=1, block=1000
-            )
+            try:
+                self._reclaim_stale()
+                messages = self._redis.xreadgroup(
+                    self.GROUP, self.consumer, {self.STREAM: ">"}, count=1, block=1000
+                )
+            except Exception:
+                self._stop.wait(1)
+                continue
             for _stream, entries in messages:
                 for redis_id, fields in entries:
                     try:
@@ -112,7 +212,7 @@ class TaskQueue:
                         self._redis.xack(self.STREAM, self.GROUP, redis_id)
                         continue
                     try:
-                        self._deliver(envelope)
+                        self._deliver(envelope, redis_id)
                         # ACK only after work completed or was safely requeued/DLQed.
                         self._redis.xack(self.STREAM, self.GROUP, redis_id)
                     except Exception:
@@ -123,12 +223,12 @@ class TaskQueue:
         try:
             result = self._redis.xautoclaim(
                 self.STREAM, self.GROUP, self.consumer,
-                min_idle_time=self.lease_seconds * 1000, start_id="0-0", count=10,
+                min_idle_time=int(self.lease_seconds * 1000), start_id="0-0", count=1,
             )
             entries = result[1] if len(result) > 1 else []
             for redis_id, fields in entries:
                 envelope = json.loads(fields["envelope"])
-                self._deliver(envelope)
+                self._deliver(envelope, redis_id)
                 self._redis.xack(self.STREAM, self.GROUP, redis_id)
         except Exception:
             # Redis versions without XAUTOCLAIM still process new entries.
@@ -144,15 +244,27 @@ class TaskQueue:
         if self.on_dead_letter:
             self.on_dead_letter(envelope.get("payload") or {}, item["error"])
 
-    def dead_letters(self, limit: int = 100) -> list:
+    def dead_letters(self, limit: int = 100, tenant_id: Optional[str] = None) -> list:
+        limit = max(1, min(int(limit), 500))
         if self._redis:
-            rows = self._redis.xrevrange(self.DLQ, count=max(1, min(limit, 500)))
-            return [json.loads(fields["envelope"]) for _id, fields in rows]
+            values = []
+            cursor = "+"
+            while len(values) < limit:
+                rows = self._redis.xrevrange(self.DLQ, max=cursor, count=100)
+                if not rows:
+                    break
+                for _id, fields in rows:
+                    item = json.loads(fields["envelope"])
+                    if tenant_id is None or (item.get("payload") or {}).get("tenant_id", "default") == tenant_id:
+                        values.append(item)
+                cursor = "(" + rows[-1][0]
+            return values[:limit]
         with self._lock:
-            return list(reversed(self._memory_dlq[-limit:]))
+            return [item for item in reversed(self._memory_dlq)
+                    if tenant_id is None or (item.get("payload") or {}).get("tenant_id", "default") == tenant_id][:limit]
 
-    def replay_dead_letter(self, message_id: str) -> bool:
-        for item in self.dead_letters(500):
+    def replay_dead_letter(self, message_id: str, tenant_id: Optional[str] = None) -> bool:
+        for item in self.dead_letters(500, tenant_id):
             if item.get("message_id") == message_id:
                 payload = item.get("payload") or {}
                 self.submit(payload, message_id=message_id)

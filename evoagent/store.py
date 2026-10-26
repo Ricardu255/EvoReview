@@ -11,18 +11,16 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, Optional
 
 from .models import ReviewReport, TaskState, TraceEvent
 from .store_contract import StoreProtocol
+from .prompt_store import PromptStoreMixin
+from .webhook_store import WebhookStoreMixin
+from .time_utils import utc_now
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-class TaskStore(StoreProtocol):
+class TaskStore(PromptStoreMixin, WebhookStoreMixin, StoreProtocol):
     def __init__(self, path: str):
         self.path = path
         self._lock = threading.Lock()
@@ -40,6 +38,8 @@ class TaskStore(StoreProtocol):
 
     def _init(self) -> None:
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._migrate_prompt_tables(conn)
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY,
@@ -66,6 +66,7 @@ class TaskStore(StoreProtocol):
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS skill_versions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
                     skill_name TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     prompt TEXT NOT NULL,
@@ -73,7 +74,7 @@ class TaskStore(StoreProtocol):
                     active INTEGER NOT NULL DEFAULT 0,
                     parent_version INTEGER,
                     created_at TEXT NOT NULL,
-                    UNIQUE(skill_name, version)
+                    UNIQUE(tenant_id, skill_name, version)
                 )"""
             )
             conn.execute(
@@ -97,13 +98,15 @@ class TaskStore(StoreProtocol):
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS evaluation_cases (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    name TEXT NOT NULL,
                     split TEXT NOT NULL,
                     diff TEXT NOT NULL,
                     expected_json TEXT NOT NULL,
                     source TEXT NOT NULL,
                     active INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    UNIQUE(tenant_id, name)
                 )"""
             )
             conn.execute(
@@ -151,6 +154,7 @@ class TaskStore(StoreProtocol):
             self._ensure_column(
                 conn, "skill_artifact_versions", "tenant_id", "TEXT NOT NULL DEFAULT 'default'"
             )
+            self._ensure_column(conn, "evolution_runs", "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
             self._ensure_column(
                 conn, "skill_evolution_runs", "tenant_id", "TEXT NOT NULL DEFAULT 'default'"
             )
@@ -201,6 +205,8 @@ class TaskStore(StoreProtocol):
                     received_at TEXT NOT NULL
                 )"""
             )
+            for column, declaration in (("status", "TEXT NOT NULL DEFAULT 'pending'"), ("claim_token", "TEXT NOT NULL DEFAULT ''"), ("lease_until", "REAL NOT NULL DEFAULT 0")):
+                self._ensure_column(conn, "webhook_deliveries", column, declaration)
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS users (
                     id TEXT PRIMARY KEY,
@@ -317,6 +323,31 @@ class TaskStore(StoreProtocol):
                 "CREATE INDEX IF NOT EXISTS idx_agent_memories_lookup "
                 "ON agent_memories(tenant_id, repository, scope, created_at)"
             )
+
+    @staticmethod
+    def _migrate_prompt_tables(conn) -> None:
+        schemas = {
+            "skill_versions": (
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,tenant_id TEXT NOT NULL DEFAULT 'default',"
+                "skill_name TEXT NOT NULL,version INTEGER NOT NULL,prompt TEXT NOT NULL,score REAL NOT NULL,"
+                "active INTEGER NOT NULL DEFAULT 0,parent_version INTEGER,created_at TEXT NOT NULL,"
+                "UNIQUE(tenant_id,skill_name,version)"
+            ),
+            "evaluation_cases": (
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,tenant_id TEXT NOT NULL DEFAULT 'default',"
+                "name TEXT NOT NULL,split TEXT NOT NULL,diff TEXT NOT NULL,expected_json TEXT NOT NULL,"
+                "source TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,"
+                "UNIQUE(tenant_id,name)"
+            ),
+        }
+        for table, schema in schemas.items():
+            columns = [row[1] for row in conn.execute("PRAGMA table_info(%s)" % table)]
+            if columns and "tenant_id" not in columns:
+                conn.execute("ALTER TABLE %s RENAME TO %s_legacy" % (table, table))
+                conn.execute("CREATE TABLE %s (%s)" % (table, schema))
+                joined = ",".join(columns)
+                conn.execute("INSERT INTO %s (%s) SELECT %s FROM %s_legacy" % (table, joined, joined, table))
+                conn.execute("DROP TABLE %s_legacy" % table)
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
@@ -566,142 +597,15 @@ class TaskStore(StoreProtocol):
             )
 
     # --- Prompt evolution: evaluation cases and runs ---
-    def save_evaluation_case(
-        self, name: str, split: str, diff: str, expected: list,
-        source: str = "manual", active: bool = True,
-    ) -> Dict[str, Any]:
-        expected_json = json.dumps(expected, ensure_ascii=False)
-        with self._lock, self._connect() as conn:
-            existing = conn.execute(
-                "SELECT * FROM evaluation_cases WHERE name = ?", (name,)
-            ).fetchone()
-            if existing is not None:
-                if (
-                    existing["split"] != split
-                    or existing["diff"] != diff
-                    or json.loads(existing["expected_json"]) != expected
-                ):
-                    raise ValueError(
-                        "evaluation case names are immutable; use a new name for revised content"
-                    )
-                row = existing
-            else:
-                conn.execute(
-                    "INSERT INTO evaluation_cases(name,split,diff,expected_json,source,active,created_at) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (name, split, diff, expected_json, source, int(active), utc_now()),
-                )
-                row = conn.execute(
-                    "SELECT * FROM evaluation_cases WHERE name = ?", (name,)
-                ).fetchone()
-        value = dict(row)
-        value["expected"] = json.loads(value.pop("expected_json"))
-        value["active"] = bool(value["active"])
-        return value
 
-    def list_evaluation_cases(
-        self, split: Optional[str] = None, active_only: bool = True, limit: int = 100,
-    ) -> list:
-        clauses = []
-        params = []
-        if split:
-            clauses.append("split = ?")
-            params.append(split)
-        if active_only:
-            clauses.append("active = 1")
-        query = "SELECT * FROM evaluation_cases"
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id LIMIT ?"
-        params.append(max(1, min(limit, 500)))
-        with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-        values = []
-        for row in rows:
-            value = dict(row)
-            value["expected"] = json.loads(value.pop("expected_json"))
-            value["active"] = bool(value["active"])
-            values.append(value)
-        return values
 
-    def save_evolution_run(self, run: Dict[str, Any]) -> Dict[str, Any]:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "INSERT INTO evolution_runs(id,skill_name,candidate_version,baseline_version,decision,"
-                "candidate_score,baseline_score,metrics_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    run["id"], run["skill_name"], run["candidate_version"], run.get("baseline_version"),
-                    run["decision"], run["candidate_score"], run["baseline_score"],
-                    json.dumps(run["metrics"], ensure_ascii=False), run["created_at"],
-                ),
-            )
-        return run
 
-    def list_evolution_runs(self, limit: int = 50) -> list:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM evolution_runs ORDER BY created_at DESC LIMIT ?",
-                (max(1, min(limit, 200)),),
-            ).fetchall()
-        values = []
-        for row in rows:
-            value = dict(row)
-            value["metrics"] = json.loads(value.pop("metrics_json"))
-            values.append(value)
-        return values
 
-    def update_evolution_run(self, run_id: str, decision: str, metrics: Dict[str, Any]) -> bool:
-        with self._lock, self._connect() as conn:
-            cursor = conn.execute(
-                "UPDATE evolution_runs SET decision = ?, metrics_json = ? WHERE id = ?",
-                (decision, json.dumps(metrics, ensure_ascii=False), run_id),
-            )
-            return cursor.rowcount == 1
 
     # --- Skill versions, artifacts and skill evolution runs ---
-    def save_skill_version(self, skill_name: str, prompt: str, score: float, activate: bool = False) -> Dict[str, Any]:
-        with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) AS version FROM skill_versions WHERE skill_name = ?", (skill_name,)
-            ).fetchone()
-            version = int(row["version"]) + 1
-            parent = self.get_active_skill_version(skill_name)
-            if activate:
-                conn.execute("UPDATE skill_versions SET active = 0 WHERE skill_name = ?", (skill_name,))
-            conn.execute(
-                "INSERT INTO skill_versions(skill_name, version, prompt, score, active, parent_version, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (skill_name, version, prompt, score, int(activate), parent["version"] if parent else None, utc_now()),
-            )
-        return {"skill_name": skill_name, "version": version, "score": score, "active": activate}
 
-    def get_active_skill_version(self, skill_name: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM skill_versions WHERE skill_name = ? AND active = 1 ORDER BY version DESC LIMIT 1",
-                (skill_name,),
-            ).fetchone()
-        return dict(row) if row else None
 
-    def list_skill_versions(self, skill_name: str) -> list:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM skill_versions WHERE skill_name = ? ORDER BY version DESC", (skill_name,)
-            ).fetchall()
-        return [dict(item) for item in rows]
 
-    def activate_skill_version(self, skill_name: str, version: int) -> bool:
-        with self._lock, self._connect() as conn:
-            exists = conn.execute(
-                "SELECT 1 FROM skill_versions WHERE skill_name = ? AND version = ?", (skill_name, version)
-            ).fetchone()
-            if not exists:
-                return False
-            conn.execute("UPDATE skill_versions SET active = 0 WHERE skill_name = ?", (skill_name,))
-            conn.execute(
-                "UPDATE skill_versions SET active = 1 WHERE skill_name = ? AND version = ?", (skill_name, version)
-            )
-        return True
 
     def save_skill_artifact(
         self, skill_name: str, artifact: Dict[str, Any], score: float,
@@ -922,6 +826,16 @@ class TaskStore(StoreProtocol):
             row = conn.execute("SELECT cancel_requested FROM tasks WHERE id=?", (task_id,)).fetchone()
         return bool(row and row["cancel_requested"])
 
+    def prepare_resume(self, task_id: str, tenant_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE tasks SET cancel_requested=0,state=?,error=NULL,updated_at=? "
+                "WHERE id=? AND tenant_id=? AND state IN (?,?)",
+                (TaskState.PENDING.value, utc_now(), task_id, tenant_id,
+                 TaskState.FAILED.value, TaskState.CANCELLED.value),
+            )
+            return cursor.rowcount == 1
+
     def cancel(self, task_id: str, event: TraceEvent) -> None:
         with self._lock, self._connect() as conn:
             conn.execute(
@@ -934,41 +848,8 @@ class TaskStore(StoreProtocol):
             )
 
     # --- Webhook idempotency ---
-    def claim_webhook(
-        self, delivery_id: str, tenant_id: str, event_type: str, payload_sha256: str,
-    ) -> bool:
-        if not delivery_id:
-            raise ValueError("X-GitHub-Delivery is required")
-        with self._lock, self._connect() as conn:
-            try:
-                conn.execute(
-                    "INSERT INTO webhook_deliveries"
-                    "(delivery_id,tenant_id,event_type,payload_sha256,received_at) VALUES (?,?,?,?,?)",
-                    (delivery_id, tenant_id, event_type, payload_sha256, utc_now()),
-                )
-                return True
-            except sqlite3.IntegrityError:
-                row = conn.execute(
-                    "SELECT payload_sha256 FROM webhook_deliveries WHERE delivery_id=?",
-                    (delivery_id,),
-                ).fetchone()
-                if row and row["payload_sha256"] != payload_sha256:
-                    raise ValueError("delivery id was already used with a different payload")
-                return False
 
-    def complete_webhook(self, delivery_id: str, task_id: Optional[str]) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                "UPDATE webhook_deliveries SET task_id=? WHERE delivery_id=?",
-                (task_id, delivery_id),
-            )
 
-    def get_webhook(self, delivery_id: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM webhook_deliveries WHERE delivery_id=?", (delivery_id,)
-            ).fetchone()
-        return dict(row) if row else None
 
     # --- Auth, RBAC and audit ---
     def create_user(
@@ -1116,6 +997,16 @@ class TaskStore(StoreProtocol):
         disagreement: float, candidate_failed: bool = False,
     ) -> Optional[Dict[str, Any]]:
         with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT id FROM release_observations WHERE tenant_id=? AND skill_name=? AND task_id=? AND lane=?",
+                (tenant_id, skill_name, task_id, lane),
+            ).fetchone()
+            if existing:
+                row = conn.execute(
+                    "SELECT * FROM deployments WHERE tenant_id=? AND skill_name=?", (tenant_id, skill_name),
+                ).fetchone()
+                return dict(row) if row else None
             conn.execute(
                 "INSERT INTO release_observations(tenant_id,skill_name,task_id,lane,"
                 "primary_json,candidate_json,disagreement,candidate_failed,created_at) "

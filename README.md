@@ -89,7 +89,9 @@ python -m unittest discover -s tests -v
 
 Every push and pull request runs the full test suite on Python 3.9 and 3.11:
 
-1. **pytest** — the full suite (dataset-dependent tests skip cleanly because the corpora are kept local).
+1. **pytest** — the full suite with real PostgreSQL 16 and Redis 7 services, including both store contracts and long-running queue delivery. Dataset-dependent tests skip when local corpora are absent. Pushes to `main`, `codex/**`, and pull requests run these checks.
+
+Locally, set `EVOAGENT_TEST_DATABASE_URL` and `EVOAGENT_TEST_REDIS_URL` to enable service integration tests. PostgreSQL tests create and remove isolated test schemas; Redis tests use unique stream names.
 
 ## Model Configuration
 
@@ -255,6 +257,16 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `GET/POST` | `/api/deployments/llm-review`, `/v1/deployments/llm-review` | Query or configure canary/shadow rollout |
 
 The `diff` in `POST /v1/reviews` defaults to a 1 MiB maximum; a single task defaults to at most 8 steps and 120 seconds. These can be tuned via environment variables; see `.env.example`.
+
+## Isolation and task recovery
+
+Prompt versions, evaluation samples, evolution runs, and dead-letter operations are scoped to the authenticated tenant. Existing unscoped prompt/evaluation data migrates to the `default` tenant on startup, preserving IDs and version history.
+
+For repository tools, configure `EVOAGENT_REPOSITORY_ROOTS_JSON` on the server, for example `{"default":{"org/repo":"D:/checkouts/repo"}}`. Requests cannot select another server directory; an omitted `repository_root` uses the configured checkout. Without a mapping, review uses only the supplied diff. Paths resolving outside the checkout are rejected.
+
+Tasks pin their actual prompt version at creation. Canary tasks execute the candidate; shadow tasks execute a separate candidate task with independent checkpoints and no memory writes or GitHub publication. A task cannot change versions midway through a retry. Cancelled and failed tasks can resume; running tasks cannot. Failed webhook submissions keep a recoverable claim and reuse the same task on redelivery.
+
+Redis delivery renews ownership and deduplicates successful logical deliveries for 24 hours. Delivery remains at least once after outages or expiration of that window; external side effects should retain their own idempotency keys.
 
 ## Architecture
 

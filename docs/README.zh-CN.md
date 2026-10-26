@@ -89,7 +89,9 @@ python -m unittest discover -s tests -v
 
 每次 push 和 pull request 会在 Python 3.9 和 3.11 上运行全量测试（数据集仅保留在本地，相关测试在 CI 中自动跳过）：
 
-1. **pytest**——运行全量测试。
+1. **pytest**——使用真实 PostgreSQL 16 和 Redis 7 运行全量测试，覆盖双后端存储契约、长任务续租和重复投递。缺少本地语料的实验测试会跳过。`main`、`codex/**` 分支推送及 PR 都触发检查。
+
+本地可设置 `EVOAGENT_TEST_DATABASE_URL`、`EVOAGENT_TEST_REDIS_URL` 启用服务集成测试；PostgreSQL 测试使用独立临时 schema，Redis 测试使用唯一命名的 Stream。
 
 ## 模型配置
 
@@ -255,6 +257,16 @@ Invoke-RestMethod https://<公网域名>/health
 | `GET/POST` | `/api/deployments/llm-review`、`/v1/deployments/llm-review` | 查询或配置灰度/影子发布 |
 
 `POST /v1/reviews` 的 `diff` 最大默认 1 MiB；单任务默认最多 8 步、120 秒。可通过环境变量调整，详见 `.env.example`。
+
+## 隔离与任务恢复
+
+Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔离。启动时，旧数据库中未分配租户的 Prompt 和评测数据迁移到 `default` 租户，保留原 ID 和版本历史。
+
+本地仓库工具需要管理员在服务端配置 `EVOAGENT_REPOSITORY_ROOTS_JSON`，例如 `{"default":{"org/repo":"D:/checkouts/repo"}}`。请求不能选择其他服务器目录；省略 `repository_root` 时使用该映射。未配置映射则仅审查传入的 diff，解析后指向 checkout 外部的路径会被拒绝。
+
+任务创建时固定实际 Prompt 版本；灰度任务执行候选版本，影子任务使用独立任务和检查点，不写入记忆或发布 GitHub 评论。重试不会切换任务版本。取消及失败任务可以恢复，运行中的任务不能重复恢复；Webhook 入队失败后保留可恢复记录，再投递时复用原任务。
+
+Redis 投递会续租，并在 24 小时内去重已成功的逻辑消息。故障或去重窗口过期后仍采用至少一次投递语义，外部副作用应保留自身幂等键。
 
 ## 架构
 

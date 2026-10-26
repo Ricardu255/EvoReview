@@ -192,8 +192,6 @@ class AgenticReviewer(Reviewer):
             self.output_cost_per_million,
         )
         root = str(task_input.get("repository_root") or "")
-        if not root and os.path.isdir(repository):
-            root = repository
         suite = RepositoryToolSuite(root, diff, parsed, ledger, self.review_test_command)
         enabled = set(task_input.get("enabled_agents") or self.enabled_roles)
         scanners = self.scanners + (
@@ -237,6 +235,8 @@ class AgenticReviewer(Reviewer):
             parsed.files, collaboration,
         )
         execution = ledger.summary()
+        execution["prompt_version"] = task_input.get("prompt_version", 0)
+        execution["tenant_id"] = tenant_id
         context_management = self.context_manager.summary(task_id)
         execution["context_management"] = context_management
         summary = {

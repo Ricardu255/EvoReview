@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .store import utc_now
+from .time_utils import utc_now
 
 
 TOKEN = re.compile(r"[A-Za-z0-9_./:-]{2,}")

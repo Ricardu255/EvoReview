@@ -279,6 +279,7 @@ class ProductArmReviewer:
         self._sequence += 1
         task_id = "evaluation:%s:%d" % (self.arm, self._sequence)
         repository_root = str(case.get("repository_root") or "")
+        self.agentic.store.task_input["repository_root"] = repository_root
         findings = self.agentic.review_with_context(
             task_id, case["diff"], parsed,
             repository=repository_root or str(case.get("repository") or ""),

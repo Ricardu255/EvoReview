@@ -43,7 +43,7 @@ class RepositoryToolSuite:
         ledger: Optional[ExecutionLedger] = None,
         test_command: str = "",
     ):
-        candidate = os.path.abspath(root) if root else ""
+        candidate = os.path.realpath(root) if root else ""
         self.root = candidate if candidate and os.path.isdir(candidate) else ""
         self.diff = diff
         self.parsed = parsed
@@ -58,8 +58,12 @@ class RepositoryToolSuite:
         if not self.root:
             raise ValueError("repository checkout is unavailable for this review")
         relative = str(relative).replace("\\", "/").lstrip("/")
-        target = os.path.abspath(os.path.join(self.root, relative))
-        if target != self.root and not target.startswith(self.root + os.sep):
+        target = os.path.realpath(os.path.join(self.root, relative))
+        try:
+            contained = os.path.commonpath([self.root, target]) == self.root
+        except ValueError:
+            contained = False
+        if not contained:
             raise ValueError("path escapes repository root")
         return target
 
@@ -69,12 +73,21 @@ class RepositoryToolSuite:
         values = []
         for current, dirs, files in os.walk(self.root):
             dirs[:] = [item for item in dirs if item not in SKIP_DIRS]
+            safe_dirs = []
+            for name in dirs:
+                try:
+                    self._safe_path(os.path.relpath(os.path.join(current, name), self.root))
+                    safe_dirs.append(name)
+                except ValueError:
+                    continue
+            dirs[:] = safe_dirs
             for name in files:
                 path = os.path.join(current, name)
                 try:
+                    self._safe_path(os.path.relpath(path, self.root))
                     if os.path.getsize(path) <= 2_000_000:
                         values.append(os.path.relpath(path, self.root).replace("\\", "/"))
-                except OSError:
+                except (OSError, ValueError):
                     continue
                 if len(values) >= 20_000:
                     return values

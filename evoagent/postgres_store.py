@@ -9,11 +9,15 @@ import json
 from typing import Any, Dict, Optional
 
 from .models import ReviewReport, TaskState, TraceEvent
-from .store import utc_now
+from .time_utils import utc_now
 from .store_contract import StoreProtocol
+from .prompt_store import PromptStoreMixin
+from .webhook_store import WebhookStoreMixin
 
 
-class PostgresTaskStore(StoreProtocol):
+class PostgresTaskStore(PromptStoreMixin, WebhookStoreMixin, StoreProtocol):
+    _postgres_sql = True
+
     def __init__(self, url: str):
         try:
             import psycopg
@@ -74,6 +78,13 @@ class PostgresTaskStore(StoreProtocol):
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE installations ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE skill_versions ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE evaluation_cases ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE evolution_runs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE skill_versions DROP CONSTRAINT IF EXISTS skill_versions_skill_name_version_key",
+            "ALTER TABLE evaluation_cases DROP CONSTRAINT IF EXISTS evaluation_cases_name_key",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_tenant_version ON skill_versions(tenant_id,skill_name,version)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluation_tenant_name ON evaluation_cases(tenant_id,name)",
             """CREATE TABLE IF NOT EXISTS checkpoints (
                 task_id TEXT NOT NULL REFERENCES tasks(id), node TEXT NOT NULL, status TEXT NOT NULL,
                 attempt INTEGER NOT NULL DEFAULT 1, state_json JSONB NOT NULL, error TEXT,
@@ -89,6 +100,9 @@ class PostgresTaskStore(StoreProtocol):
             """CREATE TABLE IF NOT EXISTS webhook_deliveries (
                 delivery_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, event_type TEXT NOT NULL,
                 payload_sha256 TEXT NOT NULL, task_id TEXT, received_at TIMESTAMPTZ NOT NULL)""",
+            "ALTER TABLE webhook_deliveries ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending'",
+            "ALTER TABLE webhook_deliveries ADD COLUMN IF NOT EXISTS claim_token TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE webhook_deliveries ADD COLUMN IF NOT EXISTS lease_until DOUBLE PRECISION NOT NULL DEFAULT 0",
             """CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
                 active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL)""",
@@ -135,6 +149,7 @@ class PostgresTaskStore(StoreProtocol):
         ]
         with self._connect() as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext('evoagent:schema'))")
                 for statement in statements:
                     cur.execute(statement)
 
@@ -379,129 +394,15 @@ class PostgresTaskStore(StoreProtocol):
             conn.execute("UPDATE failure_cases SET resolved=TRUE WHERE id=ANY(%s)", (ids,))
 
     # --- Prompt evolution: evaluation cases and runs ---
-    def save_evaluation_case(
-        self, name: str, split: str, diff: str, expected: list,
-        source: str = "manual", active: bool = True,
-    ) -> Dict[str, Any]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "INSERT INTO evaluation_cases(name,split,diff,expected_json,source,active,created_at) "
-                "VALUES (%s,%s,%s,%s::jsonb,%s,%s,%s) ON CONFLICT(name) DO NOTHING RETURNING *",
-                (name, split, diff, json.dumps(expected, ensure_ascii=False), source, active, utc_now()),
-            ).fetchone()
-            if row is None:
-                row = conn.execute(
-                    "SELECT * FROM evaluation_cases WHERE name=%s", (name,)
-                ).fetchone()
-                if (
-                    row["split"] != split
-                    or row["diff"] != diff
-                    or row["expected_json"] != expected
-                ):
-                    raise ValueError(
-                        "evaluation case names are immutable; use a new name for revised content"
-                    )
-        value = dict(row)
-        value["expected"] = value.pop("expected_json")
-        value["created_at"] = value["created_at"].isoformat()
-        return value
 
-    def list_evaluation_cases(
-        self, split: Optional[str] = None, active_only: bool = True, limit: int = 100,
-    ) -> list:
-        clauses = []
-        params = []
-        if split:
-            clauses.append("split=%s")
-            params.append(split)
-        if active_only:
-            clauses.append("active=TRUE")
-        query = "SELECT * FROM evaluation_cases"
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id LIMIT %s"
-        params.append(max(1, min(limit, 500)))
-        with self._connect() as conn:
-            rows = conn.execute(query, params).fetchall()
-        values = [dict(row) for row in rows]
-        for value in values:
-            value["expected"] = value.pop("expected_json")
-            value["created_at"] = value["created_at"].isoformat()
-        return values
 
-    def save_evolution_run(self, run: Dict[str, Any]) -> Dict[str, Any]:
-        with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO evolution_runs(id,skill_name,candidate_version,baseline_version,decision,"
-                "candidate_score,baseline_score,metrics_json,created_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)",
-                (
-                    run["id"], run["skill_name"], run["candidate_version"], run.get("baseline_version"),
-                    run["decision"], run["candidate_score"], run["baseline_score"],
-                    json.dumps(run["metrics"], ensure_ascii=False), run["created_at"],
-                ),
-            )
-        return run
 
-    def list_evolution_runs(self, limit: int = 50) -> list:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM evolution_runs ORDER BY created_at DESC LIMIT %s",
-                (max(1, min(limit, 200)),),
-            ).fetchall()
-        values = [dict(row) for row in rows]
-        for value in values:
-            value["metrics"] = value.pop("metrics_json")
-            value["created_at"] = value["created_at"].isoformat()
-        return values
 
-    def update_evolution_run(self, run_id: str, decision: str, metrics: Dict[str, Any]) -> bool:
-        with self._connect() as conn:
-            cursor = conn.execute(
-                "UPDATE evolution_runs SET decision=%s,metrics_json=%s::jsonb WHERE id=%s",
-                (decision, json.dumps(metrics, ensure_ascii=False), run_id),
-            )
-            return cursor.rowcount == 1
 
-    def get_active_skill_version(self, skill_name: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM skill_versions WHERE skill_name=%s AND active=TRUE ORDER BY version DESC LIMIT 1",
-                (skill_name,),
-            ).fetchone()
-        return dict(row) if row else None
 
     # --- Skill versions, artifacts and skill evolution runs ---
-    def save_skill_version(self, skill_name: str, prompt: str, score: float, activate: bool = False) -> Dict[str, Any]:
-        active = self.get_active_skill_version(skill_name)
-        with self._connect() as conn:
-            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (skill_name,))
-            row = conn.execute(
-                "SELECT COALESCE(MAX(version),0) AS version FROM skill_versions WHERE skill_name=%s",
-                (skill_name,),
-            ).fetchone()
-            version = int(row["version"]) + 1
-            if activate:
-                conn.execute("UPDATE skill_versions SET active=FALSE WHERE skill_name=%s", (skill_name,))
-            conn.execute(
-                "INSERT INTO skill_versions(skill_name,version,prompt,score,active,parent_version,created_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (skill_name, version, prompt, score, activate, active["version"] if active else None, utc_now()),
-            )
-        return {"skill_name": skill_name, "version": version, "score": score, "active": activate}
 
-    def list_skill_versions(self, skill_name: str) -> list:
-        with self._connect() as conn:
-            return list(conn.execute("SELECT * FROM skill_versions WHERE skill_name=%s ORDER BY version DESC", (skill_name,)).fetchall())
 
-    def activate_skill_version(self, skill_name: str, version: int) -> bool:
-        with self._connect() as conn:
-            exists = conn.execute("SELECT 1 FROM skill_versions WHERE skill_name=%s AND version=%s", (skill_name, version)).fetchone()
-            if not exists:
-                return False
-            conn.execute("UPDATE skill_versions SET active=FALSE WHERE skill_name=%s", (skill_name,))
-            conn.execute("UPDATE skill_versions SET active=TRUE WHERE skill_name=%s AND version=%s", (skill_name, version))
-        return True
 
     def save_skill_artifact(
         self, skill_name: str, artifact: Dict[str, Any], score: float,
@@ -706,6 +607,16 @@ class PostgresTaskStore(StoreProtocol):
             ).fetchone()
         return bool(row and row["cancel_requested"])
 
+    def prepare_resume(self, task_id: str, tenant_id: str) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE tasks SET cancel_requested=FALSE,state=%s,error=NULL,updated_at=%s "
+                "WHERE id=%s AND tenant_id=%s AND state IN (%s,%s)",
+                (TaskState.PENDING.value, utc_now(), task_id, tenant_id,
+                 TaskState.FAILED.value, TaskState.CANCELLED.value),
+            )
+            return cursor.rowcount == 1
+
     def cancel(self, task_id: str, event: TraceEvent) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -719,41 +630,8 @@ class PostgresTaskStore(StoreProtocol):
             )
 
     # --- Webhook idempotency ---
-    def claim_webhook(
-        self, delivery_id: str, tenant_id: str, event_type: str, payload_sha256: str,
-    ) -> bool:
-        if not delivery_id:
-            raise ValueError("X-GitHub-Delivery is required")
-        with self._connect() as conn:
-            row = conn.execute(
-                "INSERT INTO webhook_deliveries"
-                "(delivery_id,tenant_id,event_type,payload_sha256,received_at) "
-                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT(delivery_id) DO NOTHING RETURNING delivery_id",
-                (delivery_id, tenant_id, event_type, payload_sha256, utc_now()),
-            ).fetchone()
-            if row:
-                return True
-            existing = conn.execute(
-                "SELECT payload_sha256 FROM webhook_deliveries WHERE delivery_id=%s",
-                (delivery_id,),
-            ).fetchone()
-            if existing and existing["payload_sha256"] != payload_sha256:
-                raise ValueError("delivery id was already used with a different payload")
-            return False
 
-    def complete_webhook(self, delivery_id: str, task_id: Optional[str]) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                "UPDATE webhook_deliveries SET task_id=%s WHERE delivery_id=%s",
-                (task_id, delivery_id),
-            )
 
-    def get_webhook(self, delivery_id: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM webhook_deliveries WHERE delivery_id=%s", (delivery_id,)
-            ).fetchone()
-        return dict(row) if row else None
 
     # --- Auth, RBAC and audit ---
     def create_user(
@@ -891,6 +769,16 @@ class PostgresTaskStore(StoreProtocol):
         disagreement: float, candidate_failed: bool = False,
     ) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (json.dumps([tenant_id, skill_name, task_id, lane]),))
+            existing = conn.execute(
+                "SELECT id FROM release_observations WHERE tenant_id=%s AND skill_name=%s AND task_id=%s AND lane=%s",
+                (tenant_id, skill_name, task_id, lane),
+            ).fetchone()
+            if existing:
+                row = conn.execute(
+                    "SELECT * FROM deployments WHERE tenant_id=%s AND skill_name=%s", (tenant_id, skill_name),
+                ).fetchone()
+                return dict(row) if row else None
             conn.execute(
                 "INSERT INTO release_observations(tenant_id,skill_name,task_id,lane,"
                 "primary_json,candidate_json,disagreement,candidate_failed,created_at) "

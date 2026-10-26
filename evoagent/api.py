@@ -204,7 +204,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "permission denied"})
                 return
             self._send_json(200, {"messages": self.service.queue.dead_letters(
-                int(query.get("limit", [100])[0])
+                int(query.get("limit", [100])[0]), principal.tenant_id
             )})
             return
         if path == "/v1/evaluation/cases":
@@ -213,16 +213,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "holdout cases are not exposed through the API"})
                 return
             self._send_json(200, {
-                "cases": self.service.store.list_evaluation_cases(split, True, 100)
+                "cases": self.service.store.list_evaluation_cases(split, True, 100, principal.tenant_id)
             })
             return
         if path == "/v1/evolution/runs":
             self._send_json(200, {
-                "runs": self.service.store.list_evolution_runs(int(query.get("limit", [50])[0]))
+                "runs": self.service.store.list_evolution_runs(int(query.get("limit", [50])[0]), principal.tenant_id)
             })
             return
         if path == "/v1/evolution/status":
-            status = self.service.evolution.status()
+            status = self.service.evolution_for(principal.tenant_id).status()
             status["provider"] = self.service.llm_config.get("provider", "local")
             status["model"] = self.service.llm_config.get("model", "")
             self._send_json(200, status)
@@ -462,14 +462,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 principal = self._principal("manage")
                 payload = self._read_json(body)
                 ok = self.service.queue.replay_dead_letter(
-                    str(payload.get("message_id", ""))
+                    str(payload.get("message_id", "")), principal.tenant_id
                 )
                 self._send_json(202 if ok else 404, {"replayed": ok})
                 return
             if path == "/v1/evaluation/cases":
-                self._principal("manage")
+                principal = self._principal("manage")
                 payload = self._read_json(body)
-                result = self.service.evolution.add_evaluation_case(
+                result = self.service.evolution_for(principal.tenant_id).add_evaluation_case(
                     str(payload.get("name", "")),
                     str(payload.get("diff", "")),
                     payload.get("expected_findings", []),
@@ -481,7 +481,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/v1/evolution/auto":
                 principal = self._principal("manage")
                 payload = self._read_json(body)
-                result = self.service.evolution.auto_propose(
+                result = self.service.evolution_for(principal.tenant_id).auto_propose(
                     str(payload.get("skill_name", "llm-review")), principal.tenant_id
                 )
                 if result["decision"] == "activated":
@@ -489,9 +489,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(201, result)
                 return
             if path == "/v1/evolution/propose":
-                self._principal("manage")
+                principal = self._principal("manage")
                 payload = self._read_json(body)
-                result = self.service.evolution.propose(
+                result = self.service.evolution_for(principal.tenant_id).propose(
                     str(payload.get("skill_name", "")), str(payload.get("prompt", "")),
                     float(payload["regression_score"]) if "regression_score" in payload else None,
                 )
@@ -553,8 +553,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             match = ROLLBACK.match(path)
             if match:
-                self._principal("manage")
-                ok = self.service.evolution.rollback(match.group(1), int(match.group(2)))
+                principal = self._principal("manage")
+                ok = self.service.evolution_for(principal.tenant_id).rollback(match.group(1), int(match.group(2)))
                 if ok:
                     self.service.reload_skills()
                 self._send_json(200 if ok else 404, {"activated": ok})

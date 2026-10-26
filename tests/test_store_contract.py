@@ -94,6 +94,54 @@ class StoreContract:
             {item["id"] for item in self.store.list_tasks(tenant_id="tenant-b")},
         )
 
+    def test_prompt_versions_samples_and_runs_are_tenant_scoped(self):
+        run = _uid()
+        skill = "tenant-prompt-" + run
+        for tenant in ("a", "b"):
+            version = self.store.save_skill_version(skill, tenant, .5, True, tenant)
+            self.assertEqual(1, version["version"])
+            self.store.save_evaluation_case("same-" + run, "validation", tenant, [], tenant_id=tenant)
+        self.store.save_skill_version(skill, "a2", .6, False, "a")
+        self.assertFalse(self.store.activate_skill_version(skill, 2, "b"))
+        self.assertTrue(self.store.activate_skill_version(skill, 2, "a"))
+        self.assertEqual("a2", self.store.get_active_skill_version(skill, "a")["prompt"])
+        self.assertEqual("b", self.store.get_active_skill_version(skill, "b")["prompt"])
+        self.assertIsNone(self.store.get_skill_version(skill, 2, "b"))
+        self.assertEqual(["a"], [case["diff"] for case in self.store.list_evaluation_cases(tenant_id="a")])
+        self.assertEqual(["b"], [case["diff"] for case in self.store.list_evaluation_cases(tenant_id="b")])
+        self.store.save_evolution_run({
+            "id": "scoped-" + run, "tenant_id": "b", "skill_name": skill,
+            "candidate_version": 1, "decision": "deferred", "candidate_score": 0,
+            "baseline_score": 0, "metrics": {"note": "b"}, "created_at": utc_now(),
+        })
+        self.assertEqual([], self.store.list_evolution_runs(tenant_id="a"))
+        self.assertFalse(self.store.update_evolution_run("scoped-" + run, "activated", {}, "a"))
+        self.assertEqual("deferred", self.store.list_evolution_runs(tenant_id="b")[0]["decision"])
+
+    def test_webhook_failed_and_expired_claims_recover_with_owner_checks(self):
+        delivery = "recover-" + _uid()
+        self.assertTrue(self.store.claim_webhook(delivery, "a", "pull_request", "sha", "old", lease_seconds=-1))
+        self.assertTrue(self.store.claim_webhook(delivery, "a", "pull_request", "sha", "current"))
+        with self.assertRaises(RuntimeError):
+            self.store.complete_webhook(delivery, "task", "old")
+        self.store.bind_webhook_task(delivery, "same-task", "current")
+        self.store.release_webhook(delivery, "current")
+        self.assertTrue(self.store.claim_webhook(delivery, "a", "pull_request", "sha", "retry"))
+        self.assertEqual("same-task", self.store.get_webhook(delivery)["task_id"])
+        self.store.complete_webhook(delivery, "same-task", "retry")
+        self.assertFalse(self.store.claim_webhook(delivery, "a", "pull_request", "sha", "duplicate"))
+
+    def test_resume_is_atomic_scoped_and_clears_cancellation(self):
+        task = "resume-" + _uid()
+        self.store.create(task, "org/a", 1, {}, "a")
+        self.store.request_cancel(task, "a")
+        self.store.cancel(task, _trace(1, TaskState.CANCELLED))
+        self.assertFalse(self.store.prepare_resume(task, "b"))
+        self.assertTrue(self.store.prepare_resume(task, "a"))
+        self.assertFalse(self.store.prepare_resume(task, "a"))
+        self.assertFalse(self.store.is_cancelled(task))
+        self.assertEqual("PENDING", self.store.get(task, "a")["state"])
+
     def test_checkpoints_and_task_payload(self):
         run = _uid()
         self.store.create("t1-%s" % run, "demo/api", None, {})
@@ -411,9 +459,20 @@ class SqliteStoreContractTests(StoreContract, unittest.TestCase):
 )
 class PostgresStoreContractTests(StoreContract, unittest.TestCase):
     def make_store(self):
+        import psycopg
+        from psycopg import sql
+        from psycopg.conninfo import make_conninfo
         from evoagent.postgres_store import PostgresTaskStore
+        schema = "evo_test_" + uuid.uuid4().hex
+        with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+            conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
 
-        return PostgresTaskStore(DATABASE_URL)
+        def cleanup():
+            with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
+                conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+        self.addCleanup(cleanup)
+        return PostgresTaskStore(make_conninfo(DATABASE_URL, options="-c search_path=" + schema))
 
 
 if __name__ == "__main__":

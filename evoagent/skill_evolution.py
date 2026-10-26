@@ -10,7 +10,7 @@ from .diff_parser import parse_unified_diff
 from .evolution import RegressionEvaluator
 from .reviewer import Reviewer
 from .skills import AgentSkill, SKILL_NAME
-from .store import utc_now
+from .time_utils import utc_now
 
 
 ARTIFACT_SCHEMA_VERSION = 2
@@ -98,12 +98,14 @@ def validate_artifact(artifact: Any, expected_name: str = "") -> dict:
 class _ReplayTaskStore:
     def __init__(self, skill_name: str):
         self.skill_name = skill_name
+        self.repository_root = ""
 
     def get(self, _task_id: str, _tenant_id: Optional[str] = None) -> dict:
         return {"input": {
             "mode": "agentic",
             "enabled_agents": ["lead", "security", "correctness-reliability", "critic"],
             "enabled_skills": [self.skill_name],
+            "repository_root": self.repository_root,
         }}
 
     def save_checkpoint(
@@ -141,6 +143,7 @@ class AgentSkillReplayReviewer(Reviewer):
     def review_case(self, case: dict, parsed) -> list:
         self._sequence += 1
         self._last_task_id = "skill-replay:%s:%d" % (self.skill.name, self._sequence)
+        self.agentic.store.repository_root = str(case.get("repository_root") or "")
         return self.agentic.review_with_context(
             self._last_task_id, case["diff"], parsed,
             repository=str(case.get("repository_root") or case.get("repository") or ""),
@@ -260,8 +263,8 @@ class SkillEvolutionEngine:
         return self.metrics_non_regressing(candidate, baseline)
 
     def status(self, skill_name: str = "evolved-review", tenant_id: str = "default") -> dict:
-        validation = self.store.list_evaluation_cases("validation", True, self.max_cases)
-        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases)
+        validation = self.store.list_evaluation_cases("validation", True, self.max_cases, tenant_id)
+        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases, tenant_id)
         active = self.store.get_active_skill_artifact(skill_name, tenant_id)
         return {
             "tenant_id": tenant_id, "skill_name": skill_name, "format": "agent-skill",
@@ -296,8 +299,8 @@ class SkillEvolutionEngine:
                 "candidate": {}, "baseline": {}, "candidate_holdout": {},
                 "baseline_holdout": {}, "gates": {}, "run_id": None,
             }
-        validation = self.store.list_evaluation_cases("validation", True, self.max_cases)
-        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases)
+        validation = self.store.list_evaluation_cases("validation", True, self.max_cases, tenant_id)
+        holdout = self.store.list_evaluation_cases("holdout", True, self.max_cases, tenant_id)
         baseline_metrics = self._empty_metrics(len(validation))
         candidate_metrics = self._empty_metrics(len(validation))
         baseline_holdout = self._empty_metrics(len(holdout))
