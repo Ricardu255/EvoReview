@@ -68,6 +68,16 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("SEC-EVAL", cases[0]["payload"]["finding"]["rule_id"])
         service.queue.close()
 
+    def test_reload_skills_rebuilds_reviewer_and_harness_together(self):
+        service = enable_agentic_service(ReviewService(self.settings))
+        skills = service.reload_skills()
+        names = {item["name"] for item in skills}
+        self.assertIn("security-review", names)
+        self.assertIn("reliability-review", names)
+        self.assertIs(service.harness.reviewer, service.reviewer)
+        self.assertEqual("agentic-reviewer", service.reviewer.name)
+        service.queue.close()
+
 
 if __name__ == "__main__":
     unittest.main()

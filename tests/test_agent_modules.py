@@ -66,7 +66,27 @@ class AgentModuleTests(unittest.TestCase):
         self.assertNotIn("__getattr__", source)
         reviewer = AgenticReviewer(None, None)
         self.assertIs(reviewer.lead.store, reviewer.runtime.store)
+        self.assertIs(reviewer.lead.client, reviewer.runtime.client)
         self.assertIs(reviewer.lead.context_manager, reviewer.runtime.context_manager)
+        self.assertIs(reviewer.lead.memory_manager, reviewer.runtime.memory_manager)
+        self.assertIs(reviewer.lead.rules, reviewer.runtime.rules)
+        self.assertEqual(
+            reviewer.lead.default_token_budget,
+            reviewer.runtime.default_token_budget,
+        )
+        self.assertEqual(
+            reviewer.lead.default_time_budget,
+            reviewer.runtime.default_time_budget,
+        )
+        self.assertEqual(reviewer.lead.prompt_overlay, reviewer.runtime.prompt_overlay)
+        self.assertIs(reviewer.lead.memory_scopes, reviewer.runtime.memory_scopes)
+        self.assertIs(
+            reviewer.lead.memory_scope_lock, reviewer.runtime.memory_scope_lock,
+        )
+        self.assertEqual(
+            reviewer.runtime.token_budget("lead"),
+            reviewer.lead.token_budget("lead"),
+        )
         with self.assertRaises(AttributeError):
             reviewer.lead.not_a_runtime_field
 

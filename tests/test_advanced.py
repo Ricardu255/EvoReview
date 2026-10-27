@@ -282,7 +282,8 @@ class AdvancedFeatureTests(unittest.TestCase):
         diff = "--- a/a.py\n+++ b/a.py\n@@ -1 +1,2 @@\n-old\n+eval(data)\n+# TODO finish validation\n"
         result = service.enqueue_review("org/repo", diff, 2)
         task = None
-        for _ in range(50):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
             task = service.store.get(result["task_id"])
             if task["state"] in {"SUCCESS", "FAILED"}:
                 break

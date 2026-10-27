@@ -86,7 +86,8 @@ class ProductionFeatureTests(unittest.TestCase):
 
         queue = TaskQueue(broken, workers=1, max_attempts=1)
         queue.submit({"task_id": "dead"})
-        for _ in range(100):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
             if queue.dead_letters():
                 break
             time.sleep(.01)

@@ -1,4 +1,5 @@
 """Behavioral regressions for isolation, resumability and actual release execution."""
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ from evoagent.api import ApiHandler
 from evoagent.auth import Principal
 from evoagent.config import Settings
 from evoagent.diff_parser import parse_unified_diff
+from evoagent.errors import PermanentTaskError
 from evoagent.repository_tools import RepositoryToolSuite
 from evoagent.runtime import RuntimeCancelled
 from evoagent.service import ReviewService
@@ -204,6 +206,108 @@ class ReviewRegressionTests(unittest.TestCase):
         with patch.object(service.queue, "submit"):
             service.handle_github_pull_request(self.webhook(), "delivery", "digest", "tenant-a")
         self.assertEqual(1, len(service.store.list_tasks()))
+
+    def test_process_queued_records_failure_and_releases_observation(self):
+        service = self.service
+        task_id = service._create_task("org/a", DIFF, 1, "test", "tenant-a")
+
+        class BrokenClient:
+            provider = "broken"
+            model = "broken"
+
+            def complete_json(self, *args, **kwargs):
+                raise RuntimeError("model offline")
+
+        service.chat_client = BrokenClient()
+        observations = []
+        with patch.object(
+            service.releases, "observe",
+            side_effect=lambda *args: observations.append(args),
+        ), patch.object(service.alerts, "evaluate") as evaluate:
+            with self.assertRaisesRegex(RuntimeError, "model offline"):
+                service._process_queued({
+                    "task_id": task_id, "repository": "org/a",
+                    "pull_request": 1, "tenant_id": "tenant-a",
+                })
+        evaluate.assert_called_once_with("tenant-a")
+        self.assertTrue(observations)
+        self.assertTrue(observations[-1][2])
+
+    def test_process_queued_rejects_missing_mismatched_and_payload_less_tasks(self):
+        service = self.service
+        with self.assertRaises(PermanentTaskError):
+            service._process_queued({
+                "task_id": "missing", "repository": "org/a", "tenant_id": "tenant-a",
+            })
+
+        task_id = service._create_task("org/a", DIFF, 1, "test", "tenant-a")
+        with self.assertRaises(PermanentTaskError):
+            service._process_queued({
+                "task_id": task_id, "repository": "org/a", "tenant_id": "tenant-b",
+            })
+        with self.assertRaises(PermanentTaskError):
+            service._process_queued({
+                "task_id": task_id, "repository": "org/b", "tenant_id": "tenant-a",
+            })
+
+        deferred = service._create_deferred_task(
+            "org/a", 1, "github-webhook", "tenant-a", {},
+        )
+        with self.assertRaises(PermanentTaskError):
+            service._process_queued({
+                "task_id": deferred, "repository": "org/a",
+                "tenant_id": "tenant-a",
+            })
+
+    def test_deferred_webhook_task_fetches_diff_and_posts_comment(self):
+        service = self.service
+
+        class FakeGitHub:
+            def __init__(self):
+                self.comments = []
+
+            def ensure_repository_access(self, repository):
+                self.repository = repository
+
+            def fetch_diff(self, url):
+                self.diff_url = url
+                return DIFF
+
+            def upsert_comment(self, issue_url, body, marker):
+                self.comments.append((issue_url, body, marker))
+
+        github = FakeGitHub()
+        task_id = service._create_deferred_task(
+            "org/a", 1, "github-webhook", "tenant-a",
+            {"diff_url": "https://github.com/org/a/pull/1.diff"},
+        )
+        self.assertIsNone(service.store.get_task_payload(task_id))
+        payload = {
+            "task_id": task_id, "repository": "org/a", "pull_request": 1,
+            "tenant_id": "tenant-a", "installation_id": 42,
+            "diff_url": "https://github.com/org/a/pull/1.diff",
+            "github_issue_url": "https://github.com/org/a/pull/1",
+        }
+        original_settings = service._reviews_app.execution.settings
+        service._reviews_app.execution.settings = replace(
+            original_settings, auto_post_review=True,
+        )
+        try:
+            with patch.object(
+                service._github_app, "github_client_for_installation",
+                return_value=github,
+            ):
+                service._process_queued(payload)
+        finally:
+            service._reviews_app.execution.settings = original_settings
+
+        task = service.store.get(task_id, "tenant-a")
+        self.assertEqual("SUCCESS", task["state"])
+        self.assertEqual(DIFF, service.store.get_task_payload(task_id))
+        self.assertFalse(task["input"]["diff_pending"])
+        self.assertEqual(["org/a"], [github.repository])
+        self.assertEqual(1, len(github.comments))
+        self.assertIn("<!-- evoagent-review:%s -->" % task_id, github.comments[0][2])
 
     def test_canary_executes_pinned_candidate_after_configuration_changes(self):
         stable, candidate = self.configure(canary=100)
