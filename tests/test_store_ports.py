@@ -60,7 +60,9 @@ class StorePortCompositionTests(unittest.TestCase):
 
     def test_aggregate_keeps_the_historical_method_count(self):
         # 62 methods before the split; keep the aggregate contract stable.
-        self.assertEqual(62, len(StoreProtocol.__protocol_attrs__))
+        # ``dir`` avoids the private Protocol internals that differ before 3.12.
+        names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
+        self.assertEqual(62, len(names))
 
 
 if __name__ == "__main__":
