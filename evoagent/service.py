@@ -1,162 +1,57 @@
 import hashlib
 import json
 import os
-import threading
 import uuid
 from typing import Any, Dict, Optional
 
 from .agentic_core import AgenticReviewer
-from .auth import AuthManager
+from .bootstrap import (
+    active_agent_skills, build_agentic_reviewer, build_container,
+    build_llm_reviewer,
+)
 from .config import Settings
-from .context_manager import ContextManager
 from .evolution import EvolutionEngine
-from .evolution_v2 import RootCauseEvolutionGenerator
 from .finding_identity import canonical_identity
-from .fixer import SafeFixer
-from .patching import SuggestionOnlyFixer, VerifiedPatchFixer
 from .github import GitHubAppAuthenticator, GitHubClient
 from .harness import ReviewHarness
 from .metrics import metrics
-from .llm import JsonChatClient
 from .modes import RunMode
-from .memory import MemoryManager
 from .models import TaskState, TraceEvent
-from .observability import AlertManager, Observability
-from .postgres_store import create_store
 from .report import to_markdown
-from .reviewer import (
-    OpenAICompatibleReviewer, ReliabilityRuleReviewer, SecurityRuleReviewer,
-)
-from .skills import AgentSkill, SkillRegistry
-from .skill_evolution import AgentSkillReplayReviewer, SkillEvolutionEngine, validate_artifact
+from .reviewer import OpenAICompatibleReviewer
+from .task_queue import PermanentTaskError
 from .time_utils import utc_now
-from .task_queue import PermanentTaskError, TaskQueue
-from .rollout import ReleaseManager
-from .verifier import RepairVerifier
 
 
 class ReviewService:
     def __init__(self, settings: Settings):
-        self.settings = settings
-        settings.validate_evolution()
-        self.repository_roots = json.loads(settings.repository_roots_json)
-        if not isinstance(self.repository_roots, dict) or any(
-            not isinstance(repositories, dict) or any(
-                not isinstance(path, str) or not os.path.isabs(path)
-                for path in repositories.values()
-            ) for repositories in self.repository_roots.values()
-        ):
-            raise ValueError("repository roots must map tenant IDs to repository/absolute-path mappings")
-        self._reload_lock = threading.Lock()
-        self.llm_config = settings.resolved_llm()
-        self.store = create_store(settings.database_url, settings.db_path)
-        self.memory = MemoryManager(
-            self.store, settings.memory_enabled, settings.memory_recall_limit,
-            settings.memory_working_ttl_seconds,
-        )
-        self.context_manager = ContextManager(
-            settings.agent_context_window_tokens,
-            settings.agent_context_input_tokens,
-            settings.context_diff_token_budget,
-            settings.context_observation_token_budget,
-            settings.context_recent_observations,
-            settings.context_map_chunk_tokens,
-        )
-        self.observability = Observability(settings.otel_service_name, settings.otel_endpoint)
-        self.registry = SkillRegistry(settings.skills_dir)
-        self.registry.register(
-            "security-review", SecurityRuleReviewer(),
-            "1.0.0", "Security, injection and secret detection",
-        )
-        self.registry.register(
-            "reliability-review", ReliabilityRuleReviewer(),
-            "1.0.0", "Reliability and observability review",
-        )
-        if self.llm_config:
-            active = self.store.get_active_skill_version("llm-review", self.settings.default_tenant_id)
-            self.registry.register(
-                "llm-review",
-                self._build_llm_reviewer(active["prompt"] if active else ""),
-                "1.0.0", "Context-aware AI code review via %s" % self.llm_config["provider"],
-            )
-        self.registry.reload()
-        self.chat_client = (
-            JsonChatClient(
-                str(self.llm_config["base_url"]), str(self.llm_config["api_key"]),
-                str(self.llm_config["model"]), str(self.llm_config["provider"]),
-                settings.timeout_seconds, dict(self.llm_config.get("headers") or {}),
-                retries=settings.llm_max_retries,
-                backoff_seconds=settings.llm_retry_backoff_seconds,
-            ) if self.llm_config else None
-        )
-        self.reviewer = self._build_agentic_reviewer()
-        self.harness = ReviewHarness(
-            self.store, self.reviewer, settings.max_steps, settings.timeout_seconds,
-            observability=self.observability,
-        )
-        self.github = GitHubClient(settings.github_token)
-        repair_verifier = RepairVerifier(
-            settings.repair_test_command, settings.repair_verify_timeout_seconds
-        )
-        self.fixer = (
-            VerifiedPatchFixer(self.chat_client, repair_verifier)
-            if self.chat_client else SuggestionOnlyFixer()
-        )
-        self.auth = AuthManager(
-            self.store, settings.auth_secret, settings.session_ttl_seconds,
-            settings.bootstrap_admin_username, settings.bootstrap_admin_password,
-            settings.default_tenant_id,
-        )
-        self.releases = ReleaseManager(self.store)
-        self.alerts = AlertManager(
-            self.store, settings.alert_failure_rate, settings.alert_min_samples
-        )
-        self.evolution = EvolutionEngine(
-            self.store,
-            reviewer_factory=self._build_llm_reviewer if self.llm_config else None,
-            min_cases=settings.eval_min_cases,
-            max_cases=settings.eval_max_cases,
-            min_improvement=settings.eval_min_improvement,
-            min_holdout_cases=settings.eval_min_holdout_cases,
-            max_metric_regression=settings.eval_max_metric_regression,
-            candidate_generator=(
-                RootCauseEvolutionGenerator(self.chat_client)
-                if self.chat_client else None
-            ),
-            tenant_id=settings.default_tenant_id,
-        )
-        self.skill_evolution = SkillEvolutionEngine(
-            self.store,
-            reviewer_factory=(lambda artifact: AgentSkillReplayReviewer(
-                    artifact, self.chat_client,
-                    settings.agent_token_budget,
-                    settings.agent_time_budget_seconds,
-                )) if self.chat_client else None,
-            min_cases=settings.eval_min_cases,
-            max_cases=settings.eval_max_cases,
-            min_improvement=settings.eval_min_improvement,
-            min_holdout_cases=settings.eval_min_holdout_cases,
-            max_metric_regression=settings.eval_max_metric_regression,
-        )
-        self._tenant_evolutions = {settings.default_tenant_id: self.evolution}
-        self.queue = TaskQueue(
-            self._process_queued, settings.async_workers, settings.redis_url,
-            settings.queue_max_attempts, settings.queue_lease_seconds,
-            self._on_dead_letter,
+        container = build_container(settings)
+        self.settings = container.settings
+        self.repository_roots = container.repository_roots
+        self._reload_lock = container.reload_lock
+        self.llm_config = container.llm_config
+        self.store = container.store
+        self.memory = container.memory
+        self.context_manager = container.context_manager
+        self.observability = container.observability
+        self.registry = container.registry
+        self.chat_client = container.chat_client
+        self.reviewer = container.reviewer
+        self.harness = container.harness
+        self.github = container.github
+        self.fixer = container.fixer
+        self.auth = container.auth
+        self.releases = container.releases
+        self.alerts = container.alerts
+        self.evolution = container.evolution
+        self.skill_evolution = container.skill_evolution
+        self._tenant_evolutions = container.tenant_evolutions
+        self.queue = container.build_queue(
+            self._process_queued, self._on_dead_letter
         )
 
     def _build_llm_reviewer(self, prompt: str = "") -> OpenAICompatibleReviewer:
-        if not self.llm_config:
-            raise RuntimeError("no LLM provider is configured")
-        return OpenAICompatibleReviewer(
-            str(self.llm_config["base_url"]),
-            str(self.llm_config["api_key"]),
-            str(self.llm_config["model"]),
-            self.settings.timeout_seconds,
-            system_prompt=prompt,
-            provider=str(self.llm_config["provider"]),
-            extra_headers=dict(self.llm_config.get("headers") or {}),
-        )
+        return build_llm_reviewer(self.settings, self.llm_config, prompt)
 
     def evolution_for(self, tenant_id: str) -> EvolutionEngine:
         with self._reload_lock:
@@ -168,53 +63,10 @@ class ReviewService:
         self, tenant_id: Optional[str] = None, prompt_version: Optional[int] = None,
         shadow: bool = False,
     ) -> AgenticReviewer:
-        tenant_id = tenant_id or self.settings.default_tenant_id
-        enabled = {
-            item.strip() for item in self.settings.enabled_agents.split(",") if item.strip()
-        }
-        unknown = enabled.difference({
-            "lead", "security", "correctness-reliability", "critic"
-        })
-        if unknown:
-            raise ValueError("unsupported enabled Agent role(s): %s" % ", ".join(sorted(unknown)))
-        active_prompt = (
-            self.store.get_active_skill_version("llm-review", tenant_id)
-            if prompt_version is None else
-            self.store.get_skill_version("llm-review", prompt_version, tenant_id)
-            if prompt_version else None
-        )
-        if prompt_version and not active_prompt:
-            raise ValueError("the task's pinned prompt version is unavailable")
-        structured_config = {}
-        if active_prompt:
-            run = next((
-                item for item in self.store.list_evolution_runs(200, tenant_id)
-                if item["skill_name"] == "llm-review"
-                if int(item.get("candidate_version") or 0) == int(active_prompt["version"])
-                and (item.get("metrics") or {}).get("structured_candidate")
-            ), None)
-            if run:
-                structured_config = (
-                    run["metrics"]["structured_candidate"].get("candidate") or {}
-                )
-        return AgenticReviewer(
-            self.store, self.chat_client,
-            self.settings.agent_token_budget,
-            self.settings.agent_time_budget_seconds,
-            self.settings.llm_input_cost_per_million,
-            self.settings.llm_output_cost_per_million,
-            enabled,
-            [
-                item for item in self.registry.reviewers()
-                if not isinstance(item, OpenAICompatibleReviewer)
-            ],
-            None,
-            self.settings.repair_test_command,
-            active_prompt["prompt"] if active_prompt else "",
-            structured_config,
-            None if shadow else self.memory,
-            self.context_manager,
-            self._active_agent_skills,
+        return build_agentic_reviewer(
+            self.settings, self.store, self.chat_client, self.registry,
+            self.memory, self.context_manager, self._active_agent_skills,
+            tenant_id, prompt_version, shadow,
         )
 
     def _run_review(
@@ -307,13 +159,7 @@ class ReviewService:
             return skills
 
     def _active_agent_skills(self, tenant_id: str) -> list:
-        values = {skill.name: skill for skill in self.registry.agent_skills()}
-        for version in self.store.list_active_skill_artifacts(tenant_id):
-            artifact = validate_artifact(version["artifact"], version["skill_name"])
-            values[version["skill_name"]] = AgentSkill.from_artifact(
-                artifact, str(version["version"])
-            )
-        return [values[name] for name in sorted(values)]
+        return active_agent_skills(self.store, self.registry, tenant_id)
 
     def list_skills(self, tenant_id: str) -> list:
         scanners = [item for item in self.registry.list() if item.get("kind") == "scanner"]
