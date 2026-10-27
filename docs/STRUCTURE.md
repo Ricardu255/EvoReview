@@ -39,9 +39,15 @@ bootstrap → 所有具体实现
   - `session.py` 17 行
   - `agentic_core.py` 只做兼容 re-export
 
+- SQLite/PostgreSQL 已按能力拆到 `evoagent/adapters/stores/{sqlite,postgres}/`：
+  - `tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`
+  - `store.py` 37 行、`postgres_store.py` 37 行，只保留连接/建表和兼容类名
+  - `shared/rows.py` 共享 SQLite/PostgreSQL 的 JSON、时间戳行解码
+- `PromptStoreMixin` / `WebhookStoreMixin` 继续作为跨后端共享 SQL 规则。
+
 尚未完成：
 
-- SQLite/PostgreSQL 实现仍由 `TaskStore` / `PostgresTaskStore` 承载，尚未按端口拆成独立适配器。
+- 多数 capability 方法仍分别维护 SQLite 和 PostgreSQL 两份 SQL；`shared/rows.py` 只共享行解码，尚未共享查询构造。
 - `ReviewsApplicationService` 仍有 342 行，后续可再按“任务生命周期 / 执行 / 投递”细分。
 - Agent 模块当前通过 mixin 共享 reviewer 状态；文件边界已建立，后续可进一步改为显式协作者对象。
 
@@ -49,7 +55,7 @@ bootstrap → 所有具体实现
 
 - 把 `ReviewsApplicationService` 拆成 `ReviewExecutionService` + `ReviewDeliveryService`。
 - 把 `OrchestrationMixin` 改成 `ReviewOrchestrator` 组合对象，去掉 mixin 状态共享。
-- 把 SQLite/PostgreSQL 的共享 SQL 提到 `adapters/stores/sql_common.py`，再按 port 拆 adapter。
+- 用 dialect hook（`_sql`、`_json`、`_bool`、`_returning`）把 capability 查询收敛成共享基类，进一步减少两份 SQL 的重复。
 
 ## 下一阶段
 
