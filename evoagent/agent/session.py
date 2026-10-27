@@ -1,8 +1,9 @@
 """LeadSession load/save helpers."""
+from .collaborators import ReviewerBackref
 from ..lead_session import LeadSession
 
 
-class SessionMixin:
+class SessionManager(ReviewerBackref):
     def _session_candidates(self, session):
         findings = self._restore_findings(session.scanner_findings)
         for result in session.worker_results.values():

@@ -1,11 +1,12 @@
 """High-level Lead/Worker/Critic orchestration."""
+from .collaborators import ReviewerBackref
 from ..lead_session import LeadSession
 from ..models import ComponentKind
 from ..modes import component
 from ..prompts import ROLE_PERMISSIONS
 
 
-class OrchestrationMixin:
+class ReviewOrchestrator(ReviewerBackref):
     def _agentic(
         self, task_id, diff, parsed, suite, ledger, enabled, scanners=None,
         memory_context=None, available_skills=None, requested_skills=None,

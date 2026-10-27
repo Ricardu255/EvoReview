@@ -1,4 +1,5 @@
 """Rule scanners and diff-aware AST evidence."""
+from .collaborators import ReviewerBackref
 import ast
 import hashlib
 import json
@@ -12,7 +13,7 @@ from ..modes import component
 from ..telemetry import ExecutionLedger
 
 
-class ScanningMixin:
+class ScanRunner(ReviewerBackref):
     def _scan(self, diff, parsed, ledger, scanners=None):
         started = time.monotonic()
         findings = self.rules.review(diff, parsed)

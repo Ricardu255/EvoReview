@@ -1,4 +1,5 @@
 """Parallel worker assignments and bounded revision rounds."""
+from .collaborators import ReviewerBackref
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -8,7 +9,7 @@ from ..runtime import ToolRegistry
 from .findings import _parse_findings
 
 
-class AssignmentsMixin:
+class AssignmentRunner(ReviewerBackref):
     def _run_pending_assignments(
         self, task_id, session, diff, parsed, suite, ledger, assignments, revision_round,
         memory_context=None, available_skills=None, max_steps=3, allow_tools=True,

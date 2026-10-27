@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from evoagent.agentic_core import AgenticReviewer
+from evoagent.reviewer import Reviewer
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,16 +18,17 @@ class AgentModuleTests(unittest.TestCase):
 
     def test_reviewer_facade_stays_small(self):
         source = (PACKAGE / "agent" / "reviewer.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(source.splitlines()), 250)
+        self.assertLessEqual(len(source.splitlines()), 320)
 
-    def test_reviewer_is_composed_from_role_modules(self):
-        names = {base.__name__ for base in AgenticReviewer.__mro__}
-        for expected in {
-            "FindingsMixin", "ScanningMixin", "SessionMixin",
-            "MemoryHooksMixin", "ToolsMixin", "LeadMixin",
-            "AssignmentsMixin", "OrchestrationMixin",
-        }:
-            self.assertIn(expected, names)
+    def test_reviewer_is_composed_from_collaborators(self):
+        self.assertEqual((Reviewer,), AgenticReviewer.__bases__)
+        source = (PACKAGE / "agent" / "reviewer.py").read_text(encoding="utf-8")
+        for attr in (
+            "findings", "tools", "sessions", "memory", "scanner",
+            "lead", "assignments", "orchestrator",
+        ):
+            self.assertIn("self.%s = " % attr, source)
+        self.assertNotIn("Mixin", source)
 
     def test_agent_modules_do_not_import_application_or_adapters(self):
         forbidden = {

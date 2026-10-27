@@ -66,7 +66,7 @@ def _parse_findings(result: dict, parsed: ParsedDiff, role: str) -> List[Finding
     return findings
 
 
-class FindingsMixin:
+class FindingPolicy:
     @staticmethod
     def _apply_critic(result, candidates):
         evidence = _collect_evidence(result.get("_observations") or [])
