@@ -9,6 +9,14 @@ class SqlStoreMixin:
         return sql.replace("?", "%s") if self._postgres_sql else sql.replace("::jsonb", "")
 
     @contextmanager
+    def _write(self):
+        """Open a write connection with the backend's process/row lock."""
+        lock = getattr(self, "_lock", None)
+        with lock if lock is not None else nullcontext():
+            with self._connect() as conn:
+                yield conn
+
+    @contextmanager
     def _transaction(self, write=False, key=""):
         lock = getattr(self, "_lock", None) if write else None
         with lock if lock is not None else nullcontext():

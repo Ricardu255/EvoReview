@@ -3,9 +3,18 @@ import datetime
 from pathlib import Path
 import unittest
 
+from evoagent.adapters.stores.postgres.auth import PostgresAuthStoreMixin
+from evoagent.adapters.stores.postgres.failures import PostgresFailureStoreMixin
+from evoagent.adapters.stores.postgres.installations import PostgresInstallationStoreMixin
+from evoagent.adapters.stores.shared.auth import AuthStoreMixin
+from evoagent.adapters.stores.shared.failures import FailureStoreMixin
+from evoagent.adapters.stores.shared.installations import InstallationStoreMixin
 from evoagent.adapters.stores.shared.rows import (
     decode_json, memory_from_row, skill_artifact_from_row,
 )
+from evoagent.adapters.stores.sqlite.auth import SqliteAuthStoreMixin
+from evoagent.adapters.stores.sqlite.failures import SqliteFailureStoreMixin
+from evoagent.adapters.stores.sqlite.installations import SqliteInstallationStoreMixin
 from evoagent.postgres_store import PostgresTaskStore
 from evoagent.store import TaskStore
 
@@ -57,6 +66,18 @@ class StoreAdapterStructureTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             for module in ("evoagent.service", "evoagent.app", "evoagent.agent"):
                 self.assertNotIn(module, source, path.name)
+
+    def test_dialect_neutral_capabilities_are_shared(self):
+        for backend, shared in (
+            (SqliteAuthStoreMixin, AuthStoreMixin),
+            (PostgresAuthStoreMixin, AuthStoreMixin),
+            (SqliteFailureStoreMixin, FailureStoreMixin),
+            (PostgresFailureStoreMixin, FailureStoreMixin),
+            (SqliteInstallationStoreMixin, InstallationStoreMixin),
+            (PostgresInstallationStoreMixin, InstallationStoreMixin),
+        ):
+            self.assertTrue(issubclass(backend, shared), backend.__name__)
+            self.assertEqual(shared, backend.__mro__[1])
 
 
 class SharedRowTests(unittest.TestCase):
