@@ -1,5 +1,5 @@
 """Lead and Critic role loops."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 import json
 
 from ..bounded_role import BoundedRole
@@ -7,17 +7,21 @@ from ..prompts import CRITIC_PROMPT, LEAD_PROMPT, ROLE_PERMISSIONS
 from ..runtime import ToolRegistry
 
 
-class LeadRunner(ReviewerBackref):
+class LeadRunner(RuntimeBackref):
+    def __init__(self, runtime, memory_hooks):
+        super().__init__(runtime)
+        self.memory_hooks = memory_hooks
+
     def _run_lead(
         self, phase, payload, suite, ledger, context_key="",
         max_steps=1, allow_tools=False,
     ):
-        working_memory_supplier, observation_sink = self._memory_hooks(context_key, "lead")
+        working_memory_supplier, observation_sink = self.memory_hooks._memory_hooks(context_key, "lead")
         role = BoundedRole(
             "lead", LEAD_PROMPT + (
                 ("\nActive validated prompt overlay:\n" + self.prompt_overlay)
                 if self.prompt_overlay else ""
-            ), self.client, self._token_budget("lead"), self.default_time_budget,
+            ), self.client, self.runtime.token_budget("lead"), self.default_time_budget,
             max_steps=max_steps,
             context_manager=self.context_manager,
             working_memory_supplier=working_memory_supplier,
@@ -56,12 +60,12 @@ class LeadRunner(ReviewerBackref):
             }
             for index, item in enumerate(candidates)
         ]
-        working_memory_supplier, observation_sink = self._memory_hooks(context_key, "critic")
+        working_memory_supplier, observation_sink = self.memory_hooks._memory_hooks(context_key, "critic")
         role = BoundedRole(
             "critic", CRITIC_PROMPT + (
                 ("\nActive validated prompt overlay:\n" + self.prompt_overlay)
                 if self.prompt_overlay else ""
-            ), self.client, self._token_budget("critic"), self.default_time_budget,
+            ), self.client, self.runtime.token_budget("critic"), self.default_time_budget,
             max_steps=max_steps,
             context_manager=self.context_manager,
             working_memory_supplier=working_memory_supplier,
@@ -72,7 +76,7 @@ class LeadRunner(ReviewerBackref):
                 "lead_assignment": objective or (
                     "Blindly challenge every candidate and report explicit decisions."
                 ),
-                **self._model_diff(
+                **self.runtime.model_diff(
                     diff, context_key, "critic:blind-review",
                     focus_files=[item.path for item in candidates],
                 ),

@@ -1,12 +1,20 @@
 """High-level Lead/Worker/Critic orchestration."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 from ..lead_session import LeadSession
 from ..models import ComponentKind
 from ..modes import component
 from ..prompts import ROLE_PERMISSIONS
 
 
-class ReviewOrchestrator(ReviewerBackref):
+class ReviewOrchestrator(RuntimeBackref):
+    def __init__(self, runtime, scanner, sessions, lead, assignments, findings):
+        super().__init__(runtime)
+        self.scanner = scanner
+        self.sessions = sessions
+        self.lead = lead
+        self.assignments = assignments
+        self.findings = findings
+
     def _agentic(
         self, task_id, diff, parsed, suite, ledger, enabled, scanners=None,
         memory_context=None, available_skills=None, requested_skills=None,
@@ -26,20 +34,20 @@ class ReviewOrchestrator(ReviewerBackref):
         requested_skills = list(requested_skills or [])
 
         if not session.scanner_complete:
-            rule_findings, _, scanner_components = self._scan(
+            rule_findings, _, scanner_components = self.scanner._scan(
                 diff, parsed, ledger, scanners,
             )
             session.scanner_findings = [item.to_dict() for item in rule_findings]
             session.scanner_components = scanner_components
             session.scanner_complete = True
             session.phase = "scanned"
-            self._save_lead_session(task_id, session, ledger)
-        rule_findings = self._restore_findings(session.scanner_findings)
+            self.sessions._save_lead_session(task_id, session, ledger)
+        rule_findings = self.findings._restore_findings(session.scanner_findings)
 
         if not session.delegations:
-            decision = self._run_lead(
+            decision = self.lead._run_lead(
                 "delegate", {
-                    **self._model_diff(
+                    **self.runtime.model_diff(
                         diff, task_id, "lead:delegate", focus_files=parsed.files,
                     ),
                     "changed_files": parsed.files,
@@ -57,7 +65,7 @@ class ReviewOrchestrator(ReviewerBackref):
                 decision.get("delegations"), worker_roles, parsed.files,
                 set(available_skills), requested_skills,
             )
-            session.lead_delegation = self._public_decision(decision)
+            session.lead_delegation = self.findings._public_decision(decision)
             session.risk_level = LeadSession.normalize_risk_level(
                 decision.get("risk_level")
             )
@@ -69,11 +77,11 @@ class ReviewOrchestrator(ReviewerBackref):
                     worker=assignment["worker"],
                     objective=assignment["objective"][:500],
                 )
-            self._save_lead_session(task_id, session, ledger)
+            self.sessions._save_lead_session(task_id, session, ledger)
 
         risk_level = session.risk_level
         high_risk = risk_level == "high"
-        self._run_pending_assignments(
+        self.assignments._run_pending_assignments(
             task_id, session, diff, parsed, suite, ledger,
             session.delegations, revision_round=0,
             memory_context=memory_context,
@@ -82,15 +90,15 @@ class ReviewOrchestrator(ReviewerBackref):
             allow_tools=high_risk,
         )
         session.phase = "workers-completed"
-        self._save_lead_session(task_id, session, ledger)
+        self.sessions._save_lead_session(task_id, session, ledger)
 
         final_assessment = {}
         if high_risk:
-            candidates = self._session_candidates(session)
+            candidates = self.sessions._session_candidates(session)
             if not session.lead_assessments:
-                assessment = self._run_lead(
+                assessment = self.lead._run_lead(
                     "assess-workers", {
-                        **self._model_diff(
+                        **self.runtime.model_diff(
                             diff, task_id, "lead:assess-workers",
                             focus_files=[item.path for item in candidates],
                         ),
@@ -102,8 +110,8 @@ class ReviewOrchestrator(ReviewerBackref):
                         "recalled_memory": memory_context,
                     }, suite, ledger, task_id, max_steps=1, allow_tools=False,
                 )
-                session.lead_assessments.append(self._public_decision(assessment))
-                self._save_lead_session(task_id, session, ledger)
+                session.lead_assessments.append(self.findings._public_decision(assessment))
+                self.sessions._save_lead_session(task_id, session, ledger)
             else:
                 assessment = session.lead_assessments[0]
             final_assessment = assessment
@@ -125,7 +133,7 @@ class ReviewOrchestrator(ReviewerBackref):
                 revision["lead_feedback"] = request["guidance"]
                 revision["required_evidence"] = request["required_evidence"]
                 revision_assignments.append(revision)
-            self._run_pending_assignments(
+            self.assignments._run_pending_assignments(
                 task_id, session, diff, parsed, suite, ledger, revision_assignments,
                 revision_round=1,
                 memory_context=memory_context,
@@ -147,25 +155,25 @@ class ReviewOrchestrator(ReviewerBackref):
             if requests:
                 session.revision_rounds = 1
                 session.phase = "revision-1-completed"
-                self._save_lead_session(task_id, session, ledger)
+                self.sessions._save_lead_session(task_id, session, ledger)
 
-        candidates = self._session_candidates(session)
+        candidates = self.sessions._session_candidates(session)
         session.candidate_findings_before_critic = len(candidates)
         if "critic" in enabled and not session.critic_complete:
-            critic_result = self._run_critic(
+            critic_result = self.lead._run_critic(
                 diff, candidates,
                 str(final_assessment.get("critic_objective", "")),
                 suite, ledger, task_id, memory_context,
                 max_steps=1, allow_tools=False,
             )
-            candidates, decisions = self._apply_critic(critic_result, candidates)
+            candidates, decisions = self.findings._apply_critic(critic_result, candidates)
             session.critic_decisions = decisions
             session.critic_candidates = [item.to_dict() for item in candidates]
             session.critic_complete = True
             session.phase = "critic-completed"
-            self._save_lead_session(task_id, session, ledger)
+            self.sessions._save_lead_session(task_id, session, ledger)
         elif session.critic_complete:
-            candidates = self._restore_findings(session.critic_candidates or [])
+            candidates = self.findings._restore_findings(session.critic_candidates or [])
         else:
             session.critic_decisions = [
                 {"finding_index": index, "accepted": True, "objections": []}
@@ -175,9 +183,9 @@ class ReviewOrchestrator(ReviewerBackref):
             session.critic_complete = True
 
         if not session.lead_final:
-            final_decision = self._run_lead(
+            final_decision = self.lead._run_lead(
                 "finalize", {
-                    **self._model_diff(
+                    **self.runtime.model_diff(
                         diff, task_id, "lead:finalize",
                         focus_files=[item.path for item in candidates],
                     ),
@@ -200,15 +208,15 @@ class ReviewOrchestrator(ReviewerBackref):
                     for item in session.critic_decisions
                     if item.get("accepted")
                 ]
-            session.lead_final = self._public_decision(final_decision)
-        accepted = self._apply_lead_final(session.lead_final, candidates)
+            session.lead_final = self.findings._public_decision(final_decision)
+        accepted = self.findings._apply_lead_final(session.lead_final, candidates)
         session.accepted_findings = [item.to_dict() for item in accepted]
         session.phase = "completed"
         session.stop_reason = (
             "high-risk-one-revision-round" if session.revision_rounds
             else "high-risk-single-pass" if high_risk else "single-pass"
         )
-        self._save_lead_session(task_id, session, ledger, completed=True)
+        self.sessions._save_lead_session(task_id, session, ledger, completed=True)
 
         roles = [
             name for name in ("lead", "security", "correctness-reliability", "critic")
@@ -240,7 +248,7 @@ class ReviewOrchestrator(ReviewerBackref):
         components = session.scanner_components + [
             component(
                 ComponentKind.LLM_AGENT, name,
-                token_budget=self._token_budget(name),
+                token_budget=self.runtime.token_budget(name),
                 time_budget_seconds=self.default_time_budget,
                 tool_permissions=(
                     sorted(ROLE_PERMISSIONS[name])

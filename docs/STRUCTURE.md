@@ -28,7 +28,7 @@ bootstrap → 所有具体实现
 - 已提取 `ReviewPolicy`、`ReviewsApplicationService`、`GitHubApplicationService`、`FixesApplicationService`、`SkillApplicationService`、`FeedbackApplicationService`、`EvolutionApplicationService`。
 - `ReviewService` 从 653 行降到 243 行，只保留兼容 facade。
 - `AgenticReviewer` 已拆到 `evoagent/agent/`，并从 mixin 继承改为显式协作者组合：
-  - `reviewer.py` 269 行，只保留 facade、一次 review 的上下文和兼容包装
+  - `reviewer.py` 270 行，只保留 facade、一次 review 的上下文和兼容包装
   - `orchestration.py` 245 行，`ReviewOrchestrator`
   - `findings.py` 156 行，`FindingPolicy`
   - `assignments.py` 110 行，`AssignmentRunner`
@@ -37,9 +37,10 @@ bootstrap → 所有具体实现
   - `memory_hooks.py` 64 行，`MemoryHooks`
   - `tools.py` 37 行，`ToolPolicy`
   - `session.py` 18 行，`SessionManager`
-  - `collaborators.py` 7 行，`ReviewerBackref`
+  - `collaborators.py` 43 行，`ReviewRuntime` + `RuntimeBackref`
   - `agentic_core.py` 只做兼容 re-export
   - `AgenticReviewer` 现在只继承 `Reviewer`，不再继承任何 mixin
+  - 协作者只依赖 `ReviewRuntime`，不再持有整个 `AgenticReviewer`
 
 - SQLite/PostgreSQL 已按能力拆到 `evoagent/adapters/stores/{sqlite,postgres}/`：
   - `tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`
@@ -59,18 +60,18 @@ bootstrap → 所有具体实现
 尚未完成：
 
 - `tasks.py`（184/186 行）和 `observability.py`（195/180 行）仍各自维护两份 SQL；按当前风险偏好暂缓。
-- Agent 协作者目前通过 `ReviewerBackref` 访问 reviewer 的共享运行时；下一步可注入更窄的 runtime 对象，彻底去掉 backref。
-- `ReviewerBackref.__getattr__` 是过渡设计，不应继续扩大使用范围。
+- Agent 协作者已只依赖 `ReviewRuntime`；`RuntimeBackref` 只转发 runtime 属性，不再引用 reviewer。
+- `RuntimeBackref.__getattr__` 仍是属性转发机制，后续可进一步改成显式方法/属性注入。
 
 后续可选：
 
-- 为 Agent 协作者引入 `ReviewRuntime`（store、context manager、budgets、memory manager 等），去掉 reviewer backref。
+- 把 `RuntimeBackref` 的转发改成显式 `runtime` 方法调用，进一步收紧依赖面。
 - 继续细化 `ReviewLifecycleService` 的投递部分（queue 提交/恢复）与任务创建部分。
 - 用 `_returning()`、`_limit()` 等 dialect hook 在风险可控时继续收敛 tasks 和 observability。
 
 ## 下一阶段
 
-1. 用 `ReviewRuntime` 替换 Agent 协作者的 `ReviewerBackref`。
+1. 收紧 `RuntimeBackref` 的属性转发，改成显式 runtime API。
 2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
 3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 

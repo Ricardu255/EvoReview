@@ -1,5 +1,5 @@
 """Rule scanners and diff-aware AST evidence."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 import ast
 import hashlib
 import json
@@ -13,7 +13,11 @@ from ..modes import component
 from ..telemetry import ExecutionLedger
 
 
-class ScanRunner(ReviewerBackref):
+class ScanRunner(RuntimeBackref):
+    def __init__(self, runtime, findings):
+        super().__init__(runtime)
+        self.findings = findings
+
     def _scan(self, diff, parsed, ledger, scanners=None):
         started = time.monotonic()
         findings = self.rules.review(diff, parsed)
@@ -25,7 +29,7 @@ class ScanRunner(ReviewerBackref):
         scanners = list(scanners or [])
         for scanner in scanners:
             scanner_started = time.monotonic()
-            scanner_name = self._scanner_name(scanner.name)
+            scanner_name = self.findings._scanner_name(scanner.name)
             try:
                 scanned = scanner.review(diff, parsed)
             except Exception as exc:
@@ -51,12 +55,12 @@ class ScanRunner(ReviewerBackref):
                 if finding.source == "unknown":
                     finding.source = "declarative-scanner:%s" % scanner_name
             findings.extend(scanned)
-        findings = self._merge(findings)
+        findings = self.findings._merge(findings)
         ast_scans = self._attach_diff_ast_evidence(findings, parsed, ledger)
         return findings, {}, [
             component(ComponentKind.TOOL_SCANNER, "local-rule-scanner"),
         ] + [
-            component(ComponentKind.TOOL_SCANNER, self._scanner_name(item.name))
+            component(ComponentKind.TOOL_SCANNER, self.findings._scanner_name(item.name))
             for item in scanners
         ] + ([component(ComponentKind.TOOL_SCANNER, "diff-ast-analyze")] if ast_scans else [])
 

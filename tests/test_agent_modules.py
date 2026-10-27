@@ -24,11 +24,18 @@ class AgentModuleTests(unittest.TestCase):
         self.assertEqual((Reviewer,), AgenticReviewer.__bases__)
         source = (PACKAGE / "agent" / "reviewer.py").read_text(encoding="utf-8")
         for attr in (
-            "findings", "tools", "sessions", "memory", "scanner",
+            "runtime", "findings", "tools", "sessions", "memory", "scanner",
             "lead", "assignments", "orchestrator",
         ):
             self.assertIn("self.%s = " % attr, source)
+        self.assertIn("ReviewRuntime(", source)
         self.assertNotIn("Mixin", source)
+
+    def test_collaborators_depend_on_runtime_not_reviewer(self):
+        for path in (PACKAGE / "agent").glob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("ReviewerBackref", source, path.name)
+            self.assertNotIn("self.reviewer", source, path.name)
 
     def test_agent_modules_do_not_import_application_or_adapters(self):
         forbidden = {

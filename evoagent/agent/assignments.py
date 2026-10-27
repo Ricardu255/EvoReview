@@ -1,5 +1,5 @@
 """Parallel worker assignments and bounded revision rounds."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -9,7 +9,13 @@ from ..runtime import ToolRegistry
 from .findings import _parse_findings
 
 
-class AssignmentRunner(ReviewerBackref):
+class AssignmentRunner(RuntimeBackref):
+    def __init__(self, runtime, memory_hooks, tools, sessions):
+        super().__init__(runtime)
+        self.memory_hooks = memory_hooks
+        self.tools = tools
+        self.sessions = sessions
+
     def _run_pending_assignments(
         self, task_id, session, diff, parsed, suite, ledger, assignments, revision_round,
         memory_context=None, available_skills=None, max_steps=3, allow_tools=True,
@@ -40,10 +46,10 @@ class AssignmentRunner(ReviewerBackref):
                         skill.name, skill.instructions,
                     ) for skill in selected_skills
                 )
-            working_memory_supplier, observation_sink = self._memory_hooks(task_id, worker)
+            working_memory_supplier, observation_sink = self.memory_hooks._memory_hooks(task_id, worker)
             role = BoundedRole(
                 worker, prompt, self.client,
-                self._token_budget(worker), self.default_time_budget,
+                self.runtime.token_budget(worker), self.default_time_budget,
                 max_steps=max_steps,
                 context_manager=self.context_manager,
                 working_memory_supplier=working_memory_supplier,
@@ -52,7 +58,7 @@ class AssignmentRunner(ReviewerBackref):
             context = {
                 "lead_assignment": assignment,
                 "lead_feedback": assignment.get("lead_feedback", ""),
-                **self._model_diff(
+                **self.runtime.model_diff(
                     diff, task_id, "%s:assignment" % worker,
                     focus_files=assignment.get("files") or parsed.files,
                     risk_domains=assignment.get("risk_domains") or (),
@@ -73,11 +79,11 @@ class AssignmentRunner(ReviewerBackref):
             }
             tools = (
                 suite.registry(
-                    worker, self._skill_tool_permissions(worker, selected_skills)
+                    worker, self.tools._skill_tool_permissions(worker, selected_skills)
                 ) if allow_tools else ToolRegistry()
             )
             if allow_tools:
-                self._register_skill_resource_tool(tools, selected_skills)
+                self.tools._register_skill_resource_tool(tools, selected_skills)
             return role.run(
                 json.dumps(context, ensure_ascii=False),
                 tools, ledger,
@@ -112,4 +118,4 @@ class AssignmentRunner(ReviewerBackref):
                     worker=assignment["worker"], status=result["status"],
                     findings=len(result["findings"]), revision_round=revision_round,
                 )
-                self._save_lead_session(task_id, session, ledger)
+                self.sessions._save_lead_session(task_id, session, ledger)

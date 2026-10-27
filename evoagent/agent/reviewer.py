@@ -15,6 +15,7 @@ from ..reviewer import LocalRuleReviewer, Reviewer
 from ..store_contract import ReviewStore
 from ..telemetry import ExecutionLedger
 from .assignments import AssignmentRunner
+from .collaborators import ReviewRuntime
 from .findings import FindingPolicy
 from .lead import LeadRunner
 from .memory_hooks import MemoryHooks
@@ -71,26 +72,30 @@ class AgenticReviewer(Reviewer):
         self._summaries: Dict[str, dict] = OrderedDict()
         self._summary_lock = threading.Lock()
         self.max_tracked_summaries = MAX_TRACKED_SUMMARIES
-        self._memory_scopes: Dict[str, tuple] = {}
-        self._memory_scope_lock = threading.Lock()
 
+        self.runtime = ReviewRuntime(
+            store, llm_client, self.context_manager, memory_manager, self.rules,
+            default_token_budget, default_time_budget, self.prompt_overlay,
+            self.structured_config,
+        )
+        self._memory_scopes = self.runtime.memory_scopes
+        self._memory_scope_lock = self.runtime.memory_scope_lock
         self.findings = FindingPolicy()
-        self.tools = ToolPolicy(self)
-        self.sessions = SessionManager(self)
-        self.memory = MemoryHooks(self)
-        self.scanner = ScanRunner(self)
-        self.lead = LeadRunner(self)
-        self.assignments = AssignmentRunner(self)
-        self.orchestrator = ReviewOrchestrator(self)
+        self.tools = ToolPolicy(self.runtime)
+        self.memory = MemoryHooks(self.runtime)
+        self.sessions = SessionManager(self.runtime, self.findings)
+        self.scanner = ScanRunner(self.runtime, self.findings)
+        self.lead = LeadRunner(self.runtime, self.memory)
+        self.assignments = AssignmentRunner(
+            self.runtime, self.memory, self.tools, self.sessions,
+        )
+        self.orchestrator = ReviewOrchestrator(
+            self.runtime, self.scanner, self.sessions, self.lead,
+            self.assignments, self.findings,
+        )
 
     def _token_budget(self, role: str) -> int:
-        raw = (self.structured_config.get("budget_parameters") or {}).get(
-            role, self.default_token_budget
-        )
-        try:
-            return max(256, min(int(raw), self.default_token_budget * 4))
-        except (TypeError, ValueError):
-            return self.default_token_budget
+        return self.runtime.token_budget(role)
 
     def review(self, diff: str, parsed: ParsedDiff) -> List[Finding]:
         raise RuntimeError(
@@ -226,14 +231,10 @@ class AgenticReviewer(Reviewer):
     def _model_diff(
         self, diff, context_key, label, focus_files=(), risk_domains=(),
     ):
-        compressed = self.context_manager.compress_diff(
+        return self.runtime.model_diff(
             diff, context_key, label, focus_files=focus_files,
             risk_domains=risk_domains,
         )
-        return {
-            "diff": self.context_manager.render_diff_view(compressed),
-            "diff_context": self.context_manager.diff_metadata(compressed),
-        }
 
     # Compatibility wrappers; collaborators own the implementations.
     def _agentic(self, *args, **kwargs):
