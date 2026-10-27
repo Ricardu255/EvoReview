@@ -1,10 +1,12 @@
 import hashlib
 import json
-import os
 import uuid
 from typing import Any, Dict, Optional
 
 from .agentic_core import AgenticReviewer
+from .app.evolution import EvolutionApplicationService
+from .app.feedback import FeedbackApplicationService
+from .app.policies import ReviewPolicy
 from .bootstrap import (
     active_agent_skills, build_agentic_reviewer, build_container,
     build_llm_reviewer,
@@ -46,18 +48,35 @@ class ReviewService:
         self.evolution = container.evolution
         self.skill_evolution = container.skill_evolution
         self._tenant_evolutions = container.tenant_evolutions
+        self._policy = ReviewPolicy(
+            self.settings, self.store, self.repository_roots,
+            self._active_agent_skills,
+        )
+        self._feedback_app = FeedbackApplicationService(
+            self.store, self.memory, metrics,
+        )
+        self._evolution_app = EvolutionApplicationService(
+            self.evolution, self._reload_lock, self._tenant_evolutions,
+        )
         self.queue = container.build_queue(
             self._process_queued, self._on_dead_letter
         )
+
+    @property
+    def repository_roots(self):
+        return self._repository_roots
+
+    @repository_roots.setter
+    def repository_roots(self, value):
+        self._repository_roots = value
+        if hasattr(self, "_policy"):
+            self._policy.repository_roots = value
 
     def _build_llm_reviewer(self, prompt: str = "") -> OpenAICompatibleReviewer:
         return build_llm_reviewer(self.settings, self.llm_config, prompt)
 
     def evolution_for(self, tenant_id: str) -> EvolutionEngine:
-        with self._reload_lock:
-            if tenant_id not in self._tenant_evolutions:
-                self._tenant_evolutions[tenant_id] = self.evolution.for_tenant(tenant_id)
-            return self._tenant_evolutions[tenant_id]
+        return self._evolution_app.evolution_for(tenant_id)
 
     def _build_agentic_reviewer(
         self, tenant_id: Optional[str] = None, prompt_version: Optional[int] = None,
@@ -173,17 +192,10 @@ class ReviewService:
         } for skill in self._active_agent_skills(tenant_id)]
 
     def _validate_review(self, repository: str, diff: str) -> None:
-        if not repository or len(repository) > 250:
-            raise ValueError("repository is required and must be at most 250 characters")
-        size = len(diff.encode("utf-8"))
-        if size == 0:
-            raise ValueError("diff is required")
-        if size > self.settings.max_diff_bytes:
-            raise ValueError("diff exceeds maximum size of %d bytes" % self.settings.max_diff_bytes)
+        self._policy.validate_review(repository, diff)
 
     def _require_agentic_model(self) -> None:
-        if self.chat_client is None:
-            raise RuntimeError("agentic review requires a configured model")
+        self._policy.require_agentic_model(self.chat_client)
 
     def _create_task(
         self, repository: str, diff: str, pull_request: Optional[int], source: str,
@@ -444,20 +456,9 @@ class ReviewService:
         self, task_id: str, category: str, finding: Optional[dict], note: str,
         tenant_id: Optional[str] = None,
     ) -> dict:
-        task = self.store.get(task_id, tenant_id)
-        if not task:
-            raise ValueError("task not found")
-        if task.get("state") != "SUCCESS" or not task.get("report"):
-            raise ValueError("feedback requires a completed review task")
-        if category not in {"false_positive", "missed_issue", "bad_fix", "accepted"}:
-            raise ValueError("unsupported feedback category")
-        self.store.record_failure_case(task_id, category, {"finding": finding, "note": note[:2000]})
-        self.memory.remember_feedback(
-            task.get("tenant_id") or tenant_id or "default", task["repository"],
-            task_id, category, finding, note[:2000],
+        return self._feedback_app.record_feedback(
+            task_id, category, finding, note, tenant_id,
         )
-        metrics.inc("feedback_total")
-        return {"recorded": True, "category": category}
 
     def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         task = self.store.get(task_id, tenant_id)
@@ -490,41 +491,16 @@ class ReviewService:
         return self.store.request_cancel(task_id, tenant_id)
 
     def _authorize_repository(self, tenant_id: str, repository: str) -> None:
-        if not self.store.repository_allowed(tenant_id, repository):
-            raise PermissionError("repository is not authorized for this tenant")
+        self._policy.authorize_repository(tenant_id, repository)
 
     def _resolve_repository_root(self, repository: str, requested: str, tenant_id: str) -> str:
-        configured = self.repository_roots.get(tenant_id, {}).get(repository, "")
-        if not configured:
-            if requested:
-                raise PermissionError("no local checkout is authorized for this tenant and repository")
-            return ""
-        root = os.path.realpath(configured)
-        if not os.path.isdir(root):
-            raise ValueError("the authorized repository checkout is unavailable")
-        if requested and os.path.normcase(os.path.realpath(requested)) != os.path.normcase(root):
-            raise PermissionError("repository_root does not match the authorized checkout")
-        return root
+        return self._policy.resolve_repository_root(repository, requested, tenant_id)
 
     @staticmethod
     def _validate_enabled_agents(enabled_agents: Optional[list]) -> None:
-        if enabled_agents is None:
-            return
-        allowed = {"lead", "security", "correctness-reliability", "critic"}
-        unknown = set(enabled_agents).difference(allowed)
-        if unknown:
-            raise ValueError("unsupported enabled Agent role(s): %s" % ", ".join(sorted(unknown)))
+        ReviewPolicy.validate_enabled_agents(enabled_agents)
 
     def _validate_enabled_skills(
         self, enabled_skills: Optional[list], tenant_id: str,
     ) -> None:
-        if enabled_skills is None:
-            return
-        if not all(isinstance(item, str) for item in enabled_skills):
-            raise ValueError("enabled_skills must contain Agent Skill names")
-        available = {skill.name for skill in self._active_agent_skills(tenant_id)}
-        unknown = set(enabled_skills).difference(available)
-        if unknown:
-            raise ValueError(
-                "unknown enabled Agent Skill(s): %s" % ", ".join(sorted(unknown))
-            )
+        self._policy.validate_enabled_skills(enabled_skills, tenant_id)

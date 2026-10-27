@@ -49,6 +49,16 @@ class ArchitectureTests(unittest.TestCase):
             self.assertNotIn("postgres_store", source, path.name)
             self.assertNotIn("from ..store import", source, path.name)
 
+    def test_application_layer_does_not_import_infrastructure(self):
+        forbidden = {
+            "postgres_store", "task_queue", "github", "llm", "memory",
+            "observability", "rollout", "verifier", "patching", "fixer",
+        }
+        for path in (PACKAGE / "app").glob("*.py"):
+            imports = imported_modules(path)
+            leaked = forbidden.intersection(imports)
+            self.assertEqual(set(), leaked, "%s imports %s" % (path.name, sorted(leaked)))
+
 
 if __name__ == "__main__":
     unittest.main()
