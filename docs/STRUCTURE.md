@@ -52,24 +52,24 @@ bootstrap → 所有具体实现
   - 两个 backend 的对应模块只剩 4 行 subclass
 - `SqlStoreMixin` 新增 `_write()`、`_in_clause()`、`_greatest()`、`_acquire_key_lock()`，统一 SQLite 进程锁、PostgreSQL advisory lock 和方言差异。
 - `PromptStoreMixin` / `WebhookStoreMixin` 继续作为跨后端共享 SQL 规则。
+- `ReviewsApplicationService` 已拆成兼容 facade（101 行）+ `review_lifecycle.py`（171 行）+ `review_execution.py`（197 行）；两者通过 `ReviewExecutionService` 组合，不形成循环依赖。
 
 尚未完成：
 
-- `tasks.py`（184/186 行）和 `observability.py`（195/180 行）仍各自维护两份 SQL。
-- `ReviewsApplicationService` 仍有 342 行，后续可再按“任务生命周期 / 执行 / 投递”细分。
+- `tasks.py`（184/186 行）和 `observability.py`（195/180 行）仍各自维护两份 SQL；按当前风险偏好暂缓。
 - Agent 模块当前通过 mixin 共享 reviewer 状态；文件边界已建立，后续可进一步改为显式协作者对象。
 
 后续可选：
 
-- 把 `ReviewsApplicationService` 拆成 `ReviewExecutionService` + `ReviewDeliveryService`。
 - 把 `OrchestrationMixin` 改成 `ReviewOrchestrator` 组合对象，去掉 mixin 状态共享。
-- 用 `_returning()`、`_limit()` 等 dialect hook 继续收敛 tasks 和 observability。
+- 继续细化 `ReviewLifecycleService` 的投递部分（queue 提交/恢复）与任务创建部分。
+- 用 `_returning()`、`_limit()` 等 dialect hook 在风险可控时继续收敛 tasks 和 observability。
 
 ## 下一阶段
 
-1. 继续收敛 `tasks` 和 `observability` 的重复 SQL。
-2. 把 `ReviewsApplicationService` 拆成执行与投递服务。
-3. 把 Agent mixins 改为显式协作者对象。
+1. 把 Agent mixins 改为显式协作者对象。
+2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
+3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 
 每个阶段都必须满足：
 
