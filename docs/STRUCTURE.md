@@ -27,12 +27,29 @@ bootstrap → 所有具体实现
 - `tests/test_bootstrap.py`、`tests/test_store_ports.py` 覆盖新的装配和端口契约。
 - 已提取 `ReviewPolicy`、`ReviewsApplicationService`、`GitHubApplicationService`、`FixesApplicationService`、`SkillApplicationService`、`FeedbackApplicationService`、`EvolutionApplicationService`。
 - `ReviewService` 从 653 行降到 243 行，只保留兼容 facade。
+- `AgenticReviewer` 已拆到 `evoagent/agent/`：
+  - `reviewer.py` 217 行，只保留 facade 和一次 review 的上下文
+  - `orchestration.py` 244 行
+  - `findings.py` 156 行
+  - `assignments.py` 109 行
+  - `scanning.py` 104 行
+  - `lead.py` 86 行
+  - `memory_hooks.py` 63 行
+  - `tools.py` 36 行
+  - `session.py` 17 行
+  - `agentic_core.py` 只做兼容 re-export
 
 尚未完成：
 
 - SQLite/PostgreSQL 实现仍由 `TaskStore` / `PostgresTaskStore` 承载，尚未按端口拆成独立适配器。
 - `ReviewsApplicationService` 仍有 342 行，后续可再按“任务生命周期 / 执行 / 投递”细分。
-- `AgenticReviewer` 仍有 992 行，编排/工具/上下文/记忆/结果处理尚未迁入 `agent/`。
+- Agent 模块当前通过 mixin 共享 reviewer 状态；文件边界已建立，后续可进一步改为显式协作者对象。
+
+后续可选：
+
+- 把 `ReviewsApplicationService` 拆成 `ReviewExecutionService` + `ReviewDeliveryService`。
+- 把 `OrchestrationMixin` 改成 `ReviewOrchestrator` 组合对象，去掉 mixin 状态共享。
+- 把 SQLite/PostgreSQL 的共享 SQL 提到 `adapters/stores/sql_common.py`，再按 port 拆 adapter。
 
 ## 下一阶段
 
