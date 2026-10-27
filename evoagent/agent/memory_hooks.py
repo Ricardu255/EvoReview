@@ -1,13 +1,13 @@
 """Task-scoped Working Memory hooks."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 
 
-class MemoryHooks(ReviewerBackref):
+class MemoryHooks(RuntimeBackref):
     def _memory_hooks(self, task_id, role):
         """Return task-scoped Working Memory read/write hooks for one role loop."""
         def scope():
-            with self._memory_scope_lock:
-                return self._memory_scopes.get(task_id)
+            with self.runtime.memory_scope_lock:
+                return self.runtime.memory_scopes.get(task_id)
 
         def supplier():
             values = scope()

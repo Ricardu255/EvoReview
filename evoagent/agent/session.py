@@ -1,14 +1,20 @@
 """LeadSession load/save helpers."""
-from .collaborators import ReviewerBackref
+from .collaborators import RuntimeBackref
 from ..lead_session import LeadSession
 
 
-class SessionManager(ReviewerBackref):
+class SessionManager(RuntimeBackref):
+    def __init__(self, runtime, findings):
+        super().__init__(runtime)
+        self.findings = findings
+
     def _session_candidates(self, session):
-        findings = self._restore_findings(session.scanner_findings)
+        findings = self.findings._restore_findings(session.scanner_findings)
         for result in session.worker_results.values():
-            findings.extend(self._restore_findings(result.get("findings") or []))
-        return self._merge(findings)
+            findings.extend(
+                self.findings._restore_findings(result.get("findings") or [])
+            )
+        return self.findings._merge(findings)
 
     def _load_lead_session(self, task_id, ledger):
         return LeadSession.load(
