@@ -6,16 +6,23 @@ import unittest
 from evoagent.adapters.stores.postgres.auth import PostgresAuthStoreMixin
 from evoagent.adapters.stores.postgres.failures import PostgresFailureStoreMixin
 from evoagent.adapters.stores.postgres.installations import PostgresInstallationStoreMixin
+from evoagent.adapters.stores.postgres.memory import PostgresMemoryStoreMixin
+from evoagent.adapters.stores.postgres.skills import PostgresSkillStoreMixin
 from evoagent.adapters.stores.shared.auth import AuthStoreMixin
 from evoagent.adapters.stores.shared.failures import FailureStoreMixin
 from evoagent.adapters.stores.shared.installations import InstallationStoreMixin
+from evoagent.adapters.stores.shared.memory import MemoryStoreMixin
 from evoagent.adapters.stores.shared.rows import (
     decode_json, memory_from_row, skill_artifact_from_row,
 )
+from evoagent.adapters.stores.shared.skills import SkillStoreMixin
 from evoagent.adapters.stores.sqlite.auth import SqliteAuthStoreMixin
 from evoagent.adapters.stores.sqlite.failures import SqliteFailureStoreMixin
 from evoagent.adapters.stores.sqlite.installations import SqliteInstallationStoreMixin
+from evoagent.adapters.stores.sqlite.memory import SqliteMemoryStoreMixin
+from evoagent.adapters.stores.sqlite.skills import SqliteSkillStoreMixin
 from evoagent.postgres_store import PostgresTaskStore
+from evoagent.sql_store import SqlStoreMixin
 from evoagent.store import TaskStore
 
 
@@ -75,9 +82,31 @@ class StoreAdapterStructureTests(unittest.TestCase):
             (PostgresFailureStoreMixin, FailureStoreMixin),
             (SqliteInstallationStoreMixin, InstallationStoreMixin),
             (PostgresInstallationStoreMixin, InstallationStoreMixin),
+            (SqliteMemoryStoreMixin, MemoryStoreMixin),
+            (PostgresMemoryStoreMixin, MemoryStoreMixin),
+            (SqliteSkillStoreMixin, SkillStoreMixin),
+            (PostgresSkillStoreMixin, SkillStoreMixin),
         ):
             self.assertTrue(issubclass(backend, shared), backend.__name__)
             self.assertEqual(shared, backend.__mro__[1])
+
+    def test_dialect_helpers_normalize_placeholders_and_clauses(self):
+        class Sqlite(SqlStoreMixin):
+            _postgres_sql = False
+
+        class Postgres(SqlStoreMixin):
+            _postgres_sql = True
+
+        self.assertEqual(
+            ("IN (?,?)", ["a", "b"]), Sqlite()._in_clause(["a", "b"]),
+        )
+        self.assertEqual(
+            ("=ANY(%s)", [["a", "b"]]), Postgres()._in_clause(["a", "b"]),
+        )
+        self.assertEqual("MAX(a,b)", Sqlite()._greatest("a", "b"))
+        self.assertEqual("GREATEST(a,b)", Postgres()._greatest("a", "b"))
+        self.assertEqual("SELECT ?", Sqlite()._sql("SELECT ?::jsonb"))
+        self.assertEqual("SELECT %s::jsonb", Postgres()._sql("SELECT ?::jsonb"))
 
 
 class SharedRowTests(unittest.TestCase):

@@ -43,17 +43,19 @@ bootstrap → 所有具体实现
   - `tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`
   - `store.py` 37 行、`postgres_store.py` 37 行，只保留连接/建表和兼容类名
   - `shared/rows.py` 共享 JSON、时间戳行解码
-- 已把 dialect-neutral 的 auth、failure case、installation 收敛到 `shared/`：
+- 已把 dialect-neutral 的 auth、failure case、installation、memory、skills 收敛到 `shared/`：
   - `shared/auth.py`
   - `shared/failures.py`
   - `shared/installations.py`
+  - `shared/memory.py`
+  - `shared/skills.py`
   - 两个 backend 的对应模块只剩 4 行 subclass
-- `SqlStoreMixin` 新增 `_write()`，统一 SQLite 进程锁和 PostgreSQL 连接写入。
+- `SqlStoreMixin` 新增 `_write()`、`_in_clause()`、`_greatest()`、`_acquire_key_lock()`，统一 SQLite 进程锁、PostgreSQL advisory lock 和方言差异。
 - `PromptStoreMixin` / `WebhookStoreMixin` 继续作为跨后端共享 SQL 规则。
 
 尚未完成：
 
-- `tasks.py`（184/186 行）、`memory.py`（71/69 行）、`skills.py`（128/125 行）、`observability.py`（195/180 行）仍各自维护两份 SQL。
+- `tasks.py`（184/186 行）和 `observability.py`（195/180 行）仍各自维护两份 SQL。
 - `ReviewsApplicationService` 仍有 342 行，后续可再按“任务生命周期 / 执行 / 投递”细分。
 - Agent 模块当前通过 mixin 共享 reviewer 状态；文件边界已建立，后续可进一步改为显式协作者对象。
 
@@ -61,13 +63,13 @@ bootstrap → 所有具体实现
 
 - 把 `ReviewsApplicationService` 拆成 `ReviewExecutionService` + `ReviewDeliveryService`。
 - 把 `OrchestrationMixin` 改成 `ReviewOrchestrator` 组合对象，去掉 mixin 状态共享。
-- 用 dialect hook（`_sql`、`_json`、`_bool`、`_returning`、`_in_clause`）继续收敛 tasks/memory/skills/observability。
+- 用 `_returning()`、`_limit()` 等 dialect hook 继续收敛 tasks 和 observability。
 
 ## 下一阶段
 
-1. 把 `ReviewService` 按业务拆成 `reviews`、`github`、`feedback`、`evolution`、`skills`、`fixes` 应用服务，`ReviewService` 只保留 facade。
-2. 把 SQLite/PostgreSQL 的共享 SQL 提到 `adapters/stores/sql_common.py`，再按端口拆适配器。
-3. 把 `AgenticReviewer` 按 `scan`、`orchestrator`、`lead`、`session`、`memory_hooks`、`tools`、`findings` 拆分。
+1. 继续收敛 `tasks` 和 `observability` 的重复 SQL。
+2. 把 `ReviewsApplicationService` 拆成执行与投递服务。
+3. 把 Agent mixins 改为显式协作者对象。
 
 每个阶段都必须满足：
 
