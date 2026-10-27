@@ -25,13 +25,13 @@ bootstrap → 所有具体实现
 - `evoagent/store_contract.py` 只做兼容导出，保持旧 import 路径。
 - `tests/test_architecture.py` 守卫依赖方向。
 - `tests/test_bootstrap.py`、`tests/test_store_ports.py` 覆盖新的装配和端口契约。
-- 已提取 `ReviewPolicy`、`FeedbackApplicationService`、`EvolutionApplicationService`。
-- `ReviewService` 从 653 行降到 473 行。
+- 已提取 `ReviewPolicy`、`ReviewsApplicationService`、`GitHubApplicationService`、`FixesApplicationService`、`SkillApplicationService`、`FeedbackApplicationService`、`EvolutionApplicationService`。
+- `ReviewService` 从 653 行降到 243 行，只保留兼容 facade。
 
 尚未完成：
 
 - SQLite/PostgreSQL 实现仍由 `TaskStore` / `PostgresTaskStore` 承载，尚未按端口拆成独立适配器。
-- `ReviewService` 的 reviews/github/fixes/skills 业务方法尚未迁入独立应用服务。
+- `ReviewsApplicationService` 仍有 342 行，后续可再按“任务生命周期 / 执行 / 投递”细分。
 - `AgenticReviewer` 仍有 992 行，编排/工具/上下文/记忆/结果处理尚未迁入 `agent/`。
 
 ## 下一阶段

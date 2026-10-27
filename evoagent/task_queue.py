@@ -11,9 +11,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
 
-
-class PermanentTaskError(RuntimeError):
-    """An error that must not be retried."""
+from .errors import PermanentTaskError
 
 
 class DeliveryBusy(RuntimeError):
