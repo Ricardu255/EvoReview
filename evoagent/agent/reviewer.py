@@ -2,7 +2,7 @@
 from collections import OrderedDict
 import json
 import threading
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from ..context_manager import ContextManager
 from ..diff_parser import ParsedDiff

@@ -4,7 +4,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..bounded_role import BoundedRole
-from ..prompts import RELIABILITY_PROMPT, ROLE_PERMISSIONS, SECURITY_PROMPT
+from ..prompts import RELIABILITY_PROMPT, SECURITY_PROMPT
 from ..runtime import ToolRegistry
 from .findings import _parse_findings
 

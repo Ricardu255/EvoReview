@@ -1,6 +1,6 @@
 """Finding parsing, merging and Critic/Lead decision application."""
 import json
-from typing import Any, Dict, Iterable, List
+from typing import Dict, Iterable, List
 
 from ..diff_parser import ParsedDiff
 from ..finding_identity import canonical_identity

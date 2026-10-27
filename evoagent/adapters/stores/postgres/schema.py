@@ -1,10 +1,5 @@
 """Postgres schema initialization and migrations."""
-import hashlib
-import json
-from typing import Any, Dict, Optional
 
-from ....models import ReviewReport, TaskState, TraceEvent
-from ....time_utils import utc_now
 
 
 class PostgresSchemaMixin:

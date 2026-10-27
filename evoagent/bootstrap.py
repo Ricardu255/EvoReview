@@ -16,7 +16,6 @@ from .config import Settings
 from .context_manager import ContextManager
 from .evolution import EvolutionEngine
 from .evolution_v2 import RootCauseEvolutionGenerator
-from .fixer import SafeFixer
 from .github import GitHubClient
 from .harness import ReviewHarness
 from .llm import JsonChatClient

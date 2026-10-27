@@ -1,11 +1,5 @@
 """Sqlite schema initialization and migrations."""
-import hashlib
-import json
 import sqlite3
-from typing import Any, Dict, Optional
-
-from ....models import ReviewReport, TaskState, TraceEvent
-from ....time_utils import utc_now
 
 
 class SqliteSchemaMixin:

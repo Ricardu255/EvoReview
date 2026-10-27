@@ -1,5 +1,4 @@
 """Postgres tasks persistence mixin."""
-import hashlib
 import json
 from typing import Any, Dict, Optional
 

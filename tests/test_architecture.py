@@ -32,7 +32,7 @@ class ArchitectureTests(unittest.TestCase):
         imports = imported_modules(PACKAGE / "bootstrap.py")
         expected = {
             "agentic_core", "auth", "context_manager", "evolution",
-            "evolution_v2", "fixer", "github", "harness", "llm", "memory",
+            "evolution_v2", "github", "harness", "llm", "memory",
             "observability", "patching", "postgres_store", "reviewer",
             "rollout", "skill_evolution", "skills", "task_queue", "verifier",
         }
