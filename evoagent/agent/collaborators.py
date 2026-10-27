@@ -43,10 +43,60 @@ class ReviewRuntime:
 
 
 class RuntimeBackref:
-    """Give a collaborator access only to the narrow ReviewRuntime."""
+    """Explicit read-only view of the shared ReviewRuntime."""
 
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def __getattr__(self, name):
-        return getattr(self.runtime, name)
+    @property
+    def store(self):
+        return self.runtime.store
+
+    @property
+    def client(self):
+        return self.runtime.client
+
+    @property
+    def context_manager(self):
+        return self.runtime.context_manager
+
+    @property
+    def memory_manager(self):
+        return self.runtime.memory_manager
+
+    @property
+    def rules(self):
+        return self.runtime.rules
+
+    @property
+    def default_token_budget(self):
+        return self.runtime.default_token_budget
+
+    @property
+    def default_time_budget(self):
+        return self.runtime.default_time_budget
+
+    @property
+    def prompt_overlay(self):
+        return self.runtime.prompt_overlay
+
+    @property
+    def structured_config(self):
+        return self.runtime.structured_config
+
+    @property
+    def memory_scopes(self):
+        return self.runtime.memory_scopes
+
+    @property
+    def memory_scope_lock(self):
+        return self.runtime.memory_scope_lock
+
+    def token_budget(self, role: str) -> int:
+        return self.runtime.token_budget(role)
+
+    def model_diff(self, diff, context_key, label, focus_files=(), risk_domains=()):
+        return self.runtime.model_diff(
+            diff, context_key, label, focus_files=focus_files,
+            risk_domains=risk_domains,
+        )

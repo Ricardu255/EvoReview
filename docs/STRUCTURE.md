@@ -37,7 +37,7 @@ bootstrap → 所有具体实现
   - `memory_hooks.py` 64 行，`MemoryHooks`
   - `tools.py` 37 行，`ToolPolicy`
   - `session.py` 18 行，`SessionManager`
-  - `collaborators.py` 43 行，`ReviewRuntime` + `RuntimeBackref`
+  - `collaborators.py` 81 行，`ReviewRuntime` + 显式只读 `RuntimeBackref`
   - `agentic_core.py` 只做兼容 re-export
   - `AgenticReviewer` 现在只继承 `Reviewer`，不再继承任何 mixin
   - 协作者只依赖 `ReviewRuntime`，不再持有整个 `AgenticReviewer`
@@ -60,20 +60,18 @@ bootstrap → 所有具体实现
 尚未完成：
 
 - `tasks.py`（184/186 行）和 `observability.py`（195/180 行）仍各自维护两份 SQL；按当前风险偏好暂缓。
-- Agent 协作者已只依赖 `ReviewRuntime`；`RuntimeBackref` 只转发 runtime 属性，不再引用 reviewer。
-- `RuntimeBackref.__getattr__` 仍是属性转发机制，后续可进一步改成显式方法/属性注入。
+- Agent 协作者已只依赖 `ReviewRuntime`；`RuntimeBackref` 通过显式只读 property 暴露 store、client、context、memory、rules、budgets，不再使用 `__getattr__`。
+- 未知属性现在会直接抛 `AttributeError`，不会静默代理到 reviewer 或 runtime 的任意字段。
 
 后续可选：
 
-- 把 `RuntimeBackref` 的转发改成显式 `runtime` 方法调用，进一步收紧依赖面。
 - 继续细化 `ReviewLifecycleService` 的投递部分（queue 提交/恢复）与任务创建部分。
 - 用 `_returning()`、`_limit()` 等 dialect hook 在风险可控时继续收敛 tasks 和 observability。
 
 ## 下一阶段
 
-1. 收紧 `RuntimeBackref` 的属性转发，改成显式 runtime API。
-2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
-3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
+1. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
+2. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 
 每个阶段都必须满足：
 

@@ -61,6 +61,15 @@ class AgentModuleTests(unittest.TestCase):
         self.assertEqual(256, reviewer._token_budget("lead"))
         self.assertEqual(32000, reviewer._token_budget("critic"))
 
+    def test_runtime_backref_is_explicit(self):
+        source = (PACKAGE / "agent" / "collaborators.py").read_text(encoding="utf-8")
+        self.assertNotIn("__getattr__", source)
+        reviewer = AgenticReviewer(None, None)
+        self.assertIs(reviewer.lead.store, reviewer.runtime.store)
+        self.assertIs(reviewer.lead.context_manager, reviewer.runtime.context_manager)
+        with self.assertRaises(AttributeError):
+            reviewer.lead.not_a_runtime_field
+
     def test_agent_modules_do_not_import_application_or_adapters(self):
         forbidden = {
             "service", "bootstrap", "postgres_store", "task_queue",
