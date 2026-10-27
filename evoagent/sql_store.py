@@ -8,6 +8,26 @@ class SqlStoreMixin:
     def _sql(self, sql):
         return sql.replace("?", "%s") if self._postgres_sql else sql.replace("::jsonb", "")
 
+    def _in_clause(self, values):
+        """Return a backend-specific IN clause and its parameter values."""
+        values = list(values)
+        if not values:
+            return "IN (NULL)", []
+        if self._postgres_sql:
+            return "=ANY(%s)", [values]
+        return "IN (%s)" % ",".join("?" for _ in values), values
+
+    def _greatest(self, left: str, right: str) -> str:
+        return "GREATEST(%s,%s)" % (left, right) if self._postgres_sql else (
+            "MAX(%s,%s)" % (left, right)
+        )
+
+    def _acquire_key_lock(self, conn, key: str) -> None:
+        if self._postgres_sql:
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))", (key,),
+            )
+
     @contextmanager
     def _write(self):
         """Open a write connection with the backend's process/row lock."""
