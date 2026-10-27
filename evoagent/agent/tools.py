@@ -1,9 +1,10 @@
 """Role tool permissions and Skill resource tools."""
+from .collaborators import ReviewerBackref
 from ..prompts import ROLE_PERMISSIONS
 from ..runtime import AgentTool
 
 
-class ToolsMixin:
+class ToolPolicy(ReviewerBackref):
     @staticmethod
     def _skill_tool_permissions(worker, skills):
         base = set(ROLE_PERMISSIONS[worker])

@@ -1,4 +1,4 @@
-"""Agentic reviewer facade composed from role-specific mixins."""
+"""Agentic reviewer facade composed from explicit role collaborators."""
 from collections import OrderedDict
 import json
 import threading
@@ -14,24 +14,21 @@ from ..repository_tools import RepositoryToolSuite
 from ..reviewer import LocalRuleReviewer, Reviewer
 from ..store_contract import ReviewStore
 from ..telemetry import ExecutionLedger
-from .assignments import AssignmentsMixin
-from .findings import FindingsMixin
-from .lead import LeadMixin
-from .memory_hooks import MemoryHooksMixin
-from .orchestration import OrchestrationMixin
-from .scanning import ScanningMixin
-from .session import SessionMixin
-from .tools import ToolsMixin
+from .assignments import AssignmentRunner
+from .findings import FindingPolicy
+from .lead import LeadRunner
+from .memory_hooks import MemoryHooks
+from .orchestration import ReviewOrchestrator
+from .scanning import ScanRunner
+from .session import SessionManager
+from .tools import ToolPolicy
 
 
 MAX_TRACKED_SUMMARIES = 128
 SUMMARY_CHECKPOINT = "agentic-summary"
 
 
-class AgenticReviewer(
-    FindingsMixin, ScanningMixin, SessionMixin, MemoryHooksMixin,
-    ToolsMixin, LeadMixin, AssignmentsMixin, OrchestrationMixin, Reviewer,
-):
+class AgenticReviewer(Reviewer):
     name = "agentic-reviewer"
 
     def __init__(
@@ -76,6 +73,15 @@ class AgenticReviewer(
         self.max_tracked_summaries = MAX_TRACKED_SUMMARIES
         self._memory_scopes: Dict[str, tuple] = {}
         self._memory_scope_lock = threading.Lock()
+
+        self.findings = FindingPolicy()
+        self.tools = ToolPolicy(self)
+        self.sessions = SessionManager(self)
+        self.memory = MemoryHooks(self)
+        self.scanner = ScanRunner(self)
+        self.lead = LeadRunner(self)
+        self.assignments = AssignmentRunner(self)
+        self.orchestrator = ReviewOrchestrator(self)
 
     def _token_budget(self, role: str) -> int:
         raw = (self.structured_config.get("budget_parameters") or {}).get(
@@ -228,3 +234,69 @@ class AgenticReviewer(
             "diff": self.context_manager.render_diff_view(compressed),
             "diff_context": self.context_manager.diff_metadata(compressed),
         }
+
+    # Compatibility wrappers; collaborators own the implementations.
+    def _agentic(self, *args, **kwargs):
+        return self.orchestrator._agentic(*args, **kwargs)
+
+    def _scan(self, *args, **kwargs):
+        return self.scanner._scan(*args, **kwargs)
+
+    def _attach_diff_ast_evidence(self, *args, **kwargs):
+        return self.scanner._attach_diff_ast_evidence(*args, **kwargs)
+
+    def _session_candidates(self, *args, **kwargs):
+        return self.sessions._session_candidates(*args, **kwargs)
+
+    def _load_lead_session(self, *args, **kwargs):
+        return self.sessions._load_lead_session(*args, **kwargs)
+
+    def _save_lead_session(self, *args, **kwargs):
+        return self.sessions._save_lead_session(*args, **kwargs)
+
+    def _memory_hooks(self, *args, **kwargs):
+        return self.memory._memory_hooks(*args, **kwargs)
+
+    def _persist_task_memory(self, *args, **kwargs):
+        return self.memory._persist_task_memory(*args, **kwargs)
+
+    @staticmethod
+    def _skill_tool_permissions(worker, skills):
+        return ToolPolicy._skill_tool_permissions(worker, skills)
+
+    @staticmethod
+    def _register_skill_resource_tool(tools, selected_skills):
+        return ToolPolicy._register_skill_resource_tool(tools, selected_skills)
+
+    def _run_lead(self, *args, **kwargs):
+        return self.lead._run_lead(*args, **kwargs)
+
+    def _run_critic(self, *args, **kwargs):
+        return self.lead._run_critic(*args, **kwargs)
+
+    def _run_pending_assignments(self, *args, **kwargs):
+        return self.assignments._run_pending_assignments(*args, **kwargs)
+
+    @staticmethod
+    def _apply_critic(result, candidates):
+        return FindingPolicy._apply_critic(result, candidates)
+
+    @staticmethod
+    def _apply_lead_final(decision, candidates):
+        return FindingPolicy._apply_lead_final(decision, candidates)
+
+    @staticmethod
+    def _restore_findings(values):
+        return FindingPolicy._restore_findings(values)
+
+    @staticmethod
+    def _public_decision(result):
+        return FindingPolicy._public_decision(result)
+
+    @staticmethod
+    def _merge(findings):
+        return FindingPolicy._merge(findings)
+
+    @staticmethod
+    def _scanner_name(name):
+        return FindingPolicy._scanner_name(name)

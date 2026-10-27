@@ -1,7 +1,8 @@
 """Task-scoped Working Memory hooks."""
+from .collaborators import ReviewerBackref
 
 
-class MemoryHooksMixin:
+class MemoryHooks(ReviewerBackref):
     def _memory_hooks(self, task_id, role):
         """Return task-scoped Working Memory read/write hooks for one role loop."""
         def scope():

@@ -1,4 +1,5 @@
 """Lead and Critic role loops."""
+from .collaborators import ReviewerBackref
 import json
 
 from ..bounded_role import BoundedRole
@@ -6,7 +7,7 @@ from ..prompts import CRITIC_PROMPT, LEAD_PROMPT, ROLE_PERMISSIONS
 from ..runtime import ToolRegistry
 
 
-class LeadMixin:
+class LeadRunner(ReviewerBackref):
     def _run_lead(
         self, phase, payload, suite, ledger, context_key="",
         max_steps=1, allow_tools=False,
