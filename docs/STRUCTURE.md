@@ -56,6 +56,12 @@ bootstrap → 所有具体实现
   - 旧的顶层模块保留为兼容 wrapper，使用模块代理转发 `__all__` 和属性
   - `DEFAULT_CONTROLLED_DATASET` / `DEFAULT_PROMPT_DATASET` 的路径已按新层级修正
 
+- Infrastructure adapters 已收进 `evoagent/adapters/`：
+  - `task_queue.py`、`github.py`、`llm.py`、`auth.py`
+  - `observability.py`、`metrics.py`、`rollout.py`
+  - `fixer.py`、`patching.py`、`verifier.py`
+  - 旧的顶层模块保留为兼容 wrapper，使用模块代理转发 `__all__` 和属性
+
 - SQLite/PostgreSQL 已按能力拆到 `evoagent/adapters/stores/{sqlite,postgres}/`：
   - `tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`
   - `store.py` 37 行、`postgres_store.py` 37 行，只保留连接/建表和兼容类名
@@ -84,7 +90,7 @@ bootstrap → 所有具体实现
 
 ## 下一阶段
 
-1. Phase 3：把 `task_queue`、`github`、`llm`、`auth`、`observability`、`metrics`、`rollout`、`fixer`、`patching`、`verifier` 收进 `evoagent/adapters/`。
+1. Phase 4：把 `bounded_role`、`harness`、`lead_session`、`context_manager`、`memory`、`runtime`、`telemetry`、`repository_tools`、`reviewer` 收进 `evoagent/agent/` 或 `agent/runtime/`。
 2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
 3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 
