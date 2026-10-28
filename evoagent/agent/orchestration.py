@@ -1,8 +1,8 @@
 """High-level Lead/Worker/Critic orchestration."""
 from .collaborators import RuntimeBackref
-from ..lead_session import LeadSession
-from ..models import ComponentKind
-from ..modes import component
+from .lead_session import LeadSession
+from ..domain.models import ComponentKind
+from ..domain.modes import component
 from ..prompts import ROLE_PERMISSIONS
 
 

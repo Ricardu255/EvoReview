@@ -3,7 +3,7 @@ import re
 
 from ..domain.models import Finding, Severity
 from ..domain.finding_identity import canonical_cwe
-from ..reviewer import Reviewer
+from .reviewers import Reviewer
 
 
 class ContextRuleReviewer(Reviewer):

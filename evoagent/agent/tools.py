@@ -1,7 +1,7 @@
 """Role tool permissions and Skill resource tools."""
 from .collaborators import RuntimeBackref
 from ..prompts import ROLE_PERMISSIONS
-from ..runtime import AgentTool
+from .runtime import AgentTool
 
 
 class ToolPolicy(RuntimeBackref):

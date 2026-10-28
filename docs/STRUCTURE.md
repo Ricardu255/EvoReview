@@ -42,6 +42,9 @@ bootstrap → 所有具体实现
   - `AgenticReviewer` 现在只继承 `Reviewer`，不再继承任何 mixin
   - 协作者只依赖 `ReviewRuntime`，不再持有整个 `AgenticReviewer`
   - `review_rules.py` 位于 `agent/`，因为它依赖 `Reviewer`，不属于纯 domain
+  - 剩余 Agent Core 也已收进 `agent/`：`bounded_role.py`、`harness.py`、`lead_session.py`、`context_manager.py`、`memory.py`、`runtime.py`、`telemetry.py`、`repository_tools.py`
+  - 原 `reviewer.py` 基类移到 `agent/reviewers.py`，顶层 `reviewer.py` 保留为兼容 wrapper
+  - 顶层 `agentic_core.py` 继续只做兼容 re-export
 
 - Domain 已收进 `evoagent/domain/`：
   - `models.py`、`modes.py`、`gates.py`、`diff_parser.py`
@@ -90,7 +93,7 @@ bootstrap → 所有具体实现
 
 ## 下一阶段
 
-1. Phase 4：把 `bounded_role`、`harness`、`lead_session`、`context_manager`、`memory`、`runtime`、`telemetry`、`repository_tools`、`reviewer` 收进 `evoagent/agent/` 或 `agent/runtime/`。
+1. 评估是否移除旧顶层 wrapper；这是破坏性变更，需要单独的版本边界。
 2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
 3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 

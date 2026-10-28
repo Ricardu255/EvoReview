@@ -7,10 +7,10 @@ import textwrap
 import time
 from typing import List
 
-from ..diff_parser import ParsedDiff
-from ..models import ComponentKind, Finding, Severity
-from ..modes import component
-from ..telemetry import ExecutionLedger
+from ..domain.diff_parser import ParsedDiff
+from ..domain.models import ComponentKind, Finding, Severity
+from ..domain.modes import component
+from .telemetry import ExecutionLedger
 
 
 class ScanRunner(RuntimeBackref):
