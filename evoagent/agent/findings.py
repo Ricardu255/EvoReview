@@ -2,9 +2,9 @@
 import json
 from typing import Dict, Iterable, List
 
-from ..diff_parser import ParsedDiff
-from ..finding_identity import canonical_identity
-from ..models import Finding, Severity
+from ..domain.diff_parser import ParsedDiff
+from ..domain.finding_identity import canonical_identity
+from ..domain.models import Finding, Severity
 
 
 def _collect_evidence(observations: List[dict]) -> Dict[str, dict]:

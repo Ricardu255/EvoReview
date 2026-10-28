@@ -3,9 +3,9 @@ from .collaborators import RuntimeBackref
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..bounded_role import BoundedRole
+from .bounded_role import BoundedRole
 from ..prompts import RELIABILITY_PROMPT, SECURITY_PROMPT
-from ..runtime import ToolRegistry
+from .runtime import ToolRegistry
 from .findings import _parse_findings
 
 

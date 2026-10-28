@@ -4,16 +4,16 @@ import json
 import threading
 from typing import Any, Dict, List, Optional, Set
 
-from ..context_manager import ContextManager
-from ..diff_parser import ParsedDiff
-from ..gates import FindingGate
+from .context_manager import ContextManager
+from ..domain.diff_parser import ParsedDiff
+from ..domain.gates import FindingGate
 from ..llm import JsonChatClient
-from ..models import ComponentKind, Finding
-from ..modes import component, resolve_mode
-from ..repository_tools import RepositoryToolSuite
-from ..reviewer import LocalRuleReviewer, Reviewer
+from ..domain.models import ComponentKind, Finding
+from ..domain.modes import component, resolve_mode
+from .repository_tools import RepositoryToolSuite
+from .reviewers import LocalRuleReviewer, Reviewer
 from ..store_contract import ReviewStore
-from ..telemetry import ExecutionLedger
+from .telemetry import ExecutionLedger
 from .assignments import AssignmentRunner
 from .collaborators import ReviewRuntime
 from .findings import FindingPolicy

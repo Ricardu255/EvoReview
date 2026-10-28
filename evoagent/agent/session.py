@@ -1,6 +1,6 @@
 """LeadSession load/save helpers."""
 from .collaborators import RuntimeBackref
-from ..lead_session import LeadSession
+from .lead_session import LeadSession
 
 
 class SessionManager(RuntimeBackref):

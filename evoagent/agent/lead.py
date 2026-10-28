@@ -2,9 +2,9 @@
 from .collaborators import RuntimeBackref
 import json
 
-from ..bounded_role import BoundedRole
+from .bounded_role import BoundedRole
 from ..prompts import CRITIC_PROMPT, LEAD_PROMPT, ROLE_PERMISSIONS
-from ..runtime import ToolRegistry
+from .runtime import ToolRegistry
 
 
 class LeadRunner(RuntimeBackref):

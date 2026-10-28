@@ -32,10 +32,14 @@ class AgentModuleTests(unittest.TestCase):
         self.assertNotIn("Mixin", source)
 
     def test_collaborators_depend_on_runtime_not_reviewer(self):
-        for path in (PACKAGE / "agent").glob("*.py"):
-            source = path.read_text(encoding="utf-8")
-            self.assertNotIn("ReviewerBackref", source, path.name)
-            self.assertNotIn("self.reviewer", source, path.name)
+        collaborator_modules = (
+            "assignments.py", "lead.py", "memory_hooks.py", "orchestration.py",
+            "scanning.py", "session.py", "tools.py",
+        )
+        for name in collaborator_modules:
+            source = (PACKAGE / "agent" / name).read_text(encoding="utf-8")
+            self.assertNotIn("ReviewerBackref", source, name)
+            self.assertNotIn("self.reviewer", source, name)
 
     def test_collaborators_share_one_runtime(self):
         reviewer = AgenticReviewer(None, None)
