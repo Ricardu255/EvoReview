@@ -41,6 +41,13 @@ bootstrap → 所有具体实现
   - `agentic_core.py` 只做兼容 re-export
   - `AgenticReviewer` 现在只继承 `Reviewer`，不再继承任何 mixin
   - 协作者只依赖 `ReviewRuntime`，不再持有整个 `AgenticReviewer`
+  - `review_rules.py` 位于 `agent/`，因为它依赖 `Reviewer`，不属于纯 domain
+
+- Domain 已收进 `evoagent/domain/`：
+  - `models.py`、`modes.py`、`gates.py`、`diff_parser.py`
+  - `finding_identity.py`、`report.py`
+  - 旧的顶层模块保留为兼容 wrapper，使用模块代理转发 `__all__` 和属性
+  - domain 内不允许 `from ..`，保持纯领域依赖
 
 - Evaluation / Evolution 已收进 `evoagent/evaluation/`：
   - `arms.py`、`benchmark.py`、`experiments.py`、`harness.py`、`v2.py`
@@ -77,10 +84,9 @@ bootstrap → 所有具体实现
 
 ## 下一阶段
 
-1. Phase 2：把 `models`、`modes`、`gates`、`diff_parser`、`finding_identity`、`report`、`review_rules` 收进 `evoagent/domain/`，保留旧路径 wrapper。
-2. Phase 3：把 `task_queue`、`github`、`llm`、`auth`、`observability`、`metrics`、`rollout`、`fixer`、`patching`、`verifier` 收进 `evoagent/adapters/`。
-3. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
-4. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
+1. Phase 3：把 `task_queue`、`github`、`llm`、`auth`、`observability`、`metrics`、`rollout`、`fixer`、`patching`、`verifier` 收进 `evoagent/adapters/`。
+2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
+3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 
 每个阶段都必须满足：
 
