@@ -79,6 +79,9 @@ bootstrap → 所有具体实现
 - `SqlStoreMixin` 新增 `_write()`、`_in_clause()`、`_greatest()`、`_acquire_key_lock()`，统一 SQLite 进程锁、PostgreSQL advisory lock 和方言差异。
 - `PromptStoreMixin` / `WebhookStoreMixin` 继续作为跨后端共享 SQL 规则。
 - `ReviewsApplicationService` 已拆成兼容 facade（101 行）+ `review_lifecycle.py`（171 行）+ `review_execution.py`（197 行）；两者通过 `ReviewExecutionService` 组合，不形成循环依赖。
+- 内部 import 已全部迁移到新包路径；顶层旧模块只保留给外部兼容，并发出 `DeprecationWarning`。
+- `agent/__init__.py` 改为懒加载 `AgenticReviewer`，解决了 `adapters.llm -> telemetry -> agent package -> reviewer -> llm` 的冷启动循环。
+- 当前明确保留的跨层例外：`agent -> adapters.llm` 和 `adapters -> agent.telemetry`；后续可以引入 LLM/telemetry port 消除。
 
 尚未完成：
 
@@ -93,13 +96,14 @@ bootstrap → 所有具体实现
 
 ## 下一阶段
 
-1. 评估是否移除旧顶层 wrapper；这是破坏性变更，需要单独的版本边界。
-2. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
-3. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
+1. 在下一个 breaking-change 版本移除旧顶层 wrapper；当前内部代码已经不再依赖它们。
+2. 引入 LLM/telemetry port，消除 `agent -> adapters.llm` 和 `adapters -> agent.telemetry` 这两个跨层例外。
+3. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
+4. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。
 
 每个阶段都必须满足：
 
 - `python -m pytest tests -q` 全绿；
 - API、数据库 schema、报告格式不变；
 - 不新增跨层 import；
-- 旧模块路径至少保留一个版本的兼容导出。
+- 旧模块路径保留一个版本的兼容导出，并发出 `DeprecationWarning`。

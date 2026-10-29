@@ -10,14 +10,14 @@ import json
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from ..agentic_core import AgenticReviewer
-from ..finding_identity import canonical_identity
-from ..llm import JsonChatClient
-from ..models import Finding, Severity
-from ..reviewer import LocalRuleReviewer, Reviewer
-from ..review_rules import ContextRuleReviewer
+from ..agent.reviewer import AgenticReviewer
+from ..domain.finding_identity import canonical_identity
+from ..adapters.llm import JsonChatClient
+from ..domain.models import Finding, Severity
+from ..agent.reviewers import LocalRuleReviewer, Reviewer
+from ..agent.review_rules import ContextRuleReviewer
 from .skills import AgentSkill
-from ..telemetry import ExecutionLedger
+from ..agent.telemetry import ExecutionLedger
 
 
 REQUIRED_ARMS = (

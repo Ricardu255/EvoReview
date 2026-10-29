@@ -1,4 +1,12 @@
 ﻿"""Compatibility wrapper for :mod:`evoagent.agent.review_rules`."""
+import warnings
+
+warnings.warn(
+    "This top-level module is a compatibility wrapper; import from the new package path instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .agent import review_rules as _impl
 
 __all__ = getattr(

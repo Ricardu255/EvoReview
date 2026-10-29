@@ -3,10 +3,10 @@ import os
 import tempfile
 import unittest
 
-from evoagent.agentic_core import AgenticReviewer
-from evoagent.context_manager import ContextManager, estimate_tokens
-from evoagent.diff_parser import parse_unified_diff
-from evoagent.memory import MemoryManager
+from evoagent.agent.reviewer import AgenticReviewer
+from evoagent.agent.context_manager import ContextManager, estimate_tokens
+from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.agent.memory import MemoryManager
 from evoagent.store import TaskStore
 
 

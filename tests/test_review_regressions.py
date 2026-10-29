@@ -11,12 +11,12 @@ from unittest.mock import patch
 
 from agentic_fake import FakeAgenticClient, enable_agentic_service
 from evoagent.api import ApiHandler
-from evoagent.auth import Principal
+from evoagent.adapters.auth import Principal
 from evoagent.config import Settings
-from evoagent.diff_parser import parse_unified_diff
+from evoagent.domain.diff_parser import parse_unified_diff
 from evoagent.errors import PermanentTaskError
-from evoagent.repository_tools import RepositoryToolSuite
-from evoagent.runtime import RuntimeCancelled
+from evoagent.agent.repository_tools import RepositoryToolSuite
+from evoagent.agent.runtime import RuntimeCancelled
 from evoagent.service import ReviewService
 from evoagent.store import TaskStore, utc_now
 

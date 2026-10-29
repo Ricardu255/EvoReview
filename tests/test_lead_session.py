@@ -2,10 +2,10 @@ import os
 import tempfile
 import unittest
 
-from evoagent.context_manager import ContextManager
-from evoagent.lead_session import CHECKPOINT_NAME, PROTOCOL, LeadSession
+from evoagent.agent.context_manager import ContextManager
+from evoagent.agent.lead_session import CHECKPOINT_NAME, PROTOCOL, LeadSession
 from evoagent.store import TaskStore
-from evoagent.telemetry import ExecutionLedger
+from evoagent.agent.telemetry import ExecutionLedger
 
 
 class LeadSessionCheckpointTests(unittest.TestCase):

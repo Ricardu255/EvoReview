@@ -1,7 +1,7 @@
 import unittest
 
-from evoagent.diff_parser import parse_unified_diff
-from evoagent.reviewer import LocalRuleReviewer, OpenAICompatibleReviewer
+from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.agent.reviewers import LocalRuleReviewer, OpenAICompatibleReviewer
 
 
 DIFF = '--- a/app.py\n+++ b/app.py\n@@ -1 +1,2 @@\n+password = "secret"\n+eval(user_input)\n'

@@ -2,8 +2,8 @@
 from pathlib import Path
 import unittest
 
-from evoagent.agentic_core import AgenticReviewer
-from evoagent.reviewer import Reviewer
+from evoagent.agent.reviewer import AgenticReviewer
+from evoagent.agent.reviewers import Reviewer
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -2,6 +2,7 @@
 import importlib
 from pathlib import Path
 import unittest
+import warnings
 
 
 WRAPPERS = {
@@ -17,10 +18,16 @@ WRAPPERS = {
 }
 
 
+def load_wrapper(name):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return importlib.import_module(name)
+
+
 class AgentCorePackageTests(unittest.TestCase):
     def test_old_modules_are_compatibility_wrappers(self):
         for old_name, new_name in WRAPPERS.items():
-            wrapper = importlib.import_module("evoagent." + old_name)
+            wrapper = load_wrapper("evoagent." + old_name)
             impl = importlib.import_module("evoagent.agent." + new_name)
             self.assertTrue(wrapper.__all__, old_name)
             for name in wrapper.__all__:
@@ -40,17 +47,20 @@ class AgentCorePackageTests(unittest.TestCase):
     def test_base_reviewer_and_agentic_reviewer_are_distinct(self):
         from evoagent.agent.reviewer import AgenticReviewer
         from evoagent.agent.reviewers import Reviewer
-        from evoagent.reviewer import Reviewer as Exported
 
+        Exported = load_wrapper("evoagent.reviewer").Reviewer
         self.assertIs(Reviewer, Exported)
         self.assertIsNot(Reviewer, AgenticReviewer)
 
-    def test_agent_core_does_not_import_app_or_adapters(self):
+    def test_agent_core_only_imports_the_llm_adapter(self):
         agent = Path(__file__).resolve().parents[1] / "evoagent" / "agent"
         for path in agent.glob("*.py"):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("from ..app", source, path.name)
-            self.assertNotIn("from ..adapters", source, path.name)
+            # The concrete LLM client is the one intentional adapter dependency
+            # of the reviewer implementations; everything else stays inside agent.
+            normalized = source.replace("from ..adapters.llm", "")
+            self.assertNotIn("from ..adapters", normalized, path.name)
 
 
 if __name__ == "__main__":

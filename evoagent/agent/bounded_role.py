@@ -4,7 +4,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from .context_manager import ContextManager
-from ..llm import JsonChatClient
+from ..adapters.llm import JsonChatClient
 from .runtime import RuntimeBudgetExceeded, ToolRegistry
 from .telemetry import ExecutionLedger
 

@@ -6,7 +6,7 @@ import re
 from typing import List
 
 from .llm import JsonChatClient
-from ..telemetry import ExecutionLedger
+from ..agent.telemetry import ExecutionLedger
 from .verifier import RepairVerifier
 
 

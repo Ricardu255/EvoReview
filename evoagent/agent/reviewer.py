@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set
 from .context_manager import ContextManager
 from ..domain.diff_parser import ParsedDiff
 from ..domain.gates import FindingGate
-from ..llm import JsonChatClient
+from ..adapters.llm import JsonChatClient
 from ..domain.models import ComponentKind, Finding
 from ..domain.modes import component, resolve_mode
 from .repository_tools import RepositoryToolSuite

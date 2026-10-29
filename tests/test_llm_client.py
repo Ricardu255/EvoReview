@@ -5,8 +5,8 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from evoagent.llm import JsonChatClient
-from evoagent.telemetry import ExecutionLedger
+from evoagent.adapters.llm import JsonChatClient
+from evoagent.agent.telemetry import ExecutionLedger
 
 
 def http_error(code, body=b"error", headers=None):
@@ -128,7 +128,7 @@ class JsonChatClientTests(unittest.TestCase):
 
 class ParseModelJsonTests(unittest.TestCase):
     def _parse(self, content, finish_reason="stop"):
-        from evoagent.llm import parse_model_json
+        from evoagent.adapters.llm import parse_model_json
 
         return parse_model_json(content, finish_reason)
 
@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
 class TrailingCommaRepairTests(unittest.TestCase):
     def _parse(self, content):
-        from evoagent.llm import parse_model_json
+        from evoagent.adapters.llm import parse_model_json
 
         return parse_model_json(content)
 

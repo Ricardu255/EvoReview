@@ -3,11 +3,11 @@ import os
 import tempfile
 import unittest
 
-from evoagent.agentic_core import AgenticReviewer
-from evoagent.diff_parser import parse_unified_diff
-from evoagent.lead_session import LeadSession
-from evoagent.memory import MemoryManager
-from evoagent.models import Finding, Severity
+from evoagent.agent.reviewer import AgenticReviewer
+from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.agent.lead_session import LeadSession
+from evoagent.agent.memory import MemoryManager
+from evoagent.domain.models import Finding, Severity
 from evoagent.store import TaskStore
 
 

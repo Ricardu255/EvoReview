@@ -9,11 +9,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 
 from .config import Settings
-from .auth import Principal
-from .github import verify_signature
-from .metrics import metrics
-from .modes import public_taxonomy, resolve_mode
-from .report import to_markdown
+from .adapters.auth import Principal
+from .adapters.github import verify_signature
+from .adapters.metrics import metrics
+from .domain.modes import public_taxonomy, resolve_mode
+from .domain.report import to_markdown
 from .service import ReviewService
 
 

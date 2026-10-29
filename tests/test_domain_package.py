@@ -2,6 +2,7 @@
 import importlib
 from pathlib import Path
 import unittest
+import warnings
 
 
 WRAPPERS = {
@@ -14,10 +15,16 @@ WRAPPERS = {
 }
 
 
+def load_wrapper(name):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return importlib.import_module(name)
+
+
 class DomainPackageTests(unittest.TestCase):
     def test_old_modules_are_compatibility_wrappers(self):
         for old_name, new_name in WRAPPERS.items():
-            wrapper = importlib.import_module("evoagent." + old_name)
+            wrapper = load_wrapper("evoagent." + old_name)
             impl = importlib.import_module("evoagent.domain." + new_name)
             self.assertTrue(wrapper.__all__, old_name)
             for name in wrapper.__all__:
@@ -39,8 +46,8 @@ class DomainPackageTests(unittest.TestCase):
 
     def test_review_rules_lives_in_agent_not_domain(self):
         from evoagent.agent.review_rules import ContextRuleReviewer
-        from evoagent.review_rules import ContextRuleReviewer as Exported
 
+        Exported = load_wrapper("evoagent.review_rules").ContextRuleReviewer
         self.assertIs(ContextRuleReviewer, Exported)
         self.assertFalse((Path(__file__).resolve().parents[1] / "evoagent" / "domain" / "review_rules.py").exists())
 

@@ -2,6 +2,7 @@
 import importlib
 from pathlib import Path
 import unittest
+import warnings
 
 
 WRAPPERS = {
@@ -18,10 +19,16 @@ WRAPPERS = {
 }
 
 
+def load_wrapper(name):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return importlib.import_module(name)
+
+
 class AdapterPackageTests(unittest.TestCase):
     def test_old_modules_are_compatibility_wrappers(self):
         for old_name, new_name in WRAPPERS.items():
-            wrapper = importlib.import_module("evoagent." + old_name)
+            wrapper = load_wrapper("evoagent." + old_name)
             impl = importlib.import_module("evoagent.adapters." + new_name)
             self.assertTrue(wrapper.__all__, old_name)
             for name in wrapper.__all__:
@@ -37,12 +44,13 @@ class AdapterPackageTests(unittest.TestCase):
             {path.name for path in adapters.glob("*.py")},
         )
 
-    def test_adapters_do_not_import_application_or_agent_layers(self):
+    def test_adapters_only_import_agent_telemetry(self):
         adapters = Path(__file__).resolve().parents[1] / "evoagent" / "adapters"
         for path in adapters.glob("*.py"):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("from ..app", source, path.name)
-            self.assertNotIn("from ..agent", source, path.name)
+            normalized = source.replace("from ..agent.telemetry", "")
+            self.assertNotIn("from ..agent", normalized, path.name)
 
 
 if __name__ == "__main__":

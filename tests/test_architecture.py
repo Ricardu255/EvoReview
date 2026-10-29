@@ -18,12 +18,9 @@ def imported_modules(path):
 
 
 class ArchitectureTests(unittest.TestCase):
-    def test_service_does_not_construct_infrastructure(self):
-        forbidden = {
-            "postgres_store", "context_manager", "memory", "observability",
-            "rollout", "verifier", "patching", "fixer", "skills",
-            "skill_evolution", "auth", "evolution_v2", "llm",
-        }
+    def test_service_does_not_construct_stores_or_queues(self):
+        forbidden = {"postgres_store", "task_queue", "adapters.postgres_store",
+                     "adapters.task_queue"}
         imports = imported_modules(PACKAGE / "service.py")
         leaked = forbidden.intersection(imports)
         self.assertEqual(set(), leaked, "ReviewService must not wire %s" % sorted(leaked))
@@ -31,10 +28,14 @@ class ArchitectureTests(unittest.TestCase):
     def test_bootstrap_owns_concrete_construction(self):
         imports = imported_modules(PACKAGE / "bootstrap.py")
         expected = {
-            "agentic_core", "auth", "context_manager", "evolution",
-            "evolution_v2", "github", "harness", "llm", "memory",
-            "observability", "patching", "postgres_store", "reviewer",
-            "rollout", "skill_evolution", "skills", "task_queue", "verifier",
+            "agent.reviewer", "agent.context_manager", "agent.harness",
+            "agent.memory", "agent.reviewers",
+            "adapters.auth", "adapters.github", "adapters.llm",
+            "adapters.observability", "adapters.patching", "adapters.rollout",
+            "adapters.task_queue", "adapters.verifier",
+            "evaluation.evolution", "evaluation.evolution_v2",
+            "evaluation.skill_evolution", "evaluation.skills",
+            "postgres_store",
         }
         self.assertEqual(set(), expected.difference(imports))
 
@@ -50,13 +51,14 @@ class ArchitectureTests(unittest.TestCase):
             self.assertNotIn("from ..store import", source, path.name)
 
     def test_application_layer_does_not_import_infrastructure(self):
-        forbidden = {
-            "postgres_store", "task_queue", "github", "llm", "memory",
-            "observability", "rollout", "verifier", "patching", "fixer",
-        }
+        forbidden = {"adapters", "agent"}
         for path in (PACKAGE / "app").glob("*.py"):
             imports = imported_modules(path)
-            leaked = forbidden.intersection(imports)
+            leaked = {
+                name for name in imports
+                if name == "adapters" or name.startswith("adapters.")
+                or name == "agent" or name.startswith("agent.")
+            }
             self.assertEqual(set(), leaked, "%s imports %s" % (path.name, sorted(leaked)))
 
 

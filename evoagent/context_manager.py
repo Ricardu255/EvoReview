@@ -1,4 +1,12 @@
 """Compatibility wrapper for :mod:`evoagent.agent.context_manager`."""
+import warnings
+
+warnings.warn(
+    "This top-level module is a compatibility wrapper; import from the new package path instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .agent import context_manager as _impl
 
 __all__ = getattr(

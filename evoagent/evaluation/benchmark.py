@@ -20,10 +20,10 @@ import difflib
 import re
 from typing import Dict, List, Tuple
 
-from ..diff_parser import ParsedDiff, parse_unified_diff
+from ..domain.diff_parser import ParsedDiff, parse_unified_diff
 from .harness import RULE_TO_CWE
-from ..models import Finding, Severity
-from ..reviewer import Reviewer
+from ..domain.models import Finding, Severity
+from ..agent.reviewers import Reviewer
 
 
 class ContextRuleReviewer(Reviewer):
