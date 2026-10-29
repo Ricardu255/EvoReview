@@ -13,12 +13,12 @@ import os
 import re
 from typing import Any, Dict, Iterable, List, Set
 
-from ..diff_parser import parse_unified_diff
+from ..domain.diff_parser import parse_unified_diff
 from .harness import RULE_TO_CWE, dataset_fingerprint, load_jsonl, one_to_one_match
 from .evolution import DEFAULT_PROMPT, EvolutionEngine, RegressionEvaluator
-from ..models import Finding
-from ..reviewer import LocalRuleReviewer, Reviewer
-from ..review_rules import ContextRuleReviewer
+from ..domain.models import Finding
+from ..agent.reviewers import LocalRuleReviewer, Reviewer
+from ..agent.review_rules import ContextRuleReviewer
 from ..store import TaskStore, utc_now
 
 

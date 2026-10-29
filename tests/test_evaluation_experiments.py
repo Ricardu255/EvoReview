@@ -2,19 +2,19 @@ import json
 import os
 import unittest
 
-from evoagent.diff_parser import parse_unified_diff
-from evoagent.evaluation_experiments import (
+from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.evaluation.experiments import (
     AccuracyExperimentSuite,
     DEFAULT_CONTROLLED_DATASET,
     load_controlled_pr_cases,
     SkillEvolutionExperimentSuite,
     prepare_controlled_experiment_cases,
 )
-from evoagent.evaluation_v2 import (
+from evoagent.evaluation.v2 import (
     FairAblationSuite,
     experiment_reviewer_factories,
 )
-from evoagent.models import Finding, Severity
+from evoagent.domain.models import Finding, Severity
 
 
 # The 100-case corpus is kept local and is not checked in; tests that read it
@@ -24,8 +24,8 @@ NEEDS_CONTROLLED_DATASET = unittest.skipUnless(
     "evaluation_data/pr_diff_100.jsonl is not checked in; the controlled "
     "corpus is kept local",
 )
-from evoagent.reviewer import Reviewer
-from evoagent.skill_evolution import SkillEvolutionEngine
+from evoagent.agent.reviewers import Reviewer
+from evoagent.evaluation.skill_evolution import SkillEvolutionEngine
 
 
 DIFF = (

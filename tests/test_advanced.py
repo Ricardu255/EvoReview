@@ -4,9 +4,9 @@ import time
 import unittest
 
 from evoagent.config import Settings
-from evoagent.evolution import EvolutionEngine, RegressionEvaluator
-from evoagent.fixer import SafeFixer
-from evoagent.models import Finding, Severity
+from evoagent.evaluation.evolution import EvolutionEngine, RegressionEvaluator
+from evoagent.adapters.fixer import SafeFixer
+from evoagent.domain.models import Finding, Severity
 from evoagent.service import ReviewService
 from evoagent.store import TaskStore
 from agentic_fake import enable_agentic_service

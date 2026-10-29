@@ -3,8 +3,8 @@ import difflib
 import json
 from typing import Any, Dict, List
 
-from ..llm import JsonChatClient
-from ..telemetry import ExecutionLedger
+from ..adapters.llm import JsonChatClient
+from ..agent.telemetry import ExecutionLedger
 
 
 ROOT_CAUSE_PROMPT = """You analyze failed code-review trajectories. Cluster false positives,

@@ -1,4 +1,12 @@
 """Compatibility wrapper for :mod:`evoagent.domain.report`."""
+import warnings
+
+warnings.warn(
+    "This top-level module is a compatibility wrapper; import from the new package path instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .domain import report as _impl
 
 __all__ = getattr(

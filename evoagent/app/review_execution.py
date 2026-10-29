@@ -5,9 +5,9 @@ import uuid
 from typing import Any, Callable, Dict, Optional
 
 from ..errors import PermanentTaskError
-from ..finding_identity import canonical_identity
-from ..models import TaskState, TraceEvent
-from ..report import to_markdown
+from ..domain.finding_identity import canonical_identity
+from ..domain.models import TaskState, TraceEvent
+from ..domain.report import to_markdown
 from ..store_contract import StoreProtocol
 from ..time_utils import utc_now
 from .policies import ReviewPolicy

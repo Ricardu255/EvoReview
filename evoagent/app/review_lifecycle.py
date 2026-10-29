@@ -3,8 +3,8 @@ import hashlib
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from ..modes import RunMode
-from ..models import TaskState, TraceEvent
+from ..domain.modes import RunMode
+from ..domain.models import TaskState, TraceEvent
 from ..store_contract import StoreProtocol
 from ..time_utils import utc_now
 from .policies import ReviewPolicy

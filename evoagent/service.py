@@ -1,7 +1,7 @@
 """Compatibility facade for the review application services."""
 from typing import Any, Dict, Optional
 
-from .agentic_core import AgenticReviewer
+from .agent.reviewer import AgenticReviewer
 from .app.evolution import EvolutionApplicationService
 from .app.feedback import FeedbackApplicationService
 from .app.fixes import FixesApplicationService
@@ -14,11 +14,11 @@ from .bootstrap import (
     build_llm_reviewer,
 )
 from .config import Settings
-from .evolution import EvolutionEngine
-from .github import GitHubAppAuthenticator, GitHubClient
-from .harness import ReviewHarness
-from .metrics import metrics
-from .reviewer import OpenAICompatibleReviewer
+from .evaluation.evolution import EvolutionEngine
+from .adapters.github import GitHubAppAuthenticator, GitHubClient
+from .agent.harness import ReviewHarness
+from .adapters.metrics import metrics
+from .agent.reviewers import OpenAICompatibleReviewer
 
 
 class ReviewService:

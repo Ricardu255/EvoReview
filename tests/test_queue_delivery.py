@@ -7,7 +7,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-from evoagent.task_queue import DeliveryBusy, TaskQueue
+from evoagent.adapters.task_queue import DeliveryBusy, TaskQueue
 
 
 class SimulatedRedis:

@@ -5,7 +5,7 @@ import time
 import unittest
 import uuid
 
-from evoagent.task_queue import TaskQueue
+from evoagent.adapters.task_queue import TaskQueue
 
 
 @unittest.skipUnless(os.getenv("EVOAGENT_TEST_REDIS_URL"), "set EVOAGENT_TEST_REDIS_URL to run Redis integration")

@@ -3,7 +3,7 @@ import unittest
 
 from evoagent.agent.tools import ToolPolicy
 from evoagent.prompts import ROLE_PERMISSIONS
-from evoagent.runtime import ToolRegistry
+from evoagent.agent.runtime import ToolRegistry
 
 
 class FakeSkill:

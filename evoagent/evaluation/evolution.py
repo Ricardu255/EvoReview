@@ -6,9 +6,9 @@ import threading
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
-from ..diff_parser import parse_unified_diff
+from ..domain.diff_parser import parse_unified_diff
 from .harness import one_to_one_match
-from ..finding_identity import canonical_identity, is_valid_cwe
+from ..domain.finding_identity import canonical_identity, is_valid_cwe
 from ..time_utils import utc_now
 
 

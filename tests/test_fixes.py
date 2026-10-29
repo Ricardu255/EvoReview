@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from evoagent.config import Settings
-from evoagent.models import ReviewReport, TaskState, TraceEvent
+from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.service import ReviewService
 from evoagent.store import utc_now
 

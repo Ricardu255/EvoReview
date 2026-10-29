@@ -1,7 +1,7 @@
 """Task lifecycle, checkpoints, payloads and cancellation."""
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
-from ...models import ReviewReport, TraceEvent
+from ...domain.models import ReviewReport, TraceEvent
 from .review import ReviewStore
 
 

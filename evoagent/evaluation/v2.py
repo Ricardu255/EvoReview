@@ -21,7 +21,7 @@ from .arms import (  # noqa: F401 - re-exported for compatibility
     product_reviewer_factories,
 )
 from .harness import EndToEndEvaluationHarness, dataset_fingerprint, one_to_one_match
-from ..llm import JsonChatClient
+from ..adapters.llm import JsonChatClient
 
 
 def validate_real_dataset(cases: List[dict], minimum_cases: int = 300) -> Dict[str, Any]:

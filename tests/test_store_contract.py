@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import uuid
 
-from evoagent.models import ReviewReport, TaskState, TraceEvent
+from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.store import TaskStore, utc_now
 from evoagent.store_contract import StoreProtocol
 

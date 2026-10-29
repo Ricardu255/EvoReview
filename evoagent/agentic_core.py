@@ -2,7 +2,7 @@
 from .agent.reviewer import (
     AgenticReviewer, MAX_TRACKED_SUMMARIES, SUMMARY_CHECKPOINT,
 )
-from .bounded_role import BoundedRole
+from .agent.bounded_role import BoundedRole
 
 __all__ = [
     "AgenticReviewer", "BoundedRole",

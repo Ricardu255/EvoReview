@@ -10,28 +10,28 @@ import os
 import threading
 from typing import Any, Callable, Dict, Optional
 
-from .agentic_core import AgenticReviewer
-from .auth import AuthManager
+from .agent.reviewer import AgenticReviewer
+from .adapters.auth import AuthManager
 from .config import Settings
-from .context_manager import ContextManager
-from .evolution import EvolutionEngine
-from .evolution_v2 import RootCauseEvolutionGenerator
-from .github import GitHubClient
-from .harness import ReviewHarness
-from .llm import JsonChatClient
-from .memory import MemoryManager
-from .observability import AlertManager, Observability
-from .patching import SuggestionOnlyFixer, VerifiedPatchFixer
+from .agent.context_manager import ContextManager
+from .evaluation.evolution import EvolutionEngine
+from .evaluation.evolution_v2 import RootCauseEvolutionGenerator
+from .adapters.github import GitHubClient
+from .agent.harness import ReviewHarness
+from .adapters.llm import JsonChatClient
+from .agent.memory import MemoryManager
+from .adapters.observability import AlertManager, Observability
+from .adapters.patching import SuggestionOnlyFixer, VerifiedPatchFixer
 from .postgres_store import create_store
-from .reviewer import (
+from .agent.reviewers import (
     OpenAICompatibleReviewer, ReliabilityRuleReviewer, SecurityRuleReviewer,
 )
-from .rollout import ReleaseManager
-from .skill_evolution import AgentSkillReplayReviewer, SkillEvolutionEngine, validate_artifact
-from .skills import AgentSkill, SkillRegistry
+from .adapters.rollout import ReleaseManager
+from .evaluation.skill_evolution import AgentSkillReplayReviewer, SkillEvolutionEngine, validate_artifact
+from .evaluation.skills import AgentSkill, SkillRegistry
 from .store_contract import StoreProtocol
-from .task_queue import TaskQueue
-from .verifier import RepairVerifier
+from .adapters.task_queue import TaskQueue
+from .adapters.verifier import RepairVerifier
 
 
 @dataclass

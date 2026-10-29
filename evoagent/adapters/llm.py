@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
-from ..telemetry import ExecutionLedger
+from ..agent.telemetry import ExecutionLedger
 
 
 # Transient server/rate-limit failures worth retrying; other 4xx responses

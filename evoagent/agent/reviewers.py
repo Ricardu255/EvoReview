@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from ..domain.diff_parser import ParsedDiff
 from ..domain.finding_identity import canonical_cwe, canonical_identity
-from ..llm import JsonChatClient
+from ..adapters.llm import JsonChatClient
 from ..domain.models import Finding, Severity
 
 

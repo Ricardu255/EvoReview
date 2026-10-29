@@ -2,17 +2,17 @@ import os
 import tempfile
 import unittest
 
-from evoagent.evaluation_experiments import (
+from evoagent.evaluation.experiments import (
     DEFAULT_CONTROLLED_DATASET,
     load_controlled_pr_cases,
 )
-from evoagent.evolution import RegressionEvaluator
-from evoagent.evaluation_harness import (
+from evoagent.evaluation.evolution import RegressionEvaluator
+from evoagent.evaluation.harness import (
     dataset_fingerprint,
     load_jsonl,
     one_to_one_match,
 )
-from evoagent.models import Finding, Severity
+from evoagent.domain.models import Finding, Severity
 
 
 # The 100-case corpus is kept local and is not checked in; tests that read it

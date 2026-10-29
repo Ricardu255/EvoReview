@@ -7,16 +7,16 @@ import re
 import statistics
 from typing import Callable, Iterable, List, Optional
 
-from ..diff_parser import parse_unified_diff
+from ..domain.diff_parser import parse_unified_diff
 from .harness import FixtureRepairer, load_jsonl, one_to_one_match
 from .v2 import (
     ProductionEvaluationHarness,
     paired_bootstrap_comparison,
     validate_real_dataset,
 )
-from ..reviewer import CompositeReviewer, LocalRuleReviewer, Reviewer
-from ..models import Finding, Severity
-from ..review_rules import ContextRuleReviewer
+from ..agent.reviewers import CompositeReviewer, LocalRuleReviewer, Reviewer
+from ..domain.models import Finding, Severity
+from ..agent.review_rules import ContextRuleReviewer
 from .skill_evolution import SkillEvolutionEngine, validate_artifact
 
 

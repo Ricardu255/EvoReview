@@ -1,4 +1,12 @@
 """Compatibility wrapper for :mod:`evoagent.evaluation.evolution_v2`."""
+import warnings
+
+warnings.warn(
+    "This top-level module is a compatibility wrapper; import from the new package path instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from .evaluation import evolution_v2 as _impl
 
 __all__ = getattr(

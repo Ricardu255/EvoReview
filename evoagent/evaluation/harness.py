@@ -6,11 +6,11 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from ..diff_parser import parse_unified_diff
-from ..finding_identity import RULE_TO_CWE, canonical_identity
-from ..models import Finding, Severity
-from ..reviewer import Reviewer
-from ..verifier import RepairVerifier
+from ..domain.diff_parser import parse_unified_diff
+from ..domain.finding_identity import RULE_TO_CWE, canonical_identity
+from ..domain.models import Finding, Severity
+from ..agent.reviewers import Reviewer
+from ..adapters.verifier import RepairVerifier
 
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
