@@ -574,7 +574,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == GRANTS:
                 principal = self._principal("manage")
                 payload = self._read_json(body)
-                repository = str(payload.get("repository", "")).strip()
+                repository = text_field(payload, "repository").strip()
                 if not repository or len(repository) > 250:
                     raise ValueError(
                         "repository is required and must be at most 250 characters"
@@ -621,11 +621,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/v1/evaluation/cases":
                 principal = self._principal("manage")
                 payload = self._read_json(body)
+                split = payload.get("split")
                 result = self.service.evolution_for(principal.tenant_id).add_evaluation_case(
-                    str(payload.get("name", "")),
-                    str(payload.get("diff", "")),
+                    text_field(payload, "name"),
+                    text_field(payload, "diff"),
                     payload.get("expected_findings", []),
-                    str(payload.get("split", "validation")),
+                    "validation" if split is None else str(split),
                     "api",
                 )
                 self._send_json(201, result)
