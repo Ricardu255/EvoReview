@@ -539,10 +539,11 @@ class MissingModelApiTests(unittest.TestCase):
 
     def test_null_mode_is_treated_as_absent(self):
         calls = []
+        result = {}
 
         class Service:
             def create_review(self, *args, **kwargs):
-                calls.append(kwargs)
+                calls.append((args, kwargs))
                 raise ModelNotConfigured("agentic review requires a configured model")
 
         handler = ApiHandler.__new__(ApiHandler)
@@ -555,10 +556,116 @@ class MissingModelApiTests(unittest.TestCase):
         handler._read_body = lambda: (
             b'{"repository":"org/a","diff":"x","mode":null,"repository_root":null}'
         )
-        handler._send_json = lambda code, body: None
+        handler._send_json = lambda code, body: result.update(status=code, body=body)
         handler.do_POST()
-        self.assertEqual("", calls[0]["mode"])
-        self.assertEqual("", calls[0]["repository_root"])
+        self.assertEqual(503, result["status"])
+        self.assertEqual(1, len(calls))
+        args, kwargs = calls[0]
+        self.assertEqual(("org/a", "x", None), args)
+        self.assertEqual("", kwargs["mode"])
+        self.assertEqual("", kwargs["repository_root"])
+
+    def test_null_fields_are_audited_as_absent(self):
+        audits = []
+        result = {}
+
+        class Store:
+            def audit(self, *args):
+                audits.append(args)
+
+        class Service:
+            def __init__(self):
+                self.store = Store()
+
+            def create_review(self, *args, **kwargs):
+                return {"task_id": "task-1"}
+
+        handler = ApiHandler.__new__(ApiHandler)
+        handler.service = Service()
+        handler.settings = None
+        handler.path = "/v1/reviews"
+        handler._principal = lambda permission="read": Principal(
+            "alice", "alice", "tenant-a", "admin"
+        )
+        handler._read_body = lambda: (
+            b'{"repository":null,"diff":"x","mode":null,"repository_root":null}'
+        )
+        handler._send_json = lambda code, body: result.update(status=code, body=body)
+        handler.do_POST()
+        self.assertEqual(201, result["status"])
+        self.assertEqual(1, len(audits))
+        tenant_id, actor, action, resource, detail = audits[0]
+        self.assertEqual("tenant-a", tenant_id)
+        self.assertEqual("alice", actor)
+        self.assertEqual("review.create", action)
+        self.assertEqual("", resource)
+        self.assertEqual("", detail["mode"])
+
+
+class NullFieldApiTests(unittest.TestCase):
+    """JSON null must not be coerced into the literal string "None"."""
+
+    def post(self, path, payload, service):
+        handler = ApiHandler.__new__(ApiHandler)
+        handler.service = service
+        handler.settings = None
+        handler.path = path
+        handler._principal = lambda permission="read": Principal(
+            "alice", "alice", "tenant-a", "admin"
+        )
+        handler._read_body = lambda: json.dumps(payload).encode("utf-8")
+        result = {}
+        handler._send_json = lambda code, body: result.update(status=code, body=body)
+        handler.do_POST()
+        return result
+
+    def test_repository_grant_rejects_null_repository(self):
+        class Store:
+            def __init__(self):
+                self.granted = []
+
+            def grant_repository(self, *args):
+                self.granted.append(args)
+
+            def audit(self, *args, **kwargs):
+                pass
+
+        class Service:
+            def __init__(self):
+                self.store = Store()
+
+        service = Service()
+        result = self.post(
+            "/v1/repository-grants",
+            {"repository": None, "auto_fix": True},
+            service,
+        )
+        self.assertEqual(400, result["status"])
+        self.assertEqual([], service.store.granted)
+
+    def test_evaluation_case_treats_null_split_and_name_as_absent(self):
+        calls = []
+
+        class Evolution:
+            def add_evaluation_case(self, *args):
+                calls.append(args)
+                return {"id": 1}
+
+        class Service:
+            def evolution_for(self, tenant_id):
+                return Evolution()
+
+        self.post("/v1/evaluation/cases", {
+            "name": None, "diff": "x", "split": None,
+        }, Service())
+        self.assertEqual(1, len(calls))
+        self.assertEqual(("", "x", [], "validation", "api"), calls[0])
+        # An explicit empty split must survive as "", not fall back to the
+        # default, so that validate_case can reject it.
+        self.post("/v1/evaluation/cases", {
+            "name": "n", "diff": "x", "split": "",
+        }, Service())
+        self.assertEqual("", calls[-1][3])
 
 
 class CommentDeliveryTests(unittest.TestCase):
