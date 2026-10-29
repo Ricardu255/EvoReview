@@ -22,7 +22,7 @@ bootstrap → 所有具体实现
 - `evoagent/bootstrap.py`：`ServiceContainer` 与 `build_container()`，集中装配。
 - `ReviewService(settings)` 保持兼容，但构造委托给 composition root。
 - `evoagent/ports/stores/`：按任务、记忆、失败案例、进化、Skill、Webhook、认证、可观测性拆分的持久化协议。
-- `evoagent/store_contract.py` 只做兼容导出，保持旧 import 路径。
+- `evoagent/store_contract.py` 只做兼容导出（并发出 `DeprecationWarning`）；包内引用已全部迁移到 `evoagent.ports.stores`。
 - `tests/test_architecture.py` 守卫依赖方向。
 - `tests/test_bootstrap.py`、`tests/test_store_ports.py` 覆盖新的装配和端口契约。
 - 已提取 `ReviewPolicy`、`ReviewsApplicationService`、`GitHubApplicationService`、`FixesApplicationService`、`SkillApplicationService`、`FeedbackApplicationService`、`EvolutionApplicationService`。
@@ -38,13 +38,13 @@ bootstrap → 所有具体实现
   - `tools.py` 37 行，`ToolPolicy`
   - `session.py` 18 行，`SessionManager`
   - `collaborators.py` 81 行，`ReviewRuntime` + 显式只读 `RuntimeBackref`
-  - `agentic_core.py` 只做兼容 re-export
+  - `agentic_core.py` 只做兼容 re-export，并发出 `DeprecationWarning`
   - `AgenticReviewer` 现在只继承 `Reviewer`，不再继承任何 mixin
   - 协作者只依赖 `ReviewRuntime`，不再持有整个 `AgenticReviewer`
   - `review_rules.py` 位于 `agent/`，因为它依赖 `Reviewer`，不属于纯 domain
   - 剩余 Agent Core 也已收进 `agent/`：`bounded_role.py`、`harness.py`、`lead_session.py`、`context_manager.py`、`memory.py`、`runtime.py`、`telemetry.py`、`repository_tools.py`
   - 原 `reviewer.py` 基类移到 `agent/reviewers.py`，顶层 `reviewer.py` 保留为兼容 wrapper
-  - 顶层 `agentic_core.py` 继续只做兼容 re-export
+  - 顶层 `agentic_core.py` 继续只做兼容 re-export，并发出 `DeprecationWarning`
 
 - Domain 已收进 `evoagent/domain/`：
   - `models.py`、`modes.py`、`gates.py`、`diff_parser.py`
@@ -80,6 +80,10 @@ bootstrap → 所有具体实现
 - `PromptStoreMixin` / `WebhookStoreMixin` 继续作为跨后端共享 SQL 规则。
 - `ReviewsApplicationService` 已拆成兼容 facade（101 行）+ `review_lifecycle.py`（171 行）+ `review_execution.py`（197 行）；两者通过 `ReviewExecutionService` 组合，不形成循环依赖。
 - 内部 import 已全部迁移到新包路径；顶层旧模块只保留给外部兼容，并发出 `DeprecationWarning`。
+  - `store_contract` 的内部引用已全部迁移到 `evoagent.ports.stores`：`agent/`、`app/`、`bootstrap.py`、`store.py`、`postgres_store.py`、`tests/test_store_contract.py`。
+  - `scripts/` 已改为导入 `evoagent.domain.diff_parser`、`evoagent.evaluation.{harness,v2,experiments,evolution_proof,skill_evolution}`、`evoagent.adapters.llm`，不再经过顶层 wrapper。
+  - 测试的 patch 目标已切到新路径：`evoagent.adapters.llm.*`、`evoagent.agent.repository_tools.*`。
+  - 38 个顶层 wrapper 统一在导入时发出 `DeprecationWarning`；`tests/test_architecture.py` 守卫 `evoagent/` 与 `scripts/` 不得再引用 wrapper。
 - `agent/__init__.py` 改为懒加载 `AgenticReviewer`，解决了 `adapters.llm -> telemetry -> agent package -> reviewer -> llm` 的冷启动循环。
 - 当前明确保留的跨层例外：`agent -> adapters.llm` 和 `adapters -> agent.telemetry`；后续可以引入 LLM/telemetry port 消除。
 
@@ -96,7 +100,7 @@ bootstrap → 所有具体实现
 
 ## 下一阶段
 
-1. 在下一个 breaking-change 版本移除旧顶层 wrapper；当前内部代码已经不再依赖它们。
+1. 在下一个 breaking-change 版本移除旧顶层 wrapper；当前 `evoagent/` 与 `scripts/` 已无 wrapper 依赖，只剩外部调用方（以及测试里刻意的 wrapper 兼容性 guard），因此本版本继续保留并统一发出 `DeprecationWarning`，删除动作属于 breaking change。
 2. 引入 LLM/telemetry port，消除 `agent -> adapters.llm` 和 `adapters -> agent.telemetry` 这两个跨层例外。
 3. 继续细化 `ReviewLifecycleService` 的投递/恢复边界。
 4. 在 PostgreSQL 回归覆盖充分时再处理 tasks 和 observability 的重复 SQL。

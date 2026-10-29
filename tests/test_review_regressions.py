@@ -110,7 +110,7 @@ class ReviewRegressionTests(unittest.TestCase):
             (checkout / "link.txt").symlink_to(outside)
         except OSError:
             # Windows may deny symlink creation; still verify realpath containment.
-            with patch("evoagent.repository_tools.os.path.realpath", return_value=str(outside)):
+            with patch("evoagent.agent.repository_tools.os.path.realpath", return_value=str(outside)):
                 with self.assertRaises(ValueError):
                     suite.read_file("link.txt")
         else:

@@ -1,4 +1,4 @@
-﻿"""Compatibility wrapper for :mod:`evoagent.agent.review_rules`."""
+"""Compatibility wrapper for :mod:`evoagent.agent.review_rules`."""
 import warnings
 
 warnings.warn(

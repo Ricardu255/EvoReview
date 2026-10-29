@@ -2,7 +2,7 @@
 from typing import Any, Callable, Dict, Optional
 
 from ..config import Settings
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 from .policies import ReviewPolicy
 from .review_execution import ReviewExecutionService, mark_dead_letter
 from .review_lifecycle import ReviewLifecycleService

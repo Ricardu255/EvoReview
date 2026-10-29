@@ -8,7 +8,7 @@ from .reviewers import Reviewer
 from .runtime import (
     AgentRuntime, RuntimeBudgetExceeded, RuntimeCancelled, RuntimeNode,
 )
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
 
 

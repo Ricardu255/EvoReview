@@ -1,7 +1,7 @@
 """Automatic repair delivery."""
 from typing import Any, Callable, Optional
 
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 
 
 class FixesApplicationService:

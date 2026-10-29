@@ -12,7 +12,7 @@ from ..domain.models import ComponentKind, Finding
 from ..domain.modes import component, resolve_mode
 from .repository_tools import RepositoryToolSuite
 from .reviewers import LocalRuleReviewer, Reviewer
-from ..store_contract import ReviewStore
+from ..ports.stores import ReviewStore
 from .telemetry import ExecutionLedger
 from .assignments import AssignmentRunner
 from .collaborators import ReviewRuntime

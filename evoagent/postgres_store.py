@@ -8,7 +8,7 @@ from .adapters.stores.postgres.schema import PostgresSchemaMixin
 from .adapters.stores.postgres.skills import PostgresSkillStoreMixin
 from .adapters.stores.postgres.tasks import PostgresTaskStoreMixin
 from .prompt_store import PromptStoreMixin
-from .store_contract import StoreProtocol
+from .ports.stores import StoreProtocol
 from .webhook_store import WebhookStoreMixin
 
 

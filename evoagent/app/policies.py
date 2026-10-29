@@ -3,7 +3,7 @@ import os
 from typing import Callable, Dict, Optional
 
 from ..config import Settings
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 
 
 class ReviewPolicy:

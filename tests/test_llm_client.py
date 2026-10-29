@@ -41,7 +41,7 @@ class JsonChatClientTests(unittest.TestCase):
         responses = [
             http_error(429), http_error(503), chat_response('{"ok": true}'),
         ]
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=responses):
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=responses):
             result = client.complete_json("role", "system", "user", ledger)
         self.assertEqual({"ok": True}, result)
         self.assertEqual(3, len(ledger.model_calls))
@@ -52,7 +52,7 @@ class JsonChatClientTests(unittest.TestCase):
     def test_no_retry_on_client_error(self):
         client = self.make_client(retries=3)
         ledger = ExecutionLedger("test")
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=[http_error(401)]):
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=[http_error(401)]):
             with self.assertRaises(RuntimeError) as ctx:
                 client.complete_json("role", "system", "user", ledger)
         self.assertIn("HTTP 401", str(ctx.exception))
@@ -62,7 +62,7 @@ class JsonChatClientTests(unittest.TestCase):
     def test_retries_network_errors(self):
         client = self.make_client(retries=1)
         with patch(
-            "evoagent.llm.urllib.request.urlopen",
+            "evoagent.adapters.llm.urllib.request.urlopen",
             side_effect=[
                 urllib.error.URLError("connection refused"), chat_response('{"ok": 1}'),
             ],
@@ -72,7 +72,7 @@ class JsonChatClientTests(unittest.TestCase):
     def test_truncated_output_reports_clear_error(self):
         client = self.make_client()
         with patch(
-            "evoagent.llm.urllib.request.urlopen",
+            "evoagent.adapters.llm.urllib.request.urlopen",
             side_effect=[chat_response('{"findings": [', finish_reason="length")],
         ):
             with self.assertRaises(RuntimeError) as ctx:
@@ -85,7 +85,7 @@ class JsonChatClientTests(unittest.TestCase):
             chat_response(None, finish_reason="stop"),
             chat_response('{"ok": 1}'),
         ]
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=responses):
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=responses):
             self.assertEqual({"ok": 1}, client.complete_json("role", "system", "user"))
 
     def test_length_truncation_retries_with_doubled_budget(self):
@@ -98,7 +98,7 @@ class JsonChatClientTests(unittest.TestCase):
                 return chat_response("", finish_reason="length")
             return chat_response('{"ok": 1}')
 
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=capture_urlopen):
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=capture_urlopen):
             self.assertEqual(
                 {"ok": 1}, client.complete_json("role", "system", "user", max_tokens=4000)
             )
@@ -110,15 +110,15 @@ class JsonChatClientTests(unittest.TestCase):
         headers = email.message.Message()
         headers["Retry-After"] = "2"
         responses = [http_error(429, headers=headers), chat_response('{"ok": 1}')]
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=responses):
-            with patch("evoagent.llm.time.sleep") as sleeper:
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=responses):
+            with patch("evoagent.adapters.llm.time.sleep") as sleeper:
                 self.assertEqual({"ok": 1}, client.complete_json("role", "system", "user"))
         sleeper.assert_called_once_with(2.0)
 
     def test_exhausted_retries_raise_last_error(self):
         client = self.make_client(retries=1)
         with patch(
-            "evoagent.llm.urllib.request.urlopen",
+            "evoagent.adapters.llm.urllib.request.urlopen",
             side_effect=[http_error(503), http_error(503)],
         ):
             with self.assertRaises(RuntimeError) as ctx:
@@ -187,7 +187,7 @@ class WhitespaceResponseRetryTests(unittest.TestCase):
             chat_response("   \n  ", finish_reason="stop"),
             chat_response('{"ok": 1}'),
         ]
-        with patch("evoagent.llm.urllib.request.urlopen", side_effect=responses):
+        with patch("evoagent.adapters.llm.urllib.request.urlopen", side_effect=responses):
             self.assertEqual({"ok": 1}, client.complete_json("role", "system", "user"))
 
     def test_whitespace_response_exhausting_retries_raises(self):
@@ -196,7 +196,7 @@ class WhitespaceResponseRetryTests(unittest.TestCase):
             retries=1, backoff_seconds=0.0,
         )
         with patch(
-            "evoagent.llm.urllib.request.urlopen",
+            "evoagent.adapters.llm.urllib.request.urlopen",
             side_effect=[chat_response("   ", finish_reason="stop")] * 2,
         ):
             with self.assertRaises(RuntimeError) as ctx:

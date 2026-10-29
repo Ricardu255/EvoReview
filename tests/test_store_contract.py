@@ -13,7 +13,7 @@ import uuid
 
 from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.store import TaskStore, utc_now
-from evoagent.store_contract import StoreProtocol
+from evoagent.ports.stores import StoreProtocol
 
 DATABASE_URL = os.environ.get("EVOAGENT_TEST_DATABASE_URL", "")
 EXPIRED = "2020-01-01T00:00:00+00:00"

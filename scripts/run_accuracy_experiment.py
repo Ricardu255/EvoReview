@@ -9,10 +9,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from evoagent.evaluation_experiments import AccuracyExperimentSuite  # noqa: E402
-from evoagent.evaluation_harness import load_jsonl  # noqa: E402
-from evoagent.evaluation_v2 import ProductArmReviewer  # noqa: E402
-from evoagent.llm import JsonChatClient  # noqa: E402
+from evoagent.evaluation.experiments import AccuracyExperimentSuite  # noqa: E402
+from evoagent.evaluation.harness import load_jsonl  # noqa: E402
+from evoagent.evaluation.v2 import ProductArmReviewer  # noqa: E402
+from evoagent.adapters.llm import JsonChatClient  # noqa: E402
 
 
 def main() -> None:

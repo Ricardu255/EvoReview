@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from ..domain.modes import RunMode
 from ..domain.models import TaskState, TraceEvent
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
 from .policies import ReviewPolicy
 from .review_execution import ReviewExecutionService

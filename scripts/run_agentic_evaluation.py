@@ -9,14 +9,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from evoagent.evaluation_harness import load_jsonl  # noqa: E402
-from evoagent.evaluation_experiments import prepare_controlled_experiment_cases  # noqa: E402
-from evoagent.evaluation_v2 import (  # noqa: E402
+from evoagent.evaluation.harness import load_jsonl  # noqa: E402
+from evoagent.evaluation.experiments import prepare_controlled_experiment_cases  # noqa: E402
+from evoagent.evaluation.v2 import (  # noqa: E402
     FairAblationSuite,
     experiment_reviewer_factories,
 )
-from evoagent.llm import JsonChatClient  # noqa: E402
-from evoagent.skill_evolution import validate_artifact  # noqa: E402
+from evoagent.adapters.llm import JsonChatClient  # noqa: E402
+from evoagent.evaluation.skill_evolution import validate_artifact  # noqa: E402
 
 
 def load_skill_artifact(path, skill_name):

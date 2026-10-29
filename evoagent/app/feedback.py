@@ -1,7 +1,7 @@
 """Failure feedback capture."""
 from typing import Any, Optional
 
-from ..store_contract import StoreProtocol
+from ..ports.stores import StoreProtocol
 
 
 class FeedbackApplicationService:

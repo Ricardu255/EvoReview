@@ -29,7 +29,7 @@ from .agent.reviewers import (
 from .adapters.rollout import ReleaseManager
 from .evaluation.skill_evolution import AgentSkillReplayReviewer, SkillEvolutionEngine, validate_artifact
 from .evaluation.skills import AgentSkill, SkillRegistry
-from .store_contract import StoreProtocol
+from .ports.stores import StoreProtocol
 from .adapters.task_queue import TaskQueue
 from .adapters.verifier import RepairVerifier
 

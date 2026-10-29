@@ -13,7 +13,7 @@ from .adapters.stores.sqlite.schema import SqliteSchemaMixin
 from .adapters.stores.sqlite.skills import SqliteSkillStoreMixin
 from .adapters.stores.sqlite.tasks import SqliteTaskStoreMixin
 from .prompt_store import PromptStoreMixin
-from .store_contract import StoreProtocol
+from .ports.stores import StoreProtocol
 from .time_utils import utc_now
 from .webhook_store import WebhookStoreMixin
 
