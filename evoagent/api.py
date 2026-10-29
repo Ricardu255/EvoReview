@@ -47,6 +47,12 @@ def body_optional(path: str) -> bool:
     )
 
 
+def text_field(payload: Dict[str, Any], name: str) -> str:
+    """Read an optional string field, treating JSON null as absent."""
+    value = payload.get(name)
+    return "" if value is None else str(value)
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     service: ReviewService
     settings: Settings
@@ -438,7 +444,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 pr = payload.get("pull_request")
                 if pr is not None and not isinstance(pr, int):
                     raise ValueError("pull_request must be an integer")
-                args = (str(payload.get("repository", "")), str(payload.get("diff", "")), pr)
+                args = (
+                    text_field(payload, "repository"),
+                    text_field(payload, "diff"),
+                    pr,
+                )
                 enabled_agents = payload.get("enabled_agents")
                 if enabled_agents is not None and (
                     not isinstance(enabled_agents, list)
@@ -453,8 +463,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     raise ValueError("enabled_skills must be an array of Agent Skill names")
                 options = {
                     "tenant_id": principal.tenant_id,
-                    "mode": str(payload.get("mode", "")),
-                    "repository_root": str(payload.get("repository_root", "")),
+                    "mode": text_field(payload, "mode"),
+                    "repository_root": text_field(payload, "repository_root"),
                     "enabled_agents": enabled_agents,
                     "enabled_skills": enabled_skills,
                 }
@@ -467,9 +477,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     ))
                 self.service.store.audit(
                     principal.tenant_id, principal.username, "review.create",
-                    str(payload.get("repository", "")), {
+                    text_field(payload, "repository"), {
                         "async": query.get("async", ["false"])[0],
-                        "mode": str(payload.get("mode", "")),
+                        "mode": text_field(payload, "mode"),
                     },
                 )
                 return
