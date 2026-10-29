@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 from evoagent.bootstrap import ServiceContainer, build_container
@@ -26,6 +27,27 @@ class BootstrapTests(unittest.TestCase):
 
     def tearDown(self):
         os.unlink(self.path)
+
+    def test_refuses_shipped_default_credentials(self):
+        settings = replace(
+            make_settings(self.path), auth_required=True,
+            auth_secret="local-only-change-this-secret-123456",
+        )
+        with self.assertRaisesRegex(ValueError, "shipped default"):
+            settings.validate_evolution()
+
+        settings = replace(
+            make_settings(self.path), auth_required=True,
+            auth_secret="x" * 32, bootstrap_admin_username="admin",
+            bootstrap_admin_password="evoagent-local-admin",
+        )
+        with self.assertRaisesRegex(ValueError, "shipped default"):
+            settings.validate_evolution()
+
+    def test_refuses_non_loopback_binding_without_auth(self):
+        settings = replace(make_settings(self.path), host="0.0.0.0")
+        with self.assertRaisesRegex(ValueError, "not loopback"):
+            settings.validate_evolution()
 
     def test_build_container_constructs_one_of_each_dependency(self):
         container = build_container(self.settings)

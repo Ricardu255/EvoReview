@@ -14,7 +14,7 @@
 - webhook HMAC-SHA256 签名校验，以及可选的 GitHub PR 评论回写
 - Web 管理台、任务 Dashboard 与 Prometheus 指标
 - 普通任务采用固定单轮多 Agent 协作（Lead 2 次、双 Worker 各 1 次、Critic 1 次，共 5 次 LLM 调用）；高风险任务最多允许一轮 Worker 返工
-- LLM unified patch、AST/CST、沙箱前后测试对比与仅 Draft PR 的修复闭环
+- LLM unified patch、AST/CST、隔离副本前后测试对比与仅 Draft PR 的修复闭环
 - PostgreSQL、Redis 生产模式
 - 失败案例回流、提示词评测、版本激活与回滚
 - 自研 Agent Runtime、持久化 checkpoint、执行预算与任务断点续跑
@@ -23,7 +23,7 @@
 - Redis Streams ACK、Worker 租约、指数退避重试和死信队列
 - Webhook delivery 幂等、重放时间窗与评论 upsert
 - 用户登录、RBAC、租户/仓库隔离和不可变管理审计
-- 动态 Skill manifest 校验、签名校验和隔离进程沙箱
+- 动态 Skill manifest 校验与工具白名单（Skill 在进程内运行，不提供签名校验或进程级沙箱）
 - 自动修复后的编译/测试门禁、灰度发布与影子流量
 - OpenTelemetry Trace、Prometheus 指标和持久化告警
 

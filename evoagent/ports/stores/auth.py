@@ -18,6 +18,9 @@ class AuthStorePort(Protocol):
     ) -> None:
         ...
 
+    def has_repository_grants(self, tenant_id: str) -> bool:
+        ...
+
     def repository_allowed(
         self, tenant_id: str, repository: str, require_auto_fix: bool = False,
     ) -> bool:

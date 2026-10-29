@@ -5,6 +5,10 @@ import sqlite3
 class SqliteSchemaMixin:
     def _init(self) -> None:
         with self._connect() as conn:
+            if self.path != ":memory:":
+                # WAL improves concurrent reader/writer throughput; the mode
+                # persists in the database file.
+                conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("BEGIN IMMEDIATE")
             self._migrate_prompt_tables(conn)
             conn.execute(
@@ -286,6 +290,22 @@ class SqliteSchemaMixin:
                 )"""
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_tenant_created ON tasks(tenant_id, created_at)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_trace_events_task "
+                "ON trace_events(task_id, id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_failure_cases_resolved "
+                "ON failure_cases(resolved, created_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_agent_messages_task "
+                "ON agent_messages(task_id, id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_log_tenant "
+                "ON audit_log(tenant_id, id)"
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_memories_lookup "
                 "ON agent_memories(tenant_id, repository, scope, created_at)"

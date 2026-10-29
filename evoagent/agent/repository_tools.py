@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -273,36 +274,118 @@ class RepositoryToolSuite:
             })
         return _evidence("git_context", {"available": True, "path": path, "results": outputs})
 
+    @staticmethod
+    def _restricted_env() -> Dict[str, str]:
+        return {
+            key: value for key, value in os.environ.items()
+            if key in {"PATH", "SYSTEMROOT", "WINDIR", "LANG", "LC_ALL", "TMP", "TEMP"}
+        }
+
+    @staticmethod
+    def _tool_version(command: str) -> Optional[int]:
+        try:
+            result = subprocess.run(
+                [command, "--version"], capture_output=True, text=True,
+                timeout=20, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        match = re.search(r"v?(\d+)\.", result.stdout + result.stderr)
+        return int(match.group(1)) if match else None
+
     def run_scanners(self) -> dict:
-        """Run installed, fixed-command analyzers. User input never becomes a command."""
+        """Run installed, fixed-command analyzers. User input never becomes a command.
+
+        Project-local analyzer configuration is treated as untrusted code:
+        ESLint runs without repository config/plugins, mypy without plugins,
+        Bandit without a repository ini, and Semgrep only with an explicitly
+        trusted rules path (``EVOAGENT_SEMGREP_CONFIG``) instead of the
+        network-fetched ``--config auto`` registry.
+        """
         if not self.root:
             return _evidence("run_scanners", {"available": False, "runs": []})
-        specs = [
-            ("semgrep", ["semgrep", "scan", "--config", "auto", "--json", "--quiet", "."]),
-            ("bandit", ["bandit", "-r", ".", "-f", "json", "-q"]),
-            ("eslint", ["eslint", ".", "--format", "json"]),
-            ("mypy", ["mypy", ".", "--no-error-summary"]),
-            ("pyright", ["pyright", "--outputjson"]),
-        ]
+        env = self._restricted_env()
         runs = []
-        for name, command in specs:
-            if not shutil.which(command[0]):
-                runs.append({"name": name, "available": False})
-                continue
-            try:
-                result = subprocess.run(
-                    command, cwd=self.root, capture_output=True, text=True,
-                    timeout=90, check=False,
-                    env={key: value for key, value in os.environ.items() if key in {
-                        "PATH", "SYSTEMROOT", "WINDIR", "LANG", "LC_ALL", "TMP", "TEMP"
-                    }},
-                )
+        commands = {}
+        with tempfile.TemporaryDirectory(prefix="evoagent-scanners-") as temp:
+            semgrep = shutil.which("semgrep")
+            rules = os.getenv("EVOAGENT_SEMGREP_CONFIG", "").strip()
+            if not semgrep:
+                runs.append({"name": "semgrep", "available": False})
+            elif not rules:
                 runs.append({
-                    "name": name, "available": True, "returncode": result.returncode,
-                    "output": (result.stdout + result.stderr)[-50_000:],
+                    "name": "semgrep", "available": False,
+                    "reason": "set EVOAGENT_SEMGREP_CONFIG to a trusted local rules path",
                 })
-            except subprocess.TimeoutExpired:
-                runs.append({"name": name, "available": True, "timed_out": True})
+            else:
+                commands["semgrep"] = [
+                    semgrep, "scan", "--config", rules, "--json", "--quiet", ".",
+                ]
+
+            bandit = shutil.which("bandit")
+            if not bandit:
+                runs.append({"name": "bandit", "available": False})
+            else:
+                ini = os.path.join(temp, "bandit.ini")
+                with open(ini, "w", encoding="utf-8") as handle:
+                    handle.write("[bandit]\n")
+                commands["bandit"] = [
+                    bandit, "-r", ".", "-f", "json", "-q", "--ini", ini,
+                ]
+
+            eslint = shutil.which("eslint")
+            if not eslint:
+                runs.append({"name": "eslint", "available": False})
+            else:
+                major = self._tool_version(eslint)
+                if major is not None and major >= 9:
+                    config_flag = "--no-config-lookup"
+                elif major == 8:
+                    config_flag = "--no-eslintrc"
+                else:
+                    config_flag = ""
+                if not config_flag:
+                    runs.append({
+                        "name": "eslint", "available": False,
+                        "reason": "unsupported or undetected ESLint version",
+                    })
+                else:
+                    commands["eslint"] = [
+                        eslint, ".", config_flag, "--format", "json",
+                    ]
+
+            mypy = shutil.which("mypy")
+            if not mypy:
+                runs.append({"name": "mypy", "available": False})
+            else:
+                config = os.path.join(temp, "mypy.ini")
+                with open(config, "w", encoding="utf-8") as handle:
+                    handle.write("[mypy]\n")
+                commands["mypy"] = [
+                    mypy, "--config-file", config,
+                    "--cache-dir", os.path.join(temp, "mypy-cache"),
+                    ".", "--no-error-summary",
+                ]
+
+            pyright = shutil.which("pyright")
+            if not pyright:
+                runs.append({"name": "pyright", "available": False})
+            else:
+                commands["pyright"] = [pyright, "--outputjson"]
+
+            for name, command in commands.items():
+                try:
+                    result = subprocess.run(
+                        command, cwd=self.root, capture_output=True, text=True,
+                        timeout=90, check=False, env=env,
+                    )
+                    runs.append({
+                        "name": name, "available": True,
+                        "returncode": result.returncode,
+                        "output": (result.stdout + result.stderr)[-50_000:],
+                    })
+                except subprocess.TimeoutExpired:
+                    runs.append({"name": name, "available": True, "timed_out": True})
         return _evidence("run_scanners", {"available": True, "runs": runs})
 
     def run_repository_checks(self, kind: str = "compile") -> dict:
@@ -328,10 +411,7 @@ class RepositoryToolSuite:
                 if kind == "compile" else
                 shlex.split(self.test_command, posix=os.name != "nt")
             )
-            env = {
-                key: value for key, value in os.environ.items()
-                if key in {"PATH", "SYSTEMROOT", "WINDIR", "LANG", "LC_ALL", "TMP", "TEMP"}
-            }
+            env = self._restricted_env()
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             try:
                 result = subprocess.run(

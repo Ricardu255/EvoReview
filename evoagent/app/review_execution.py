@@ -1,6 +1,7 @@
 """Execute reviews, shadow candidates and queued deliveries."""
 import hashlib
 import json
+import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -11,6 +12,9 @@ from ..domain.report import to_markdown
 from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
 from .policies import ReviewPolicy
+
+
+logger = logging.getLogger("evoagent")
 
 
 def mark_dead_letter(store, metrics, payload: Dict[str, Any], error: str) -> None:
@@ -189,7 +193,16 @@ class ReviewExecutionService:
             self.metrics.inc("reviews_total")
             lane = (task.get("input") or {}).get("release_lane", "stable")
             self.releases.observe(tenant_id, "llm-review", False, lane)
-            if payload.get("github_issue_url") and self.settings.auto_post_review:
+        except Exception:
+            self.metrics.inc("reviews_failed_total")
+            lane = (task.get("input") or {}).get("release_lane", "stable")
+            self.releases.observe(tenant_id, "llm-review", True, lane)
+            self.alerts.evaluate(tenant_id)
+            raise
+        # Comment delivery is a separate side effect: a GitHub outage must not
+        # fail (and re-run) an otherwise successful review.
+        if payload.get("github_issue_url") and self.settings.auto_post_review:
+            try:
                 client = self.github_client_for_installation(
                     payload.get("installation_id")
                 )
@@ -197,12 +210,11 @@ class ReviewExecutionService:
                     payload["github_issue_url"], to_markdown(report.to_dict()),
                     "<!-- evoagent-review:%s -->" % task_id,
                 )
-        except Exception:
-            self.metrics.inc("reviews_failed_total")
-            lane = (task.get("input") or {}).get("release_lane", "stable")
-            self.releases.observe(tenant_id, "llm-review", True, lane)
-            self.alerts.evaluate(tenant_id)
-            raise
+            except Exception:
+                logger.exception(
+                    "failed to deliver review comment for task %s", task_id
+                )
+                self.metrics.inc("comment_delivery_failed_total")
 
     def on_dead_letter(self, payload: Dict[str, Any], error: str) -> None:
         mark_dead_letter(self.store, self.metrics, payload, error)

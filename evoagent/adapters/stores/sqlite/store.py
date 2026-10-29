@@ -35,6 +35,10 @@ class TaskStore(
     def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.path, timeout=10)
         conn.row_factory = sqlite3.Row
+        # SQLite disables foreign keys per connection by default; the schema
+        # relies on them to keep child rows tied to existing tasks/users.
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=10000")
         try:
             with conn:
                 yield conn

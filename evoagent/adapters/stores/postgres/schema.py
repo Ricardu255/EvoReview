@@ -117,6 +117,16 @@ class PostgresSchemaMixin:
                 task_id TEXT NOT NULL, lane TEXT NOT NULL, primary_json JSONB NOT NULL,
                 candidate_json JSONB, disagreement DOUBLE PRECISION NOT NULL,
                 candidate_failed BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL)""",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_tenant_created ON tasks(tenant_id,created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_trace_events_task ON trace_events(task_id,id)",
+            "CREATE INDEX IF NOT EXISTS idx_failure_cases_task ON failure_cases(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_failure_cases_resolved ON failure_cases(resolved,created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_tenant ON webhook_deliveries(tenant_id,received_at)",
+            "CREATE INDEX IF NOT EXISTS idx_agent_messages_task ON agent_messages(task_id,id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id,id)",
+            "CREATE INDEX IF NOT EXISTS idx_release_observations_tenant ON release_observations(tenant_id,skill_name,created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_alerts_tenant ON alerts(tenant_id,status,created_at)",
         ]
         with self._connect() as conn:
             with conn.cursor() as cur:

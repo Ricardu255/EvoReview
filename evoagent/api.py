@@ -1,5 +1,7 @@
 import hashlib
+import hmac
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -30,6 +32,7 @@ SKILL_ARTIFACT_ACTIVATE = re.compile(
     r"^/v1/skill-evolution/([a-z0-9_-]+)/versions/(\d+)/activate$"
 )
 WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
+logger = logging.getLogger("evoagent")
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -64,6 +67,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         except PermissionError as exc:
             self._send_json(401, {"error": str(exc)})
             return None
+
+    def _client_key(self) -> str:
+        """Best-effort client identity for login throttling."""
+        try:
+            return str(self.client_address[0])
+        except (IndexError, TypeError, AttributeError):
+            return "unknown"
 
     def _send_json(self, status: int, value: Dict[str, Any]) -> None:
         body = json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
@@ -112,7 +122,30 @@ class ApiHandler(BaseHTTPRequestHandler):
             raise ValueError("JSON root must be an object")
         return value
 
+    @staticmethod
+    def _query_int(query: Dict[str, list], name: str, default: int) -> int:
+        raw = query.get(name, [str(default)])[0]
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError("%s must be an integer" % name)
+        if value <= 0:
+            raise ValueError("%s must be positive" % name)
+        return value
+
     def do_GET(self) -> None:
+        try:
+            self._handle_get()
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+        except PermissionError as exc:
+            self._send_json(401, {"error": str(exc)})
+        except Exception:
+            metrics.inc("http_errors_total")
+            logger.exception("unhandled GET failure for %s", self.path)
+            self._send_json(500, {"error": "operation failed"})
+
+    def _handle_get(self) -> None:
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
@@ -140,6 +173,67 @@ class ApiHandler(BaseHTTPRequestHandler):
                                   "run_mode": mode.to_dict(),
                                   "taxonomy": public_taxonomy()})
             return
+        if path == "/github/install":
+            if not self.settings.github_app_slug:
+                self._send_json(503, {"error": "EVOAGENT_GITHUB_APP_SLUG is not configured"})
+                return
+            location = "https://github.com/apps/%s/installations/new" % self.settings.github_app_slug
+            if self.settings.github_setup_state:
+                location += "?" + urllib.parse.urlencode(
+                    {"state": self.settings.github_setup_state}
+                )
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.end_headers()
+            return
+        if path == "/github/setup":
+            # GitHub redirects the browser here without a Bearer token, so the
+            # configured state nonce authorizes the callback.  An authenticated
+            # administrator may instead bind the installation to their tenant.
+            expected_state = self.settings.github_setup_state
+            if not expected_state:
+                self._send_json(503, {
+                    "error": "GitHub setup is disabled; configure EVOAGENT_GITHUB_SETUP_STATE"
+                })
+                return
+            if not hmac.compare_digest(
+                expected_state, query.get("state", [""])[0]
+            ):
+                self._send_json(403, {"error": "invalid setup state"})
+                return
+            try:
+                installation_id = int(query.get("installation_id", [""])[0])
+            except ValueError:
+                self._send_json(400, {"error": "missing installation_id"})
+                return
+            tenant_id = self.settings.default_tenant_id
+            authorization = self.headers.get("Authorization", "")
+            if self.settings.auth_required and authorization:
+                try:
+                    setup_principal = self.service.auth.authenticate(authorization)
+                    self.service.auth.require(setup_principal, ("manage",))
+                except PermissionError as exc:
+                    self._send_json(403, {"error": str(exc)})
+                    return
+                tenant_id = setup_principal.tenant_id
+            existing = self.service.store.installation_tenant(installation_id)
+            if existing and existing != tenant_id:
+                self._send_json(
+                    409, {"error": "installation is already bound to another tenant"}
+                )
+                return
+            account = query.get("account", ["github-app"])[0]
+            self.service.store.save_installation(
+                installation_id, account, tenant_id,
+            )
+            self.service.store.audit(
+                tenant_id, "github-setup", "installation.bind",
+                str(installation_id), {"account": account},
+            )
+            self.send_response(302)
+            self.send_header("Location", "/#github")
+            self.end_headers()
+            return
         principal = self._authenticate_or_send("read")
         if principal is None:
             return
@@ -164,7 +258,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/tasks":
             self._send_json(200, {"tasks": self.service.store.list_tasks(
-                int(query.get("limit", [50])[0]), principal.tenant_id)})
+                self._query_int(query, "limit", 50), principal.tenant_id)})
             return
         if path == "/api/skills":
             self._send_json(200, {
@@ -189,7 +283,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "permission denied"})
                 return
             self._send_json(200, {"events": self.service.store.list_audit(
-                principal.tenant_id, int(query.get("limit", [100])[0])
+                principal.tenant_id, self._query_int(query, "limit", 100)
             )})
             return
         if path == "/api/alerts":
@@ -205,7 +299,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "permission denied"})
                 return
             self._send_json(200, {"messages": self.service.queue.dead_letters(
-                int(query.get("limit", [100])[0]), principal.tenant_id
+                self._query_int(query, "limit", 100), principal.tenant_id
             )})
             return
         if path == "/v1/evaluation/cases":
@@ -219,7 +313,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/v1/evolution/runs":
             self._send_json(200, {
-                "runs": self.service.store.list_evolution_runs(int(query.get("limit", [50])[0]), principal.tenant_id)
+                "runs": self.service.store.list_evolution_runs(
+                    self._query_int(query, "limit", 50), principal.tenant_id
+                )
             })
             return
         if path == "/v1/evolution/status":
@@ -242,7 +338,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(403, {"error": "permission denied"})
                 return
             self._send_json(200, {"runs": self.service.store.list_skill_evolution_runs(
-                int(query.get("limit", [50])[0]), principal.tenant_id
+                self._query_int(query, "limit", 50), principal.tenant_id
             )})
             return
         match = SKILL_ARTIFACT_VERSIONS.match(path)
@@ -253,25 +349,6 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"versions": self.service.store.list_skill_artifact_versions(
                 match.group(1), principal.tenant_id
             )})
-            return
-        if path == "/github/install":
-            if not self.settings.github_app_slug:
-                self._send_json(503, {"error": "EVOAGENT_GITHUB_APP_SLUG is not configured"})
-                return
-            self.send_response(302)
-            self.send_header("Location", "https://github.com/apps/%s/installations/new" % self.settings.github_app_slug)
-            self.end_headers()
-            return
-        if path == "/github/setup":
-            try:
-                installation_id = int(query.get("installation_id", [""])[0])
-            except ValueError:
-                self._send_json(400, {"error": "missing installation_id"})
-                return
-            self.service.store.save_installation(installation_id, query.get("account", ["github-app"])[0])
-            self.send_response(302)
-            self.send_header("Location", "/#github")
-            self.end_headers()
             return
         report_match = REPORT.match(path)
         task_match = TASK.match(path)
@@ -319,6 +396,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     result = self.service.auth.login(
                         str(payload.get("username", "")), str(payload.get("password", "")),
                         str(payload.get("tenant_id", "")),
+                        client_key=self._client_key(),
                     )
                 except PermissionError as exc:
                     self._send_json(401, {"error": str(exc)})
@@ -565,15 +643,17 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
         except PermissionError as exc:
             self._send_json(403, {"error": str(exc)})
-        except Exception as exc:
+        except Exception:
             metrics.inc("http_errors_total")
-            self._send_json(500, {"error": "operation failed", "detail": str(exc)})
+            logger.exception("unhandled POST failure for %s", self.path)
+            self._send_json(500, {"error": "operation failed"})
 
 
 def run() -> None:
     settings = Settings.from_env()
     service = ReviewService(settings)
     handler = type("ConfiguredApiHandler", (ApiHandler,), {"service": service, "settings": settings})
+    handler.timeout = 30  # bound slow client reads
     server = ThreadingHTTPServer((settings.host, settings.port), handler)
     print("EvoReview dashboard: http://%s:%d" % (settings.host, settings.port))
     print("Persistence: %s | Queue: %s | Orchestrator: %s" % (

@@ -25,10 +25,17 @@ def verify_signature(secret: str, body: bytes, signature: str) -> bool:
 
 
 class GitHubClient:
-    def __init__(self, token: str, timeout: int = 30, max_attempts: int = 4):
+    # Guard against unexpectedly large downloads (repository archives, diffs).
+    MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+
+    def __init__(
+        self, token: str, timeout: int = 30, max_attempts: int = 4,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
+    ):
         self.token = token
         self.timeout = timeout
         self.max_attempts = max_attempts
+        self.max_response_bytes = max(1, int(max_response_bytes))
 
     def _headers(self, accept: str = "application/vnd.github+json") -> Dict[str, str]:
         headers = {"Accept": accept, "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28"}
@@ -80,7 +87,22 @@ class GitHubClient:
             )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body = response.read()
+                    declared = response.headers.get("Content-Length")
+                    try:
+                        too_large = bool(declared) and int(declared) > self.max_response_bytes
+                    except (TypeError, ValueError):
+                        too_large = False
+                    if too_large:
+                        raise RuntimeError(
+                            "GitHub API response exceeds the %d byte limit"
+                            % self.max_response_bytes
+                        )
+                    body = response.read(self.max_response_bytes + 1)
+                    if len(body) > self.max_response_bytes:
+                        raise RuntimeError(
+                            "GitHub API response exceeds the %d byte limit"
+                            % self.max_response_bytes
+                        )
                     if raw:
                         return body
                     return json.loads(body.decode("utf-8")) if body else {}

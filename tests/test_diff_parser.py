@@ -22,6 +22,35 @@ class DiffParserTests(unittest.TestCase):
         self.assertEqual(["app.py"], parsed.files)
         self.assertEqual([(3, "new = 2"), (4, "eval(user_input)")], [(x.line, x.content) for x in parsed.added_lines])
 
+    def test_added_line_starting_with_plus_plus_is_not_a_file_header(self):
+        diff = """--- a/tool.sh
++++ b/tool.sh
+@@ -1,2 +1,4 @@
+ line1
++echo hello
++++ --flag value
++echo done
+ tail
+"""
+        parsed = parse_unified_diff(diff)
+        self.assertEqual(["tool.sh"], parsed.files)
+        self.assertEqual(
+            [(2, "echo hello"), (3, "++ --flag value"), (4, "echo done")],
+            [(x.line, x.content) for x in parsed.added_lines],
+        )
+
+    def test_deleted_line_starting_with_minus_minus_is_not_a_file_header(self):
+        diff = """--- a/tool.sh
++++ b/tool.sh
+@@ -1,3 +1,2 @@
+ line1
+--- --flag value
+ tail
+"""
+        parsed = parse_unified_diff(diff)
+        self.assertEqual(["tool.sh"], parsed.files)
+        self.assertEqual([], parsed.added_lines)
+
 
 if __name__ == "__main__":
     unittest.main()

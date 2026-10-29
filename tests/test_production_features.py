@@ -39,6 +39,82 @@ class ProductionFeatureTests(unittest.TestCase):
         self.assertIsNone(self.store.get("b", principal.tenant_id))
         self.assertEqual(["a"], [item["id"] for item in self.store.list_tasks(10, "tenant-a")])
 
+    def test_login_is_throttled_after_repeated_failures(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="alice",
+            bootstrap_password="correct-horse", default_tenant_id="tenant-a",
+            login_max_failures=3, login_window_seconds=300,
+        )
+        for _ in range(3):
+            with self.assertRaises(PermissionError):
+                auth.login("alice", "wrong-password", client_key="1.2.3.4")
+        with self.assertRaisesRegex(PermissionError, "too many"):
+            auth.login("alice", "correct-horse", client_key="1.2.3.4")
+        # A different client is not affected by another client's failures.
+        self.assertIn(
+            "access_token",
+            auth.login("alice", "correct-horse", client_key="5.6.7.8"),
+        )
+
+    def test_login_throttles_username_spraying_per_client(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="alice",
+            bootstrap_password="correct-horse", default_tenant_id="tenant-a",
+            login_max_failures=1, login_window_seconds=300,
+        )
+        for index in range(5):
+            with self.assertRaises(PermissionError):
+                auth.login("spray-%d" % index, "wrong-password", client_key="1.2.3.4")
+        with self.assertRaisesRegex(PermissionError, "too many"):
+            auth.login("alice", "correct-horse", client_key="1.2.3.4")
+        self.assertIn(
+            "access_token",
+            auth.login("alice", "correct-horse", client_key="5.6.7.8"),
+        )
+
+    def test_archive_limits_reject_oversized_bundles(self):
+        import io
+        import zipfile
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            for name in ("a.py", "b.py", "c.py"):
+                bundle.writestr("repo/" + name, "x = 1\n")
+        verifier = RepairVerifier()
+        verifier.MAX_ARCHIVE_MEMBERS = 2
+        with self.assertRaisesRegex(ValueError, "too many"):
+            verifier.verify_archive(buffer.getvalue(), {})
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr("repo/a.py", "x" * 1000)
+        verifier = RepairVerifier()
+        verifier.MAX_MEMBER_BYTES = 100
+        with self.assertRaisesRegex(ValueError, "oversized"):
+            verifier.verify_archive(buffer.getvalue(), {})
+
+        verifier = RepairVerifier()
+        verifier.MAX_ARCHIVE_BYTES = 10
+        with self.assertRaisesRegex(ValueError, "size limit"):
+            verifier.verify_archive(b"x" * 11, {})
+
+    def test_authenticate_rechecks_active_user_and_membership(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="alice",
+            bootstrap_password="correct-horse", default_tenant_id="tenant-a",
+        )
+        token = auth.login("alice", "correct-horse")["access_token"]
+        with self.store._write() as conn:
+            conn.execute("UPDATE users SET active=0 WHERE username='alice'")
+        with self.assertRaises(PermissionError):
+            auth.authenticate("Bearer " + token)
+
+        with self.store._write() as conn:
+            conn.execute("UPDATE users SET active=1 WHERE username='alice'")
+            conn.execute("DELETE FROM memberships WHERE tenant_id='tenant-a'")
+        with self.assertRaises(PermissionError):
+            auth.authenticate("Bearer " + token)
+
     def test_webhook_delivery_is_idempotent_and_payload_bound(self):
         self.assertTrue(self.store.claim_webhook("delivery-1", "t", "pull_request", "aaa"))
         self.assertFalse(self.store.claim_webhook("delivery-1", "t", "pull_request", "aaa"))

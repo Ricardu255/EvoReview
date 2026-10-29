@@ -12,6 +12,13 @@ from typing import Dict
 
 
 class RepairVerifier:
+    # Repository archives are untrusted input; bound both the compressed
+    # payload and the expanded tree before extracting anything.
+    MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+    MAX_ARCHIVE_MEMBERS = 20000
+    MAX_MEMBER_BYTES = 64 * 1024 * 1024
+    MAX_TOTAL_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+
     def __init__(self, test_command: str = "", timeout_seconds: int = 120):
         self.test_command = test_command
         self.timeout_seconds = timeout_seconds
@@ -74,15 +81,31 @@ class RepairVerifier:
 
     def verify_archive(self, archive: bytes, files: Dict[str, str]) -> dict:
         """Verify changed files inside an isolated copy of the complete repository."""
+        if len(archive) > self.MAX_ARCHIVE_BYTES:
+            raise ValueError("repository archive exceeds the size limit")
         with tempfile.TemporaryDirectory(prefix="evoagent-repair-") as root:
             with zipfile.ZipFile(BytesIO(archive)) as bundle:
-                for member in bundle.infolist():
+                members = bundle.infolist()
+                if len(members) > self.MAX_ARCHIVE_MEMBERS:
+                    raise ValueError("repository archive contains too many files")
+                total = 0
+                for member in members:
+                    if member.file_size > self.MAX_MEMBER_BYTES:
+                        raise ValueError(
+                            "repository archive contains an oversized file"
+                        )
+                    total += member.file_size
+                    if total > self.MAX_TOTAL_UNCOMPRESSED_BYTES:
+                        raise ValueError(
+                            "repository archive expands beyond the size limit"
+                        )
                     normalized = os.path.normpath(member.filename).replace("\\", "/")
                     if normalized.startswith("../") or normalized.startswith("/"):
                         raise ValueError("repository archive contains an unsafe path")
                     target = os.path.abspath(os.path.join(root, normalized))
                     if not target.startswith(os.path.abspath(root) + os.sep):
                         raise ValueError("repository archive escapes the sandbox")
+                for member in members:
                     bundle.extract(member, root)
             entries = [item for item in os.scandir(root) if item.is_dir()]
             worktree = entries[0].path if len(entries) == 1 else root

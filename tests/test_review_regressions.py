@@ -14,6 +14,7 @@ from evoagent.api import ApiHandler
 from evoagent.adapters.auth import Principal
 from evoagent.config import Settings
 from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.domain.models import TaskState, TraceEvent
 from evoagent.errors import PermanentTaskError
 from evoagent.agent.repository_tools import RepositoryToolSuite
 from evoagent.agent.runtime import RuntimeCancelled
@@ -185,6 +186,20 @@ class ReviewRegressionTests(unittest.TestCase):
         return {"action": "opened", "number": 12, "repository": {"full_name": "org/a"},
                 "pull_request": {"diff_url": "https://github.com/org/a/pull/12.diff"}}
 
+    def test_webhook_rejects_unbound_installation(self):
+        payload = dict(self.webhook(), installation={"id": 99})
+        with self.assertRaisesRegex(PermissionError, "not bound"):
+            self.service.handle_github_pull_request(payload, "unbound", "digest")
+        self.assertEqual([], self.service.store.list_tasks())
+
+        self.service.store.save_installation(99, "account", "tenant-a")
+        with patch.object(self.service.queue, "submit"):
+            result = self.service.handle_github_pull_request(
+                payload, "bound", "digest",
+            )
+        task = self.service.store.get(result["task_id"], "tenant-a")
+        self.assertEqual("tenant-a", task["tenant_id"])
+
     def test_webhook_queue_failure_retries_same_task(self):
         service = self.service
         with patch.object(service.queue, "submit", side_effect=[RuntimeError("offline"), "queued"]) as submit:
@@ -309,6 +324,71 @@ class ReviewRegressionTests(unittest.TestCase):
         self.assertEqual(["org/a"], [github.repository])
         self.assertEqual(1, len(github.comments))
         self.assertIn("<!-- evoagent-review:%s -->" % task_id, github.comments[0][2])
+
+    def test_comment_delivery_failure_does_not_fail_completed_review(self):
+        service = self.service
+
+        class FailingCommentClient:
+            def ensure_repository_access(self, repository):
+                pass
+
+            def fetch_diff(self, url):
+                return DIFF
+
+            def upsert_comment(self, issue_url, body, marker):
+                raise RuntimeError("github unavailable")
+
+        task_id = service._create_deferred_task(
+            "org/a", 1, "github-webhook", "tenant-a",
+            {"diff_url": "https://github.com/org/a/pull/1.diff"},
+        )
+        payload = {
+            "task_id": task_id, "repository": "org/a", "pull_request": 1,
+            "tenant_id": "tenant-a", "installation_id": 42,
+            "diff_url": "https://github.com/org/a/pull/1.diff",
+            "github_issue_url": "https://github.com/org/a/pull/1",
+        }
+        original_settings = service._reviews_app.execution.settings
+        service._reviews_app.execution.settings = replace(
+            original_settings, auto_post_review=True,
+        )
+        try:
+            with patch.object(
+                service._github_app, "github_client_for_installation",
+                return_value=FailingCommentClient(),
+            ):
+                # A comment outage must not turn a completed review into a
+                # failed (and therefore retried) task.
+                service._process_queued(payload)
+        finally:
+            service._reviews_app.execution.settings = original_settings
+
+        self.assertEqual("SUCCESS", service.store.get(task_id, "tenant-a")["state"])
+
+    def test_resume_payload_keeps_github_delivery_metadata(self):
+        service = self.service
+        with patch.object(service.queue, "submit") as submit:
+            result = service.enqueue_review(
+                "org/a", DIFF, 1, tenant_id="tenant-a",
+                github_issue_url="https://github.com/org/a/pull/1",
+                installation_id=42,
+            )
+        task_id = result["task_id"]
+        task = service.store.get(task_id, "tenant-a")
+        self.assertEqual(42, task["input"]["installation_id"])
+        self.assertEqual(
+            "https://github.com/org/a/pull/1", task["input"]["github_issue_url"]
+        )
+        service.store.fail(
+            task_id, "boom", TraceEvent(1, TaskState.FAILED, "boom", utc_now()),
+        )
+        with patch.object(service.queue, "submit") as submit:
+            self.assertTrue(service.resume_task(task_id, "tenant-a")["resumed"])
+        payload = submit.call_args[0][0]
+        self.assertEqual(42, payload["installation_id"])
+        self.assertEqual(
+            "https://github.com/org/a/pull/1", payload["github_issue_url"]
+        )
 
     def test_canary_executes_pinned_candidate_after_configuration_changes(self):
         stable, candidate = self.configure(canary=100)

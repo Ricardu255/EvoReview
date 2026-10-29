@@ -14,7 +14,7 @@ English | [**简体中文**](docs/README.zh-CN.md)
 - HMAC-SHA256 webhook signature verification and optional GitHub PR comment write-back
 - Web console, task dashboard, and Prometheus metrics
 - Fixed single-round multi-agent collaboration for normal tasks (2 Lead calls, 1 per worker, 1 Critic — 5 LLM calls total); high-risk tasks allow at most one worker rework round
-- Closed-loop auto-fix via LLM unified patch, AST/CST transforms, sandboxed before/after test comparison, and Draft-PR-only delivery
+- Closed-loop auto-fix via LLM unified patch, AST/CST transforms, isolated-copy before/after test comparison, and Draft-PR-only delivery
 - PostgreSQL and Redis for production deployments
 - Failure-case feedback loop, prompt evaluation, and version activation/rollback
 - Self-built agent runtime with persistent checkpoints, execution budgets, and task resume
@@ -23,7 +23,7 @@ English | [**简体中文**](docs/README.zh-CN.md)
 - Redis Streams ACK, worker leases, exponential-backoff retries, and a dead-letter queue
 - Idempotent webhook delivery, replay time window, and comment upsert
 - User login, RBAC, tenant/repository isolation, and an immutable admin audit log
-- Dynamic Skill manifest validation, signature verification, and isolated process sandboxing
+- Dynamic Skill manifest validation and tool allowlists (Skills run in-process; there is no signature check or process-level sandbox)
 - Post-fix compile/test gating, canary rollout, and shadow traffic
 - OpenTelemetry traces, Prometheus metrics, and persistent alerts
 

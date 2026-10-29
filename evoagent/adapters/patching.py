@@ -1,4 +1,4 @@
-"""LLM unified-patch generation with structural and sandbox verification."""
+"""LLM unified-patch generation with structural and isolated-copy verification."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -196,7 +196,7 @@ class VerifiedPatchFixer:
                     "after": patched, "comparison": comparison,
                 },
                 "execution": ledger.summary(),
-                "note": "Patch was blocked by before/after sandbox verification.",
+                "note": "Patch was blocked by before/after isolated-copy verification.",
             }
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         branch = "evoagent/fix-pr-%d-%s" % (pull_request, stamp)

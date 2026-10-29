@@ -71,6 +71,46 @@ class FixesApplicationServiceTests(unittest.TestCase):
             self.service.create_fix(task_id, tenant_id="tenant-a")
         self.assertEqual([], self.fixer.calls)
 
+    def test_create_fix_rejects_cross_tenant_installation(self):
+        task_id = self._completed_task()
+        self.service.store.grant_repository("tenant-a", "org/a", auto_fix=True)
+        self.service.store.save_installation(42, "other-account", "tenant-b")
+
+        with self.assertRaisesRegex(PermissionError, "tenant"):
+            self.service.create_fix(task_id, installation_id=42, tenant_id="tenant-a")
+        self.assertEqual([], self.fixer.calls)
+
+    def test_create_fix_rejects_unbound_installation(self):
+        task_id = self._completed_task()
+        self.service.store.grant_repository("tenant-a", "org/a", auto_fix=True)
+
+        with self.assertRaisesRegex(PermissionError, "not authorized"):
+            self.service.create_fix(task_id, installation_id=99, tenant_id="tenant-a")
+        self.assertEqual([], self.fixer.calls)
+
+    def test_create_fix_uses_task_bound_installation_and_verifies_access(self):
+        class FakeClient:
+            def __init__(self):
+                self.access = []
+
+            def ensure_repository_access(self, repository):
+                self.access.append(repository)
+
+        client = FakeClient()
+        seen = []
+        self.service._fixes_app.github_client_for_installation = (
+            lambda installation_id: seen.append(installation_id) or client
+        )
+        task_id = self._completed_task()
+        self.service.store.grant_repository("tenant-a", "org/a", auto_fix=True)
+        self.service.store.save_installation(7, "account", "tenant-a")
+        self.service.store.update_task_input(task_id, {"installation_id": 7})
+
+        self.service.create_fix(task_id, tenant_id="tenant-a")
+
+        self.assertEqual([7], seen)
+        self.assertEqual(["org/a"], client.access)
+
     def test_create_fix_requires_completed_pr_task(self):
         self.service.store.create("pending", "org/a", 1, {}, "tenant-a")
         with self.assertRaisesRegex(ValueError, "completed task"):

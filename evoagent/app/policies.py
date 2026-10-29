@@ -36,6 +36,10 @@ class ReviewPolicy:
             raise RuntimeError("agentic review requires a configured model")
 
     def authorize_repository(self, tenant_id: str, repository: str) -> None:
+        if self.settings.require_repository_grants and not self.store.has_repository_grants(tenant_id):
+            raise PermissionError(
+                "repository grants are not configured for this tenant"
+            )
         if not self.store.repository_allowed(tenant_id, repository):
             raise PermissionError("repository is not authorized for this tenant")
 

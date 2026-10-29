@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -15,6 +16,13 @@ ROLE_PERMISSIONS = {
     "maintainer": {"read", "review", "fix"},
     "auditor": {"read", "audit"},
 }
+
+# Bound throttle state even when an attacker rotates source addresses and
+# usernames; stale entries are removed first and only then is the oldest key
+# evicted instead of refusing to track new attempts.
+MAX_LOGIN_FAILURE_KEYS = 20_000
+LOGIN_PRUNE_INTERVAL_SECONDS = 60.0
+CLIENT_FAILURE_MULTIPLIER = 5
 
 
 def hash_password(password: str, salt: Optional[bytes] = None) -> str:
@@ -65,11 +73,20 @@ class AuthManager:
         self, store, secret: str, ttl_seconds: int = 3600,
         bootstrap_username: str = "", bootstrap_password: str = "",
         default_tenant_id: str = "default",
+        login_max_failures: int = 10, login_window_seconds: int = 300,
     ):
         self.store = store
         self.secret = secret.encode("utf-8")
         self.ttl_seconds = ttl_seconds
         self.default_tenant_id = default_tenant_id
+        self.login_max_failures = max(1, int(login_max_failures))
+        self.login_window_seconds = max(1, int(login_window_seconds))
+        # Equalize the work done for unknown users so login timing does not
+        # disclose whether a username exists.
+        self._dummy_hash = hash_password(uuid.uuid4().hex)
+        self._login_failures = {}
+        self._login_lock = threading.Lock()
+        self._last_login_prune = 0.0
         if bootstrap_username and bootstrap_password:
             self.store.create_user(
                 str(uuid.uuid5(uuid.NAMESPACE_URL, "evoagent:" + bootstrap_username)),
@@ -77,10 +94,88 @@ class AuthManager:
                 default_tenant_id, "admin",
             )
 
-    def login(self, username: str, password: str, tenant_id: str = "") -> Dict[str, object]:
-        user = self.store.get_user(username)
-        if not user or not user["active"] or not verify_password(password, user["password_hash"]):
+    def _login_keys(self, username: str, client_key: str):
+        # One key stops password guessing against a single account from one
+        # address; the higher client-wide limit also stops username spraying.
+        return (
+            ((client_key, "user", username), self.login_max_failures),
+            (
+                (client_key, "client"),
+                self.login_max_failures * CLIENT_FAILURE_MULTIPLIER,
+            ),
+        )
+
+    def _prune_login_failures_locked(self, now: float) -> None:
+        if (
+            len(self._login_failures) < MAX_LOGIN_FAILURE_KEYS
+            and now - self._last_login_prune < LOGIN_PRUNE_INTERVAL_SECONDS
+        ):
+            return
+        self._last_login_prune = now
+        cutoff = now - self.login_window_seconds
+        for stale in [
+            key for key, attempts in self._login_failures.items()
+            if not attempts or attempts[-1] < cutoff
+        ]:
+            self._login_failures.pop(stale, None)
+
+    def _login_allowed(self, keys) -> bool:
+        now = time.monotonic()
+        with self._login_lock:
+            self._prune_login_failures_locked(now)
+            for key, limit in keys:
+                recent = [
+                    item for item in self._login_failures.get(key, [])
+                    if now - item < self.login_window_seconds
+                ]
+                if recent:
+                    self._login_failures[key] = recent
+                else:
+                    self._login_failures.pop(key, None)
+                if len(recent) >= limit:
+                    return False
+            return True
+
+    def _record_login_failures(self, keys) -> None:
+        now = time.monotonic()
+        with self._login_lock:
+            self._prune_login_failures_locked(now)
+            for key, limit in keys:
+                if key not in self._login_failures:
+                    while len(self._login_failures) >= MAX_LOGIN_FAILURE_KEYS:
+                        oldest = next(iter(self._login_failures), None)
+                        if oldest is None:
+                            break
+                        self._login_failures.pop(oldest, None)
+                attempts = self._login_failures.setdefault(key, [])
+                attempts.append(now)
+                if len(attempts) > limit:
+                    del attempts[:-limit]
+
+    def _clear_login_failures(self, key) -> None:
+        with self._login_lock:
+            self._login_failures.pop(key, None)
+
+    def login(
+        self, username: str, password: str, tenant_id: str = "",
+        client_key: str = "",
+    ) -> Dict[str, object]:
+        username = str(username)[:255]
+        client_key = str(client_key)[:128]
+        keys = self._login_keys(username, client_key)
+        if not self._login_allowed(keys):
+            raise PermissionError("too many failed login attempts; try again later")
+        password = str(password)
+        if len(password) > 1024:
+            self._record_login_failures(keys)
             raise PermissionError("invalid username or password")
+        user = self.store.get_user(username)
+        encoded = user["password_hash"] if user else self._dummy_hash
+        password_ok = verify_password(password, encoded)
+        if not user or not user["active"] or not password_ok:
+            self._record_login_failures(keys)
+            raise PermissionError("invalid username or password")
+        self._clear_login_failures(keys[0][0])
         memberships = {item["tenant_id"]: item["role"] for item in user["memberships"]}
         selected = tenant_id or (next(iter(memberships)) if len(memberships) == 1 else "")
         if not selected or selected not in memberships:
@@ -98,9 +193,22 @@ class AuthManager:
         if not authorization.startswith("Bearer "):
             raise PermissionError("Bearer token is required")
         payload = self._decode(authorization[7:].strip())
+        # A signed token is not enough: users can be disabled or removed from a
+        # tenant, and roles can change, before the token expires.  Re-check the
+        # current account state so revocation does not wait for the TTL.
+        user = self.store.get_user(str(payload.get("username", "")))
+        if not user or not user.get("active"):
+            raise PermissionError("invalid token")
+        memberships = {
+            str(item["tenant_id"]): str(item["role"])
+            for item in user.get("memberships", [])
+        }
+        tenant = str(payload.get("tenant", ""))
+        if memberships.get(tenant) != str(payload.get("role", "")):
+            raise PermissionError("invalid token")
         return Principal(
             str(payload["sub"]), str(payload["username"]),
-            str(payload["tenant"]), str(payload["role"]),
+            tenant, str(payload["role"]),
         )
 
     @staticmethod

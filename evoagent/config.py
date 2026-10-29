@@ -6,6 +6,17 @@ from typing import Dict, Iterable, Optional
 
 _DOTENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Values shipped in docker-compose.yml / examples.  They are fine for an
+# isolated local trial but must never authenticate a real deployment.
+_INSECURE_AUTH_SECRETS = {
+    "local-only-change-this-secret-123456",
+    "dev-secret-change-me",
+}
+_INSECURE_ADMIN_PASSWORDS = {
+    "evoagent-local-admin",
+}
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
 
 def load_dotenv(paths: Optional[Iterable[str]] = None) -> None:
     """Load local dotenv files without overriding real process environment values.
@@ -86,6 +97,8 @@ class Settings:
     github_app_id: str = ""
     github_app_slug: str = ""
     github_private_key_path: str = ""
+    github_setup_state: str = ""
+    allow_unbound_installations: bool = False
     public_base_url: str = "http://127.0.0.1:8080"
     llm_provider: str = "local"
     llm_max_retries: int = 2
@@ -105,6 +118,7 @@ class Settings:
     bootstrap_admin_password: str = ""
     default_tenant_id: str = "default"
     repository_roots_json: str = "{}"
+    require_repository_grants: bool = False
     session_ttl_seconds: int = 3600
     webhook_max_age_seconds: int = 600
     queue_max_attempts: int = 3
@@ -218,6 +232,18 @@ class Settings:
             raise ValueError(
                 "EVOAGENT_AUTH_SECRET must contain at least 32 bytes when authentication is enabled"
             )
+        if self.auth_required and self.auth_secret in _INSECURE_AUTH_SECRETS:
+            raise ValueError(
+                "EVOAGENT_AUTH_SECRET must not use a shipped default value"
+            )
+        if self.auth_required and self.bootstrap_admin_password in _INSECURE_ADMIN_PASSWORDS:
+            raise ValueError(
+                "EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD must not use a shipped default value"
+            )
+        if not self.auth_required and self.host.strip() not in _LOOPBACK_HOSTS:
+            raise ValueError(
+                "EVOAGENT_AUTH_REQUIRED must be enabled when EVOAGENT_HOST is not loopback"
+            )
         if bool(self.bootstrap_admin_username) != bool(self.bootstrap_admin_password):
             raise ValueError("bootstrap admin username and password must be configured together")
         if not 0.0 <= self.alert_failure_rate <= 1.0:
@@ -256,6 +282,10 @@ class Settings:
             github_app_id=os.getenv("EVOAGENT_GITHUB_APP_ID", ""),
             github_app_slug=os.getenv("EVOAGENT_GITHUB_APP_SLUG", ""),
             github_private_key_path=os.getenv("EVOAGENT_GITHUB_PRIVATE_KEY_PATH", ""),
+            github_setup_state=os.getenv("EVOAGENT_GITHUB_SETUP_STATE", ""),
+            allow_unbound_installations=_bool(
+                "EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS", False
+            ),
             public_base_url=os.getenv("EVOAGENT_PUBLIC_BASE_URL", "http://127.0.0.1:8080").rstrip("/"),
             llm_provider=os.getenv("EVOAGENT_LLM_PROVIDER", "local"),
             llm_max_retries=_non_negative_int("EVOAGENT_LLM_MAX_RETRIES", 2),
@@ -279,6 +309,9 @@ class Settings:
             bootstrap_admin_password=os.getenv("EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD", ""),
             default_tenant_id=os.getenv("EVOAGENT_DEFAULT_TENANT_ID", "default"),
             repository_roots_json=os.getenv("EVOAGENT_REPOSITORY_ROOTS_JSON", "{}"),
+            require_repository_grants=_bool(
+                "EVOAGENT_REQUIRE_REPOSITORY_GRANTS", False
+            ),
             session_ttl_seconds=_int("EVOAGENT_SESSION_TTL_SECONDS", 3600),
             webhook_max_age_seconds=_int("EVOAGENT_WEBHOOK_MAX_AGE_SECONDS", 600),
             queue_max_attempts=_int("EVOAGENT_QUEUE_MAX_ATTEMPTS", 3),

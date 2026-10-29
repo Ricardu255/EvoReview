@@ -29,9 +29,29 @@ class FixesApplicationService:
         actual_tenant = task.get("tenant_id") or tenant_id or "default"
         if not self.store.repository_allowed(actual_tenant, task["repository"], True):
             raise PermissionError("automatic repair is not enabled for this repository")
+        task_input = task.get("input") or {}
+        bound_installation = task_input.get("installation_id")
+        resolved_installation = (
+            installation_id if installation_id is not None else bound_installation
+        )
+        if resolved_installation is not None:
+            try:
+                resolved_installation = int(resolved_installation)
+            except (TypeError, ValueError):
+                raise ValueError("installation_id must be an integer")
+            owner = self.store.installation_tenant(resolved_installation)
+            # Unknown installations are not implicitly owned by the default
+            # tenant; an operator must bind them through /github/setup first.
+            if owner != actual_tenant:
+                raise PermissionError(
+                    "GitHub installation is not authorized for this tenant"
+                )
+        client = self.github_client_for_installation(resolved_installation)
+        ensure_access = getattr(client, "ensure_repository_access", None)
+        if callable(ensure_access):
+            ensure_access(task["repository"])
         result = self.fixer.create_fix_commits(
-            self.github_client_for_installation(installation_id),
-            task["repository"], task["pull_request"], task["report"],
+            client, task["repository"], task["pull_request"], task["report"],
         )
         self.metrics.inc("fix_runs_total")
         return result

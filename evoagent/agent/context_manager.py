@@ -14,6 +14,8 @@ import re
 import threading
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from ..domain.diff_parser import parse_unified_diff
+
 
 HUNK_HEADER = re.compile(
     r"^@@\s+-(?P<old>\d+)(?:,(?P<old_count>\d+))?\s+"
@@ -79,11 +81,11 @@ class DiffHunk:
 
     @property
     def added(self) -> int:
-        return sum(line.startswith("+") and not line.startswith("+++") for line in self.lines)
+        return sum(line.startswith("+") for line in self.lines)
 
     @property
     def deleted(self) -> int:
-        return sum(line.startswith("-") and not line.startswith("---") for line in self.lines)
+        return sum(line.startswith("-") for line in self.lines)
 
 
 class ContextManager:
@@ -153,10 +155,10 @@ class ContextManager:
         lowered = diff.lower()
         signals = [name for name, _weight, needles in RISK_SIGNALS if any(n in lowered for n in needles)]
         identifiers = []
-        for line in diff.splitlines():
-            if not line.startswith("+") or line.startswith("+++"):
-                continue
-            identifiers.extend(WORD.findall(line[1:]))
+        # Use the hunk-aware parser: an added line may legitimately start with
+        # ``++ `` and must not be mistaken for a ``+++`` file header.
+        for changed in parse_unified_diff(diff).added_lines:
+            identifiers.extend(WORD.findall(changed.content))
             if len(identifiers) >= 80:
                 break
         values = list(files)[:100] + signals + identifiers[:80]
@@ -398,6 +400,8 @@ class ContextManager:
         header = ""
         lines: List[str] = []
         old_start = new_start = 0
+        old_remaining = new_remaining = 0
+        in_body = False
 
         def flush() -> None:
             if header:
@@ -406,6 +410,21 @@ class ContextManager:
                 ))
 
         for raw in diff.splitlines():
+            if in_body:
+                if raw.startswith("\\ No newline"):
+                    lines.append(raw)
+                    continue
+                lines.append(raw)
+                if raw.startswith("+"):
+                    new_remaining -= 1
+                elif raw.startswith("-"):
+                    old_remaining -= 1
+                else:
+                    old_remaining -= 1
+                    new_remaining -= 1
+                if old_remaining <= 0 and new_remaining <= 0:
+                    in_body = False
+                continue
             if raw.startswith("+++ "):
                 flush()
                 header = ""
@@ -420,9 +439,10 @@ class ContextManager:
                 lines = []
                 old_start = int(match.group("old"))
                 new_start = int(match.group("new"))
+                old_remaining = int(match.group("old_count") or 1)
+                new_remaining = int(match.group("new_count") or 1)
+                in_body = old_remaining > 0 or new_remaining > 0
                 continue
-            if header:
-                lines.append(raw)
         flush()
         if not hunks and diff.strip():
             hunks.append(DiffHunk(0, path or "unknown", "@@ unparsed diff @@", tuple(diff.splitlines()), 0, 0))
@@ -451,7 +471,7 @@ class ContextManager:
         symbols = list(dict.fromkeys(SYMBOL.findall(hunk.content)))[:20]
         changed = [
             _clip(line[1:].strip(), 240) for line in hunk.lines
-            if line[:1] in {"+", "-"} and not line.startswith(("+++", "---"))
+            if line[:1] in {"+", "-"}
         ]
         risky = [line for line in changed if any(signal in line.lower() for signal in domains)]
         samples = list(dict.fromkeys((risky + changed)))[:4]

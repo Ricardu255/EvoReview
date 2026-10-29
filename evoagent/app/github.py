@@ -34,9 +34,27 @@ class GitHubApplicationService:
         payload_sha256: str, tenant_id: str = "",
     ) -> Dict[str, Any]:
         installation_id = (payload.get("installation") or {}).get("id")
-        tenant_id = tenant_id or (
-            self.store.installation_tenant(installation_id) if installation_id else None
-        ) or self.settings.default_tenant_id
+        bound_tenant = None
+        if installation_id is not None:
+            try:
+                installation_id = int(installation_id)
+            except (TypeError, ValueError):
+                raise ValueError("invalid GitHub installation id")
+            # An unbound installation used to fall back to the default tenant.
+            # That lets any account that installs the App deliver reviews into
+            # another tenant's workspace, so require an explicit binding unless
+            # the operator has opted into the legacy single-tenant behaviour.
+            bound_tenant = self.store.installation_tenant(installation_id)
+            if bound_tenant is None and not self.settings.allow_unbound_installations:
+                raise PermissionError(
+                    "GitHub installation is not bound to a tenant; "
+                    "complete /github/setup first"
+                )
+        if bound_tenant and tenant_id and bound_tenant != tenant_id:
+            raise PermissionError(
+                "GitHub installation is bound to a different tenant"
+            )
+        tenant_id = bound_tenant or tenant_id or self.settings.default_tenant_id
         action = payload.get("action")
         supported = action in {"opened", "reopened", "synchronize"}
         pull = payload.get("pull_request") or {}

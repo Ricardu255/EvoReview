@@ -51,7 +51,7 @@ class StorePortCompositionTests(unittest.TestCase):
             EvolutionStorePort: {"save_evolution_run", "update_evolution_run"},
             SkillStorePort: {"save_skill_artifact", "activate_skill_version"},
             WebhookStorePort: {"claim_webhook", "get_webhook"},
-            AuthStorePort: {"create_user", "repository_allowed", "audit"},
+            AuthStorePort: {"create_user", "has_repository_grants", "repository_allowed", "audit"},
             ObservabilityStorePort: {"dashboard_stats", "create_alert"},
         }
         for port, names in expected.items():
@@ -61,8 +61,10 @@ class StorePortCompositionTests(unittest.TestCase):
     def test_aggregate_keeps_the_historical_method_count(self):
         # 62 methods before the split; keep the aggregate contract stable.
         # ``dir`` avoids the private Protocol internals that differ before 3.12.
+        # ``has_repository_grants`` is the one deliberate addition, needed to
+        # let operators opt into deny-by-default review authorization.
         names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
-        self.assertEqual(62, len(names))
+        self.assertEqual(63, len(names))
 
 
 if __name__ == "__main__":

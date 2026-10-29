@@ -13,6 +13,8 @@ class LeadSessionCheckpointTests(unittest.TestCase):
         handle, self.path = tempfile.mkstemp(suffix=".db")
         os.close(handle)
         self.store = TaskStore(self.path)
+        # Checkpoints are child rows of tasks in both SQL backends.
+        self.store.create("task-1", "org/repo", None, {"source": "test"})
         self.addCleanup(os.unlink, self.path)
 
     def test_fresh_session_when_no_checkpoint(self):

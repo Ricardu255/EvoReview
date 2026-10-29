@@ -7,6 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY evoagent ./evoagent
 COPY web ./web
 COPY skills ./skills
+RUN useradd --create-home --uid 10001 evoagent \
+    && chown -R evoagent:evoagent /app
+USER evoagent
 EXPOSE 8080
 CMD ["python", "-m", "evoagent"]
 

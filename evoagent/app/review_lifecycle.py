@@ -136,6 +136,12 @@ class ReviewLifecycleService:
             repository, diff, pull_request, source, tenant_id,
             repository_root, enabled_agents, enabled_skills,
         )
+        # Persist delivery metadata so a resumed task can repost its GitHub
+        # comment with the same installation-scoped credentials.
+        self.store.update_task_input(task_id, {
+            "github_issue_url": github_issue_url,
+            "installation_id": installation_id,
+        })
         self.queue.submit({
             "task_id": task_id, "repository": repository,
             "pull_request": pull_request,
@@ -163,9 +169,13 @@ class ReviewLifecycleService:
         if not self.store.prepare_resume(task_id, task.get("tenant_id", "default")):
             raise ValueError("task state changed; resume was not applied")
         try:
+            task_input = task.get("input") or {}
             self.queue.submit({
                 "task_id": task_id, "repository": task["repository"],
                 "pull_request": task.get("pull_request"),
+                "github_issue_url": task_input.get("github_issue_url", ""),
+                "installation_id": task_input.get("installation_id"),
+                "diff_url": task_input.get("diff_url", ""),
                 "tenant_id": task.get("tenant_id", "default"),
             }, message_id=task_id)
         except Exception as exc:

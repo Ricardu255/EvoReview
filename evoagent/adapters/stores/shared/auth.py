@@ -47,6 +47,13 @@ class AuthStoreMixin:
                 "ON CONFLICT(tenant_id,repository) DO UPDATE SET auto_fix=excluded.auto_fix"
             ), (tenant_id, repository, bool(auto_fix)))
 
+    def has_repository_grants(self, tenant_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(self._sql(
+                "SELECT COUNT(*) AS n FROM repository_grants WHERE tenant_id=?"
+            ), (tenant_id,)).fetchone()
+        return int(row["n"]) > 0
+
     def repository_allowed(
         self, tenant_id: str, repository: str, require_auto_fix: bool = False,
     ) -> bool:
@@ -58,7 +65,9 @@ class AuthStoreMixin:
                 "SELECT auto_fix FROM repository_grants WHERE tenant_id=? AND repository=?"
             ), (tenant_id, repository)).fetchone()
         if total == 0:
-            return True
+            # Reviews remain open for backward compatibility in single-tenant
+            # installs, but automatic repair must always be granted explicitly.
+            return not require_auto_fix
         return bool(row and (not require_auto_fix or row["auto_fix"]))
 
     def audit(
