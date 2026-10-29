@@ -207,6 +207,32 @@ class OpenAICompatibleReviewer(Reviewer):
         self.provider = provider
         self.name = "%s:%s" % (provider, model)
 
+    # Compatibility accessors: integrations read these attributes directly,
+    # while the transport keeps the canonical values on the client.
+    @property
+    def base_url(self) -> str:
+        return self.client.base_url
+
+    @base_url.setter
+    def base_url(self, value: str) -> None:
+        self.client.base_url = value
+
+    @property
+    def api_key(self) -> str:
+        return self.client.api_key
+
+    @api_key.setter
+    def api_key(self, value: str) -> None:
+        self.client.api_key = value
+
+    @property
+    def model(self) -> str:
+        return self.client.model
+
+    @model.setter
+    def model(self, value: str) -> None:
+        self.client.model = value
+
     def review(self, diff: str, parsed: ParsedDiff) -> List[Finding]:
         return self._review(diff, parsed)
 

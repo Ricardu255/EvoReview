@@ -52,7 +52,13 @@ def _inline(value: Any, limit: int = 200) -> str:
     )[:limit]
 
 
-def to_markdown(report: Dict[str, Any]) -> str:
+def to_markdown(
+    report: Dict[str, Any], max_findings: int = MAX_RENDERED_FINDINGS,
+) -> str:
+    try:
+        limit = max(1, int(max_findings))
+    except (TypeError, ValueError):
+        limit = MAX_RENDERED_FINDINGS
     title = "# EvoReview PR Review"
     if report.get("pull_request") is not None:
         title += " — #%s" % _inline(report["pull_request"], 20)
@@ -124,7 +130,7 @@ def to_markdown(report: Dict[str, Any]) -> str:
         return "\n".join(lines) + "\n"
     lines.extend(["## Findings", ""])
     icons = {"critical": "🚨", "high": "🔴", "medium": "🟠", "low": "🟡"}
-    for index, item in enumerate(findings[:MAX_RENDERED_FINDINGS], 1):
+    for index, item in enumerate(findings[:limit], 1):
         severity = _inline(item.get("severity", "medium"), 40)
         lines.extend(
             [
@@ -159,7 +165,7 @@ def to_markdown(report: Dict[str, Any]) -> str:
                 "",
             ]
         )
-    remaining = len(findings) - MAX_RENDERED_FINDINGS
+    remaining = len(findings) - limit
     if remaining > 0:
         lines.extend(["_%d additional finding(s) omitted._" % remaining, ""])
     return "\n".join(lines) + "\n"

@@ -47,6 +47,24 @@ class AuthStoreMixin:
                 "ON CONFLICT(tenant_id,repository) DO UPDATE SET auto_fix=excluded.auto_fix"
             ), (tenant_id, repository, bool(auto_fix)))
 
+    def revoke_repository(self, tenant_id: str, repository: str) -> bool:
+        with self._write() as conn:
+            cursor = conn.execute(self._sql(
+                "DELETE FROM repository_grants WHERE tenant_id=? AND repository=?"
+            ), (tenant_id, repository))
+        return cursor.rowcount > 0
+
+    def list_repository_grants(self, tenant_id: str) -> list:
+        with self._connect() as conn:
+            rows = conn.execute(self._sql(
+                "SELECT repository,auto_fix FROM repository_grants "
+                "WHERE tenant_id=? ORDER BY repository"
+            ), (tenant_id,)).fetchall()
+        return [
+            {"repository": row["repository"], "auto_fix": bool(row["auto_fix"])}
+            for row in rows
+        ]
+
     def has_repository_grants(self, tenant_id: str) -> bool:
         with self._connect() as conn:
             row = conn.execute(self._sql(
@@ -65,9 +83,10 @@ class AuthStoreMixin:
                 "SELECT auto_fix FROM repository_grants WHERE tenant_id=? AND repository=?"
             ), (tenant_id, repository)).fetchone()
         if total == 0:
-            # Reviews remain open for backward compatibility in single-tenant
-            # installs, but automatic repair must always be granted explicitly.
-            return not require_auto_fix
+            # No grants configured: preserve the original single-tenant
+            # behaviour (reviews and automatic repair are open).  Operators
+            # that want deny-by-default enable EVOAGENT_REQUIRE_REPOSITORY_GRANTS.
+            return True
         return bool(row and (not require_auto_fix or row["auto_fix"]))
 
     def audit(

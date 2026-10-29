@@ -5,6 +5,7 @@ import logging
 import mimetypes
 import os
 import re
+import socket
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,7 @@ from .adapters.github import verify_signature
 from .adapters.metrics import metrics
 from .domain.modes import public_taxonomy, resolve_mode
 from .domain.report import to_markdown
+from .errors import ModelNotConfigured
 from .service import ReviewService
 
 
@@ -26,6 +28,8 @@ FIX = re.compile(r"^/v1/tasks/([0-9a-f-]+)/fix$")
 FEEDBACK = re.compile(r"^/v1/tasks/([0-9a-f-]+)/feedback$")
 CANCEL = re.compile(r"^/v1/tasks/([0-9a-f-]+)/cancel$")
 RESUME = re.compile(r"^/v1/tasks/([0-9a-f-]+)/resume$")
+COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
+GRANTS = "/v1/repository-grants"
 ROLLBACK = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions/(\d+)/activate$")
 SKILL_ARTIFACT_VERSIONS = re.compile(r"^/v1/skill-evolution/([a-z0-9_-]+)/versions$")
 SKILL_ARTIFACT_ACTIVATE = re.compile(
@@ -33,6 +37,14 @@ SKILL_ARTIFACT_ACTIVATE = re.compile(
 )
 WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
 logger = logging.getLogger("evoagent")
+
+
+def body_optional(path: str) -> bool:
+    """POST routes that act on the URL alone and need no JSON body."""
+    return bool(
+        COMMENT.match(path) or CANCEL.match(path) or RESUME.match(path)
+        or path == "/v1/skills/reload"
+    )
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -231,7 +243,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 str(installation_id), {"account": account},
             )
             self.send_response(302)
-            self.send_header("Location", "/#github")
+            self.send_header(
+                "Location",
+                self.settings.public_base_url.rstrip("/") + "/#github",
+            )
             self.end_headers()
             return
         principal = self._authenticate_or_send("read")
@@ -288,6 +303,16 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/alerts":
             self._send_json(200, {"alerts": self.service.store.list_alerts(principal.tenant_id)})
+            return
+        if path == GRANTS:
+            if not principal.can("manage"):
+                self._send_json(403, {"error": "permission denied"})
+                return
+            self._send_json(200, {
+                "grants": self.service.store.list_repository_grants(
+                    principal.tenant_id
+                )
+            })
             return
         if path == "/api/deployments/llm-review":
             self._send_json(200, {"deployment": self.service.store.get_deployment(
@@ -370,7 +395,11 @@ class ApiHandler(BaseHTTPRequestHandler):
             if not task or not task.get("report"):
                 self._send_json(404, {"error": "task or report not found"})
                 return
-            self._send_text(200, to_markdown(task["report"]), "text/markdown; charset=utf-8")
+            self._send_text(
+                200,
+                to_markdown(task["report"], self.settings.report_max_findings),
+                "text/markdown; charset=utf-8",
+            )
             return
         if task_match:
             task = self.service.store.get(task_match.group(1), principal.tenant_id)
@@ -386,7 +415,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
         try:
-            body = self._read_body()
+            body = b"" if body_optional(path) else self._read_body()
             if path == "/v1/auth/login":
                 if not self.settings.auth_required:
                     self._send_json(409, {"error": "authentication is disabled"})
@@ -520,6 +549,40 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 self._send_json(202, result)
                 return
+            match = COMMENT.match(path)
+            if match:
+                principal = self._principal("review")
+                result = self.service.redeliver_comment(
+                    match.group(1), principal.tenant_id
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "comment.redeliver",
+                    match.group(1), {"delivered": result["delivered"]},
+                )
+                self._send_json(200 if result["delivered"] else 502, result)
+                return
+            if path == GRANTS:
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                repository = str(payload.get("repository", "")).strip()
+                if not repository or len(repository) > 250:
+                    raise ValueError(
+                        "repository is required and must be at most 250 characters"
+                    )
+                auto_fix = payload.get("auto_fix", False)
+                if not isinstance(auto_fix, bool):
+                    raise ValueError("auto_fix must be a boolean")
+                self.service.store.grant_repository(
+                    principal.tenant_id, repository, auto_fix,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "repository.grant",
+                    repository, {"auto_fix": auto_fix},
+                )
+                self._send_json(201, {
+                    "repository": repository, "auto_fix": auto_fix,
+                })
+                return
             if path == "/v1/skills/reload":
                 principal = self._principal("manage")
                 self._send_json(200, {"skills": self.service.reload_skills(),
@@ -643,10 +706,50 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc)})
         except PermissionError as exc:
             self._send_json(403, {"error": str(exc)})
+        except ModelNotConfigured as exc:
+            self._send_json(503, {"error": str(exc)})
         except Exception:
             metrics.inc("http_errors_total")
             logger.exception("unhandled POST failure for %s", self.path)
             self._send_json(500, {"error": "operation failed"})
+
+    def do_DELETE(self) -> None:
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query = urllib.parse.parse_qs(parsed_url.query)
+        try:
+            if path == GRANTS:
+                principal = self._principal("manage")
+                repository = query.get("repository", [""])[0].strip()
+                if not repository:
+                    raise ValueError("repository is required")
+                ok = self.service.store.revoke_repository(
+                    principal.tenant_id, repository
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "repository.revoke",
+                    repository, {"revoked": ok},
+                )
+                self._send_json(200 if ok else 404, {"revoked": ok})
+                return
+            self._send_json(404, {"error": "not found"})
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+        except PermissionError as exc:
+            self._send_json(403, {"error": str(exc)})
+        except Exception:
+            metrics.inc("http_errors_total")
+            logger.exception("unhandled DELETE failure for %s", self.path)
+            self._send_json(500, {"error": "operation failed"})
+
+
+def server_class(host: str):
+    """Pick the socket family that matches the configured bind address."""
+    if ":" in host:
+        class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
+            address_family = socket.AF_INET6
+        return IPv6ThreadingHTTPServer
+    return ThreadingHTTPServer
 
 
 def run() -> None:
@@ -654,8 +757,9 @@ def run() -> None:
     service = ReviewService(settings)
     handler = type("ConfiguredApiHandler", (ApiHandler,), {"service": service, "settings": settings})
     handler.timeout = 30  # bound slow client reads
-    server = ThreadingHTTPServer((settings.host, settings.port), handler)
-    print("EvoReview dashboard: http://%s:%d" % (settings.host, settings.port))
+    server = server_class(settings.host)((settings.host, settings.port), handler)
+    display_host = "[%s]" % settings.host if ":" in settings.host else settings.host
+    print("EvoReview dashboard: http://%s:%d" % (display_host, settings.port))
     print("Persistence: %s | Queue: %s | Orchestrator: %s" % (
         "postgresql" if settings.database_url else "sqlite", service.queue.backend, service.reviewer.name
     ))
@@ -664,5 +768,5 @@ def run() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        service.queue.close()
+        service.queue.close(timeout=5.0)
         server.server_close()

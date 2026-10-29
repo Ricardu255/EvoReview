@@ -353,15 +353,19 @@ class StoreContract:
         )
         self.assertIsNone(self.store.get_user("bob-%s" % run))
 
-        # Reviews stay open before any grant is configured, but automatic
-        # repair must be granted explicitly.
-        self.assertFalse(
+        # With no grants configured, legacy single-tenant behaviour keeps both
+        # reviews and automatic repair open.
+        self.assertTrue(
             self.store.repository_allowed(
                 "tenant-a", "demo/api", require_auto_fix=True
             )
         )
         self.assertTrue(self.store.repository_allowed("tenant-a", "demo/api"))
         self.store.grant_repository("tenant-a", "demo/api")
+        self.assertEqual(
+            [{"repository": "demo/api", "auto_fix": False}],
+            self.store.list_repository_grants("tenant-a"),
+        )
         self.assertTrue(self.store.repository_allowed("tenant-a", "demo/api"))
         self.assertFalse(self.store.repository_allowed("tenant-a", "other/api"))
         self.assertFalse(
@@ -375,6 +379,9 @@ class StoreContract:
                 "tenant-a", "demo/api", require_auto_fix=True
             )
         )
+        self.assertTrue(self.store.revoke_repository("tenant-a", "demo/api"))
+        self.assertFalse(self.store.revoke_repository("tenant-a", "demo/api"))
+        self.assertEqual([], self.store.list_repository_grants("tenant-a"))
 
         self.store.audit("tenant-a", "actor", "review", "demo/api")
         self.store.audit(

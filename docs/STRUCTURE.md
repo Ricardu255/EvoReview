@@ -82,13 +82,14 @@ evoagent/
 - `evoagent/adapters/stores/sqlite/store.py` 组合 SQLite mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`。
 - `evoagent/adapters/stores/postgres/store.py` 组合 PostgreSQL mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`；`create_store()` 按 URL 选择后端。
 - 持久化协议只位于 `evoagent/ports/stores/`，按任务、记忆、失败案例、进化、Skill、Webhook、认证、可观测性拆分。
-- dialect-neutral 的 auth、failure case、installation、memory、skills 收敛到 `shared/`；`shared/sql.py`、`shared/prompt.py`、`shared/webhook.py` 承载跨后端 SQL 规则。
+- dialect-neutral 的 auth、failure case、installation、memory、skills 收敛到 `shared/`；`shared/sql.py`、`shared/prompt.py`、`shared/webhook.py` 承载跨后端 SQL 规则，`shared/migrations.py` 承载一次性租户数据迁移。
 - `SqlStoreMixin` 提供 `_write()`、`_in_clause()`、`_greatest()`、`_acquire_key_lock()`，统一 SQLite 进程锁、PostgreSQL advisory lock 和方言差异。
 
 ## Application / Ports
 
 - `ReviewPolicy`、`ReviewsApplicationService`、`GitHubApplicationService`、`FixesApplicationService`、`SkillApplicationService`、`FeedbackApplicationService`、`EvolutionApplicationService` 位于 `evoagent/app/`。
 - `ReviewsApplicationService` 拆成兼容 facade + `review_lifecycle.py` + `review_execution.py`；两者通过 `ReviewExecutionService` 组合，不形成循环依赖。
+- GitHub 评论投递位于 `app/comments.py`（`ReviewCommentService`）：有界重试、失败审计和手动重放，独立于审查事务。
 - `ReviewService` 只保留兼容 facade，构造委托给 composition root。
 - 当前明确保留的跨层例外：`agent -> adapters.llm`、`adapters -> agent.telemetry`、`evaluation -> adapters.{llm,verifier}`，以及 `evaluation/evolution_proof.py -> adapters.stores.sqlite.store`；后续可以引入 LLM/telemetry/store port 消除。
 

@@ -1,8 +1,10 @@
 """Tests for automatic repair delivery."""
+from dataclasses import replace
 import os
 import tempfile
 import unittest
 
+from evoagent.app.policies import ReviewPolicy
 from evoagent.config import Settings
 from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.service import ReviewService
@@ -70,6 +72,30 @@ class FixesApplicationServiceTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.service.create_fix(task_id, tenant_id="tenant-a")
         self.assertEqual([], self.fixer.calls)
+
+    def test_create_fix_works_without_grants_by_default(self):
+        task_id = self._completed_task()
+
+        result = self.service.create_fix(task_id, tenant_id="tenant-a")
+
+        self.assertEqual({"repository": "org/a", "pull_request": 1}, result)
+        self.assertEqual(1, len(self.fixer.calls))
+
+    def test_create_fix_denied_by_strict_grant_mode(self):
+        policy = ReviewPolicy(
+            replace(self.settings, require_repository_grants=True),
+            self.service.store, {}, lambda tenant_id: [],
+        )
+        self.service._fixes_app.policy = policy
+        task_id = self._completed_task()
+
+        with self.assertRaisesRegex(PermissionError, "grants are not configured"):
+            self.service.create_fix(task_id, tenant_id="tenant-a")
+        self.assertEqual([], self.fixer.calls)
+
+        self.service.store.grant_repository("tenant-a", "org/a", auto_fix=True)
+        self.service.create_fix(task_id, tenant_id="tenant-a")
+        self.assertEqual(1, len(self.fixer.calls))
 
     def test_create_fix_rejects_cross_tenant_installation(self):
         task_id = self._completed_task()

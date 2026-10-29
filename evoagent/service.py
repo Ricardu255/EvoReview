@@ -97,6 +97,7 @@ class ReviewService:
         self._fixes_app = FixesApplicationService(
             self.store, self.fixer,
             self._github_app.github_client_for_installation, metrics,
+            self._policy,
         )
 
     @property
@@ -274,6 +275,11 @@ class ReviewService:
 
     def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         return self._reviews_app.resume_task(task_id, tenant_id)
+
+    def redeliver_comment(
+        self, task_id: str, tenant_id: Optional[str] = None,
+    ) -> dict:
+        return self._reviews_app.redeliver_comment(task_id, tenant_id)
 
     def cancel_task(self, task_id: str, tenant_id: Optional[str] = None) -> bool:
         return self._reviews_app.cancel_task(task_id, tenant_id)

@@ -32,6 +32,22 @@ class DomainPackageTests(unittest.TestCase):
             ).exists()
         )
 
+    def test_report_rendering_limit_is_configurable(self):
+        from evoagent.domain.report import to_markdown
+
+        report = {
+            "repository": "org/a", "risk": "low", "summary": "ok",
+            "findings": [
+                {"severity": "low", "title": "finding %d" % index,
+                 "path": "a.py", "line": index}
+                for index in range(3)
+            ],
+        }
+        rendered = to_markdown(report, max_findings=1)
+        self.assertIn("### 1.", rendered)
+        self.assertNotIn("### 2.", rendered)
+        self.assertIn("_2 additional finding(s) omitted._", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,6 +31,11 @@ function escapeHtml(value) {
   return node.innerHTML;
 }
 
+function escapeAttr(value) {
+  // Text-node serialization leaves quotes untouched; attributes need them escaped.
+  return escapeHtml(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function formatTime(value) {
   if (!value) return "时间未知";
   const date = new Date(value);
@@ -53,6 +58,12 @@ async function api(path, options = {}) {
   const data = contentType.includes("json") ? await response.json() : await response.text();
 
   if (response.status === 401) {
+    if (accessToken && !path.startsWith("/v1/auth/login")) {
+      // The stored token is no longer accepted: drop it so the page stops
+      // replaying a dead credential on every request.
+      accessToken = "";
+      localStorage.removeItem("evoagent_token");
+    }
     $("#login-overlay").classList.remove("hidden");
     $("#logout").classList.add("hidden");
   }
@@ -122,7 +133,7 @@ function taskRows(tasks) {
     const repository = escapeHtml(task.repository || "未命名仓库");
     const pr = task.pull_request ? `PR #${escapeHtml(task.pull_request)}` : "手动审查";
     return `
-      <button class="task-row" data-task="${escapeHtml(task.id)}" type="button">
+      <button class="task-row" data-task="${escapeAttr(task.id)}" type="button">
         <span class="task-main">
           <span class="task-glyph">PR</span>
           <span class="task-copy">
@@ -199,10 +210,15 @@ async function loadDashboard() {
     const data = await api("/api/dashboard");
     renderLlmRuntime(data.llm, data.run_mode);
     const modeSelect = $("#review-mode");
+    const modelReady = Boolean(data.llm?.enabled);
     if (modeSelect) {
       modeSelect.value = "agentic";
-      modeSelect.disabled = !data.llm?.enabled;
+      modeSelect.disabled = !modelReady;
     }
+    const reviewSubmit = $('button[type="submit"]', $("#review-form"));
+    if (reviewSubmit) reviewSubmit.disabled = !modelReady;
+    const reviewHint = $("#review-hint");
+    if (reviewHint) reviewHint.classList.toggle("hidden", modelReady);
     $("#system-status").textContent = `${data.queue} · ${data.orchestrator}`;
     const stats = data.stats || {};
     const rate = Math.round(Number(stats.success_rate || 0) * 100);
@@ -329,40 +345,43 @@ async function loadSkills() {
 }
 
 async function loadFailures() {
-  try {
-    const [failuresData, status, runsData] = await Promise.all([
-      api("/api/failures"),
-      api("/v1/evolution/status"),
-      api("/v1/evolution/runs?limit=5"),
-    ]);
-    $("#evolution-status").textContent = formatJson(status);
-    const cases = failuresData.cases || [];
-    const runs = runsData.runs || [];
-    const failureHtml = cases.length
-      ? cases.slice(0, 8).map((item) => `
-          <div class="task-row">
-            <span class="task-main"><span class="task-glyph">FC</span><span class="task-copy">
-              <span class="task-name">${escapeHtml(feedbackLabels[item.category] || item.category)}</span>
-              <span class="task-meta"><span>${escapeHtml(item.task_id)}</span><span>${escapeHtml((item.payload || {}).note || "无说明")}</span></span>
-            </span></span>
-            <span class="status ${item.resolved ? "state-success" : "state-pending"}">${item.resolved ? "已解决" : "待处理"}</span>
-          </div>`).join("")
-      : '<div class="empty-state"><span><b>暂无失败反馈</b>系统当前没有未处理案例</span></div>';
-    const historyHtml = runs.length
-      ? `<p class="list-section-label">最近评测</p>${runs.map((run) => `
-          <div class="task-row">
-            <span class="task-main"><span class="task-glyph">V${escapeHtml(run.candidate_version)}</span><span class="task-copy">
-              <span class="task-name">${escapeHtml(run.decision)}</span>
-              <span class="task-meta">${Number(run.candidate_score).toFixed(3)} vs ${Number(run.baseline_score).toFixed(3)}</span>
-            </span></span>
-          </div>`).join("")}`
-      : "";
-    $("#failure-list").innerHTML = failureHtml + historyHtml;
-  } catch (error) {
+  const [failuresResult, statusResult, runsResult] = await Promise.allSettled([
+    api("/api/failures"),
+    api("/v1/evolution/status"),
+    api("/v1/evolution/runs?limit=5"),
+  ]);
+  const failuresData = failuresResult.status === "fulfilled" ? failuresResult.value : {};
+  const runsData = runsResult.status === "fulfilled" ? runsResult.value : {};
+  if (statusResult.status === "fulfilled") {
+    $("#evolution-status").textContent = formatJson(statusResult.value);
+  } else {
     $("#evolution-status").textContent = "暂时无法读取评测状态。";
-    $("#failure-list").innerHTML = '<div class="empty-state"><span>反馈加载失败</span></div>';
-    toast(error.message);
   }
+  const rejected = [failuresResult, statusResult, runsResult]
+    .find((result) => result.status === "rejected");
+  if (rejected) toast(rejected.reason?.message || "部分反馈数据读取失败");
+  const cases = failuresData.cases || [];
+  const runs = runsData.runs || [];
+  const failureHtml = cases.length
+    ? cases.slice(0, 8).map((item) => `
+        <div class="task-row">
+          <span class="task-main"><span class="task-glyph">FC</span><span class="task-copy">
+            <span class="task-name">${escapeHtml(feedbackLabels[item.category] || item.category)}</span>
+            <span class="task-meta"><span>${escapeHtml(item.task_id)}</span><span>${escapeHtml((item.payload || {}).note || "无说明")}</span></span>
+          </span></span>
+          <span class="status ${item.resolved ? "state-success" : "state-pending"}">${item.resolved ? "已解决" : "待处理"}</span>
+        </div>`).join("")
+    : '<div class="empty-state"><span><b>暂无失败反馈</b>系统当前没有未处理案例</span></div>';
+  const historyHtml = runs.length
+    ? `<p class="list-section-label">最近评测</p>${runs.map((run) => `
+        <div class="task-row">
+          <span class="task-main"><span class="task-glyph">V${escapeHtml(run.candidate_version)}</span><span class="task-copy">
+            <span class="task-name">${escapeHtml(run.decision)}</span>
+            <span class="task-meta">${Number(run.candidate_score).toFixed(3)} vs ${Number(run.baseline_score).toFixed(3)}</span>
+          </span></span>
+        </div>`).join("")}`
+    : "";
+  $("#failure-list").innerHTML = failureHtml + historyHtml;
 }
 
 $("#review-form").addEventListener("submit", async (event) => {
@@ -370,7 +389,13 @@ $("#review-form").addEventListener("submit", async (event) => {
   const form = event.currentTarget;
   const button = $('button[type="submit"]', form);
   const values = new FormData(form);
-  const body = { repository: values.get("repository"), diff: values.get("diff"), mode: values.get("mode") };
+  // A disabled <select> is omitted from FormData, so fall back to the sole
+  // supported mode instead of sending null (which the API rejects).
+  const body = {
+    repository: values.get("repository"),
+    diff: values.get("diff"),
+    mode: values.get("mode") || "agentic",
+  };
   if (values.get("pull_request")) body.pull_request = Number(values.get("pull_request"));
   const asyncQuery = values.get("async") ? "?async=true" : "";
   const output = $("#review-result");

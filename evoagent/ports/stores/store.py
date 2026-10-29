@@ -23,4 +23,7 @@ class StoreProtocol(
     ObservabilityStorePort,
     Protocol,
 ):
-    """The original 65-method contract, now composed from narrow ports."""
+    """The aggregate persistence contract composed from narrow ports."""
+
+    def migrate_legacy_tenant(self, default_tenant_id: str) -> bool:
+        ...

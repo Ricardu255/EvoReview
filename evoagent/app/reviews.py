@@ -113,5 +113,10 @@ class ReviewsApplicationService:
     def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         return self.lifecycle.resume_task(task_id, tenant_id)
 
+    def redeliver_comment(
+        self, task_id: str, tenant_id: Optional[str] = None,
+    ) -> dict:
+        return self.execution.redeliver_comment(task_id, tenant_id)
+
     def cancel_task(self, task_id: str, tenant_id: Optional[str] = None) -> bool:
         return self.lifecycle.cancel_task(task_id, tenant_id)

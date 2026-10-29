@@ -130,10 +130,15 @@ class ReviewHarness:
         self._transition(
             TaskState.EXECUTING, "Reviewing %d changed files" % len(parsed.files)
         )
-        findings = self.reviewer.review_with_context(
-            state["task_id"], state["diff"], parsed,
-            repository=state["repository"], tenant_id=state.get("tenant_id", "default"),
-        )
+        review_with_context = getattr(self.reviewer, "review_with_context", None)
+        if callable(review_with_context):
+            findings = review_with_context(
+                state["task_id"], state["diff"], parsed,
+                repository=state["repository"], tenant_id=state.get("tenant_id", "default"),
+            )
+        else:
+            # Duck-typed reviewers only need the original review() contract.
+            findings = self.reviewer.review(state["diff"], parsed)
         return {"findings": [item.to_dict() for item in findings]}
 
     def _reviewing(self, state: RuntimeState) -> Dict[str, Any]:
@@ -143,7 +148,8 @@ class ReviewHarness:
             TaskState.REVIEWING, "Validating and ranking %d findings" % len(findings)
         )
         risk = self._risk(findings)
-        reviewer_summary = self.reviewer.collaboration_summary(state["task_id"])
+        summary_fn = getattr(self.reviewer, "collaboration_summary", None)
+        reviewer_summary = summary_fn(state["task_id"]) if callable(summary_fn) else {}
         if reviewer_summary and "run_mode" in reviewer_summary:
             collaboration = dict(reviewer_summary.get("collaboration") or {})
             run_mode = dict(reviewer_summary.get("run_mode") or {})

@@ -69,7 +69,9 @@ class MemoryManager:
     ) -> List[Dict[str, Any]]:
         if not self.enabled:
             return []
-        self.store.purge_expired_agent_memories()
+        purge = getattr(self.store, "purge_expired_agent_memories", None)
+        if callable(purge):
+            purge()
         selected_scopes = tuple(scope for scope in scopes if scope in VALID_SCOPES)
         if not selected_scopes:
             return []

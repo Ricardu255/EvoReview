@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from ....ports.stores import StoreProtocol
+from ..shared.migrations import MigrationStoreMixin
 from ..shared.prompt import PromptStoreMixin
 from ..shared.webhook import WebhookStoreMixin
 from .auth import SqliteAuthStoreMixin
@@ -24,6 +25,7 @@ class TaskStore(
     SqliteFailureStoreMixin, SqliteSkillStoreMixin,
     SqliteInstallationStoreMixin, SqliteAuthStoreMixin,
     SqliteObservabilityStoreMixin, PromptStoreMixin, WebhookStoreMixin,
+    MigrationStoreMixin,
     StoreProtocol,
 ):
     def __init__(self, path: str):

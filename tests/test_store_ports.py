@@ -61,10 +61,10 @@ class StorePortCompositionTests(unittest.TestCase):
     def test_aggregate_keeps_the_historical_method_count(self):
         # 62 methods before the split; keep the aggregate contract stable.
         # ``dir`` avoids the private Protocol internals that differ before 3.12.
-        # ``has_repository_grants`` is the one deliberate addition, needed to
-        # let operators opt into deny-by-default review authorization.
+        # Additions are deliberate: grant management (list/revoke) and the
+        # one-time legacy-tenant migration hook.
         names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
-        self.assertEqual(63, len(names))
+        self.assertEqual(66, len(names))
 
 
 if __name__ == "__main__":

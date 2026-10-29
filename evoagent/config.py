@@ -148,6 +148,7 @@ class Settings:
     evaluation_min_public_prs: int = 300
     evaluation_min_f1_improvement: float = 0.03
     evaluation_min_high_risk_improvement: float = 0.05
+    report_max_findings: int = 50
 
     def resolved_llm(self) -> Dict[str, object]:
         """Resolve a named provider to the existing OpenAI-compatible transport."""
@@ -220,6 +221,10 @@ class Settings:
         raise ValueError("unsupported EVOAGENT_LLM_PROVIDER: %s" % self.llm_provider)
 
     def validate_evolution(self) -> None:
+        if not self.host.strip():
+            raise ValueError("EVOAGENT_HOST must not be empty")
+        if not 1 <= self.port <= 65535:
+            raise ValueError("EVOAGENT_PORT must be between 1 and 65535")
         if self.eval_min_cases > self.eval_max_cases:
             raise ValueError("EVOAGENT_EVAL_MIN_CASES cannot exceed EVOAGENT_EVAL_MAX_CASES")
         if not 0.0 <= self.eval_min_improvement <= 1.0:
@@ -368,4 +373,5 @@ class Settings:
             evaluation_min_high_risk_improvement=float(
                 os.getenv("EVOAGENT_EVALUATION_MIN_HIGH_RISK_IMPROVEMENT", "0.05")
             ),
+            report_max_findings=_int("EVOAGENT_REPORT_MAX_FINDINGS", 50),
         )

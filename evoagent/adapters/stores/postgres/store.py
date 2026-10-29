@@ -1,5 +1,6 @@
 """PostgreSQL persistence backend composed from capability mixins."""
 from ....ports.stores import StoreProtocol
+from ..shared.migrations import MigrationStoreMixin
 from ..shared.prompt import PromptStoreMixin
 from ..shared.webhook import WebhookStoreMixin
 from .auth import PostgresAuthStoreMixin
@@ -17,6 +18,7 @@ class PostgresTaskStore(
     PostgresFailureStoreMixin, PostgresSkillStoreMixin,
     PostgresInstallationStoreMixin, PostgresAuthStoreMixin,
     PostgresObservabilityStoreMixin, PromptStoreMixin, WebhookStoreMixin,
+    MigrationStoreMixin,
     StoreProtocol,
 ):
     _postgres_sql = True

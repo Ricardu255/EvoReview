@@ -3,15 +3,18 @@ import json
 import hashlib
 from collections import OrderedDict
 from contextlib import contextmanager
+import logging
 import queue
 import socket
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
 
 from ..errors import PermanentTaskError
+
+
+logger = logging.getLogger("evoagent")
 
 
 class DeliveryBusy(RuntimeError):
@@ -36,7 +39,10 @@ class TaskQueue:
         self.max_attempts = max_attempts
         self.lease_seconds = lease_seconds
         self.on_dead_letter = on_dead_letter
-        self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="evoagent-worker")
+        self.workers = max(1, int(workers))
+        self._workers = []
+        self._memory_workers = []
+        self._workers_lock = threading.Lock()
         self._redis = None
         self._memory: queue.Queue = queue.Queue()
         self._memory_dlq = []
@@ -58,7 +64,15 @@ class TaskQueue:
                 if "BUSYGROUP" not in str(exc):
                     raise
             for _ in range(workers):
-                self._executor.submit(self._redis_worker)
+                # Daemon workers let a shutdown timer bound process exit while
+                # a slow handler is still running.
+                thread = threading.Thread(
+                    target=self._redis_worker,
+                    name="evoagent-worker-%d" % len(self._workers),
+                    daemon=True,
+                )
+                thread.start()
+                self._workers.append(thread)
 
     @property
     def backend(self) -> str:
@@ -74,8 +88,47 @@ class TaskQueue:
         if self._redis:
             self._redis.xadd(self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)})
         else:
-            self._executor.submit(self._deliver, envelope)
+            self._submit_delivery(envelope)
         return envelope["message_id"]
+
+    def _submit_delivery(self, envelope: Dict[str, Any]) -> None:
+        if self._stop.is_set():
+            return
+        self._ensure_memory_workers()
+        self._memory.put(envelope)
+
+    def _ensure_memory_workers(self) -> None:
+        with self._workers_lock:
+            if self._memory_workers:
+                return
+            for _ in range(self.workers):
+                thread = threading.Thread(
+                    target=self._memory_worker,
+                    name="evoagent-memory-worker-%d" % len(self._memory_workers),
+                    daemon=True,
+                )
+                thread.start()
+                self._memory_workers.append(thread)
+
+    def _memory_worker(self) -> None:
+        while True:
+            try:
+                envelope = self._memory.get(timeout=0.5)
+            except queue.Empty:
+                if self._stop.is_set():
+                    return
+                continue
+            if self._stop.is_set():
+                return
+            try:
+                self._deliver(envelope)
+            except DeliveryBusy:
+                # A duplicate physical delivery is already owned elsewhere.
+                pass
+            except Exception:
+                logger.exception("unexpected memory queue delivery failure")
+            finally:
+                self._memory.task_done()
 
     @staticmethod
     def _delivery_key(envelope):
@@ -185,7 +238,7 @@ class TaskQueue:
 
     def _submit_memory(self, envelope: Dict[str, Any]) -> None:
         if not self._stop.is_set():
-            self._executor.submit(self._deliver, envelope)
+            self._submit_delivery(envelope)
 
     def _redis_worker(self) -> None:
         while not self._stop.is_set():
@@ -269,13 +322,22 @@ class TaskQueue:
                 return True
         return False
 
-    def close(self, wait: bool = True) -> None:
-        """Stop delivery.  By default, drain in-flight work and cancel queued items.
+    def close(self, wait: bool = True, timeout: Optional[float] = None) -> None:
+        """Stop delivery.  By default, wait for in-flight work; queued items are dropped.
 
-        Callers that shut the process down — or delete the store, like tests —
-        must not race a worker thread that still holds an open connection;
-        pass ``wait=False`` only when returning immediately matters more than
-        a clean teardown.
+        Workers are daemon threads, so a timed-out shutdown never blocks
+        interpreter exit.  Callers that shut the process down — or delete the
+        store, like tests — must not race a worker thread that still holds an
+        open connection; pass ``wait=False`` only when returning immediately
+        matters more than a clean teardown.  ``timeout`` bounds the wait for
+        embedders that cannot block on a long-running review.
         """
         self._stop.set()
-        self._executor.shutdown(wait=wait, cancel_futures=True)
+        if not wait:
+            return
+        deadline = None if timeout is None else time.monotonic() + timeout
+        for thread in list(self._workers) + list(self._memory_workers):
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            thread.join(remaining)
+            if deadline is not None and time.monotonic() >= deadline:
+                break

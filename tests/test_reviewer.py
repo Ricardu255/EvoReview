@@ -40,6 +40,20 @@ class OpenAICompatibleParseFindingsTests(unittest.TestCase):
         self.assertEqual(0.9, findings[1].confidence)
 
 
+class OpenAICompatibleCompatibilityTests(unittest.TestCase):
+    def test_connection_attributes_remain_readable_and_writable(self):
+        reviewer = OpenAICompatibleReviewer("http://127.0.0.1:9/v1/", "key", "model")
+        self.assertEqual("http://127.0.0.1:9/v1", reviewer.base_url)
+        self.assertEqual("key", reviewer.api_key)
+        self.assertEqual("model", reviewer.model)
+        reviewer.base_url = "http://127.0.0.1:10/v1"
+        reviewer.api_key = "other"
+        reviewer.model = "other-model"
+        self.assertEqual("http://127.0.0.1:10/v1", reviewer.client.base_url)
+        self.assertEqual("other", reviewer.client.api_key)
+        self.assertEqual("other-model", reviewer.client.model)
+
+
 if __name__ == "__main__":
     unittest.main()
 

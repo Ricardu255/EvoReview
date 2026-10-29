@@ -3,6 +3,7 @@ import os
 from typing import Callable, Dict, Optional
 
 from ..config import Settings
+from ..errors import ModelNotConfigured
 from ..ports.stores import StoreProtocol
 
 
@@ -33,7 +34,7 @@ class ReviewPolicy:
     @staticmethod
     def require_agentic_model(chat_client) -> None:
         if chat_client is None:
-            raise RuntimeError("agentic review requires a configured model")
+            raise ModelNotConfigured("agentic review requires a configured model")
 
     def authorize_repository(self, tenant_id: str, repository: str) -> None:
         if self.settings.require_repository_grants and not self.store.has_repository_grants(tenant_id):
@@ -42,6 +43,16 @@ class ReviewPolicy:
             )
         if not self.store.repository_allowed(tenant_id, repository):
             raise PermissionError("repository is not authorized for this tenant")
+
+    def authorize_auto_fix(self, tenant_id: str, repository: str) -> None:
+        """Automatic repair additionally requires the per-repository opt-in."""
+        self.authorize_repository(tenant_id, repository)
+        if not self.store.repository_allowed(
+            tenant_id, repository, require_auto_fix=True,
+        ):
+            raise PermissionError(
+                "automatic repair is not enabled for this repository"
+            )
 
     def resolve_repository_root(
         self, repository: str, requested: str, tenant_id: str,

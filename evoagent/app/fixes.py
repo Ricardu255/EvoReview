@@ -11,11 +11,24 @@ class FixesApplicationService:
         fixer: Any,
         github_client_for_installation: Callable[[Optional[int]], Any],
         metrics: Any,
+        policy: Any = None,
     ):
         self.store = store
         self.fixer = fixer
         self.github_client_for_installation = github_client_for_installation
         self.metrics = metrics
+        self.policy = policy
+
+    def _authorize(self, tenant_id: str, repository: str) -> None:
+        if self.policy is not None:
+            self.policy.authorize_auto_fix(tenant_id, repository)
+            return
+        # Compatibility for callers that construct this service without a
+        # policy object: keep the store-level check.
+        if not self.store.repository_allowed(tenant_id, repository, True):
+            raise PermissionError(
+                "automatic repair is not enabled for this repository"
+            )
 
     def create_fix(
         self, task_id: str, installation_id: Optional[int] = None,
@@ -27,8 +40,7 @@ class FixesApplicationService:
         if task.get("pull_request") is None:
             raise ValueError("fix commits require a GitHub pull request task")
         actual_tenant = task.get("tenant_id") or tenant_id or "default"
-        if not self.store.repository_allowed(actual_tenant, task["repository"], True):
-            raise PermissionError("automatic repair is not enabled for this repository")
+        self._authorize(actual_tenant, task["repository"])
         task_input = task.get("input") or {}
         bound_installation = task_input.get("installation_id")
         resolved_installation = (

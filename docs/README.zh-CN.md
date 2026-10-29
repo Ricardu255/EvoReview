@@ -27,9 +27,21 @@
 - 自动修复后的编译/测试门禁、灰度发布与影子流量
 - OpenTelemetry Trace、Prometheus 指标和持久化告警
 
-### 项目边界
+## 项目边界
 
 EvoReview 负责代码审查产品本身：多 Agent 编排、仓库工具、证据门禁和 Prompt/Skill 进化。版本级评测和跨项目发布门禁由 Assay 承担；EvoReview 保留原始 `ExecutionLedger`，需要时可导出。
+
+## 目录
+
+- [项目边界](#项目边界)
+- [快速开始](#快速开始)
+- [持续集成](#持续集成)
+- [模型配置](#模型配置)
+- [GitHub Webhook](#github-webhook)
+- [API](#api)
+- [隔离与任务恢复](#隔离与任务恢复)
+- [架构](#架构)
+- [Skills 的定位与编写方式](#skills-的定位与编写方式)
 
 ## 快速开始
 
@@ -48,7 +60,7 @@ $env:EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD = '<替换为至少 10 个字符的密码
 python -m evoagent
 ```
 
-不要直接使用示例占位符作为密码或密钥。环境变量只对当前 PowerShell 及其子进程生效；修改配置后需要停止并重新启动 EvoReview。服务可以在未配置模型时启动并提供健康检查，但提交审查前必须按下方“模型配置”章节配置模型。
+不要直接使用示例占位符作为密码或密钥。环境变量只对当前 PowerShell 及其子进程生效；修改配置后需要停止并重新启动 EvoReview。`python -m evoagent --check` 只校验配置、不绑定端口；`--version` 打印版本号。服务可以在未配置模型时启动并提供健康检查，但提交审查前必须按下方“模型配置”章节配置模型。
 
 Bootstrap 管理员只在用户名尚不存在时创建；已有同名用户的密码不会在重启时被覆盖。
 
@@ -235,6 +247,8 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/tasks/{id}/feedback` | 回流误报、漏报或坏修复 |
 | `POST` | `/v1/tasks/{id}/cancel` | 请求取消任务 |
 | `POST` | `/v1/tasks/{id}/resume` | 从最近 checkpoint 续跑任务 |
+| `POST` | `/v1/tasks/{id}/comment` | GitHub 故障后重新投递已保存的审查评论 |
+| `GET/POST/DELETE` | `/v1/repository-grants` | 查询、授予或撤销租户的仓库访问权限 |
 | `POST` | `/webhooks/github` | 接收 GitHub PR webhook |
 | `POST` | `/v1/skills/reload` | 动态重新加载 Skill |
 | `POST` | `/v1/evolution/auto` | 从失败案例生成并评测提示词版本 |
@@ -256,11 +270,28 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/queue/dead-letters/replay` | 重放死信任务 |
 | `GET/POST` | `/api/deployments/llm-review`、`/v1/deployments/llm-review` | 查询或配置灰度/影子发布 |
 
-`POST /v1/reviews` 的 `diff` 最大默认 1 MiB；单任务默认最多 8 步、120 秒。可通过环境变量调整，详见 `.env.example`。
+`POST /v1/reviews` 的 `diff` 最大默认 1 MiB；单任务默认最多 8 步、120 秒。可通过环境变量调整，详见 `.env.example`。Markdown 报告默认最多渲染 `EVOAGENT_REPORT_MAX_FINDINGS`（50）条 finding，并注明省略数量；JSON 报告仍包含全部 finding。
 
 ## 隔离与任务恢复
 
-Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔离。启动时，旧数据库中未分配租户的 Prompt 和评测数据迁移到 `default` 租户，保留原 ID 和版本历史。
+Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔离。租户隔离引入前写入的旧数据会在首次以非 `default` 的 `EVOAGENT_DEFAULT_TENANT_ID` 启动时归属到该租户，`schema_meta` 标记记录迁移结果。如果目标租户已存在相同的唯一键（例如相同的仓库授权），该旧行会保留在 `default` 并输出警告，待冲突解决后的下次启动自动重试。
+
+### 仓库授权
+
+仓库授权是可选的。租户没有任何授权记录时，保持原单租户行为：审查和自动修复均开放。一旦存在授权记录，只有已列出的仓库可用，且 `POST /v1/tasks/{id}/fix` 还要求该记录的 `auto_fix=true`。设置 `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` 后，在添加授权前所有仓库都会被拒绝。管理员可通过 API 管理（均按租户隔离并写入审计日志）：
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/repository-grants \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"repository":"org/repo","auto_fix":true}'
+curl http://127.0.0.1:8080/v1/repository-grants -H "Authorization: Bearer $TOKEN"
+curl -X DELETE "http://127.0.0.1:8080/v1/repository-grants?repository=org/repo" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### GitHub App 配置
+
+`/github/setup` 需要 `EVOAGENT_GITHUB_SETUP_STATE` 随机数；未配置时该接口禁用。未完成 setup 的 installation 会被 webhook 拒绝，除非设置 `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`；`EVOAGENT_PUBLIC_BASE_URL` 用于 setup 完成后的跳转。
 
 本地仓库工具需要管理员在服务端配置 `EVOAGENT_REPOSITORY_ROOTS_JSON`，例如 `{"default":{"org/repo":"D:/checkouts/repo"}}`。请求不能选择其他服务器目录；省略 `repository_root` 时使用该映射。未配置映射则仅审查传入的 diff，解析后指向 checkout 外部的路径会被拒绝。
 

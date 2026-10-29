@@ -10,11 +10,12 @@ import uuid
 from unittest.mock import patch
 
 from agentic_fake import FakeAgenticClient, enable_agentic_service
-from evoagent.api import ApiHandler
+from evoagent.api import ApiHandler, body_optional
+from evoagent.errors import ModelNotConfigured
 from evoagent.adapters.auth import Principal
 from evoagent.config import Settings
 from evoagent.domain.diff_parser import parse_unified_diff
-from evoagent.domain.models import TaskState, TraceEvent
+from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.errors import PermanentTaskError
 from evoagent.agent.repository_tools import RepositoryToolSuite
 from evoagent.agent.runtime import RuntimeCancelled
@@ -77,6 +78,39 @@ class ReviewRegressionTests(unittest.TestCase):
             "canary_percent": canary, "shadow_percent": shadow, **options,
         })
         return stable, candidate
+
+    def test_repository_grant_api_lifecycle(self):
+        created = self.request("/v1/repository-grants", "POST", {
+            "repository": "org/a", "auto_fix": True,
+        })
+        self.assertEqual(201, created["status"])
+        self.assertEqual(
+            [{"repository": "org/a", "auto_fix": True}],
+            self.request("/v1/repository-grants")["body"]["grants"],
+        )
+        deleted = self.request(
+            "/v1/repository-grants?repository=org/a", "DELETE"
+        )
+        self.assertEqual(200, deleted["status"])
+        self.assertTrue(deleted["body"]["revoked"])
+        self.assertEqual(
+            [], self.request("/v1/repository-grants")["body"]["grants"]
+        )
+
+    def test_repository_grant_api_validates_input(self):
+        self.assertEqual(
+            400,
+            self.request("/v1/repository-grants", "POST", {
+                "repository": "",
+            })["status"],
+        )
+        self.assertEqual(
+            400,
+            self.request("/v1/repository-grants", "POST", {
+                "repository": "org/a", "auto_fix": "yes",
+            })["status"],
+        )
+
 
     def test_api_rejects_unbound_checkout_and_uses_server_mapping(self):
         authorized = Path(self.temp.name) / "allowed"
@@ -352,6 +386,7 @@ class ReviewRegressionTests(unittest.TestCase):
         service._reviews_app.execution.settings = replace(
             original_settings, auto_post_review=True,
         )
+        service._reviews_app.execution.comments.BACKOFF_SECONDS = 0
         try:
             with patch.object(
                 service._github_app, "github_client_for_installation",
@@ -466,6 +501,135 @@ class ReviewRegressionTests(unittest.TestCase):
             self.assertTrue(self.service.resume_task(task_id, "tenant-a")["resumed"])
 
 
+class BodylessPostRouteTests(unittest.TestCase):
+    def test_action_routes_do_not_require_a_json_body(self):
+        for path in (
+            "/v1/tasks/abc/comment", "/v1/tasks/abc/cancel",
+            "/v1/tasks/abc/resume", "/v1/skills/reload",
+        ):
+            self.assertTrue(body_optional(path), path)
+
+    def test_json_routes_still_require_a_body(self):
+        for path in (
+            "/v1/reviews", "/v1/repository-grants", "/webhooks/github",
+            "/v1/tasks/abc/fix",
+        ):
+            self.assertFalse(body_optional(path), path)
+
+
+class MissingModelApiTests(unittest.TestCase):
+    def test_review_without_a_configured_model_returns_503(self):
+        class Service:
+            def create_review(self, *args, **kwargs):
+                raise ModelNotConfigured("agentic review requires a configured model")
+
+        handler = ApiHandler.__new__(ApiHandler)
+        handler.service = Service()
+        handler.settings = None
+        handler.path = "/v1/reviews"
+        handler._principal = lambda permission="read": Principal(
+            "alice", "alice", "tenant-a", "admin"
+        )
+        handler._read_body = lambda: b'{"repository":"org/a","diff":"x"}'
+        result = {}
+        handler._send_json = lambda code, body: result.update(status=code, body=body)
+        handler.do_POST()
+        self.assertEqual(503, result["status"])
+        self.assertIn("model", result["body"]["error"])
+
+
+class CommentDeliveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.settings = Settings(
+            host="127.0.0.1", port=8080,
+            db_path=str(Path(self.temp.name) / "test.db"),
+            max_diff_bytes=10000, max_steps=8, timeout_seconds=10,
+            llm_base_url="", llm_api_key="", llm_model="",
+            github_webhook_secret="", github_token="", auto_post_review=False,
+        )
+        self.service = ReviewService(self.settings)
+        self.addCleanup(self.service.queue.close)
+        self.service.store.create(
+            "comment-task", "org/a", 1,
+            {
+                "github_issue_url": "https://github.com/org/a/pull/1",
+                "installation_id": 7,
+            },
+            "tenant-a",
+        )
+        self.service.store.succeed(
+            "comment-task",
+            ReviewReport(
+                repository="org/a", pull_request=1, summary="ok", risk="low",
+            ),
+            TraceEvent(1, TaskState.SUCCESS, "done", utc_now()),
+        )
+        self.execution = self.service._reviews_app.execution
+        self.execution.comments.BACKOFF_SECONDS = 0
+
+    def test_redelivery_retries_transient_failures(self):
+        calls = []
+
+        class FlakyClient:
+            def __init__(self):
+                self.failures = 2
+
+            def upsert_comment(self, url, body, marker):
+                calls.append((url, marker))
+                if self.failures:
+                    self.failures -= 1
+                    raise RuntimeError("GitHub outage")
+
+        client = FlakyClient()
+        self.execution.comments.github_client_for_installation = (
+            lambda installation_id: client
+        )
+
+        result = self.service.redeliver_comment("comment-task", "tenant-a")
+
+        self.assertTrue(result["delivered"])
+        self.assertEqual(3, len(calls))
+        self.assertEqual(
+            "<!-- evoagent-review:comment-task -->", calls[-1][1]
+        )
+
+    def test_failed_redelivery_is_recorded_without_failing_the_task(self):
+        class BrokenClient:
+            def upsert_comment(self, url, body, marker):
+                raise RuntimeError("GitHub outage")
+
+        self.execution.comments.github_client_for_installation = (
+            lambda installation_id: BrokenClient()
+        )
+
+        result = self.service.redeliver_comment("comment-task", "tenant-a")
+
+        self.assertFalse(result["delivered"])
+        self.assertEqual("SUCCESS", self.service.store.get("comment-task")["state"])
+        actions = [
+            item["action"] for item in self.service.store.list_audit("tenant-a")
+        ]
+        self.assertIn("comment.delivery_failed", actions)
+
+    def test_audit_failure_does_not_escape_comment_delivery(self):
+        class BrokenClient:
+            def upsert_comment(self, url, body, marker):
+                raise RuntimeError("GitHub outage")
+
+        self.execution.comments.github_client_for_installation = (
+            lambda installation_id: BrokenClient()
+        )
+        with patch.object(
+            self.service.store, "audit", side_effect=RuntimeError("audit down"),
+        ):
+            result = self.service.redeliver_comment("comment-task", "tenant-a")
+
+        self.assertFalse(result["delivered"])
+        self.assertEqual("SUCCESS", self.service.store.get("comment-task")["state"])
+
+
 class LegacyMigrationTests(unittest.TestCase):
     def test_existing_prompt_data_survives_tenant_migration_and_restart(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -488,3 +652,122 @@ class LegacyMigrationTests(unittest.TestCase):
             restarted = TaskStore(path)
             self.assertEqual("legacy", restarted.get_active_skill_version("llm-review")["prompt"])
             self.assertEqual("other tenant", restarted.get_active_skill_version("llm-review", "tenant-b")["prompt"])
+
+    def test_legacy_rows_are_adopted_by_the_configured_default_tenant_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / "legacy.db")
+            with sqlite3.connect(path) as conn:
+                conn.execute(
+                    "CREATE TABLE skill_versions(id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "skill_name TEXT,version INTEGER,prompt TEXT,score REAL,active INTEGER,"
+                    "parent_version INTEGER,created_at TEXT,UNIQUE(skill_name,version))"
+                )
+                conn.execute(
+                    "INSERT INTO skill_versions VALUES (7,'llm-review',1,'legacy',.5,1,NULL,?)",
+                    (utc_now(),),
+                )
+                conn.execute(
+                    "CREATE TABLE tasks(id TEXT PRIMARY KEY,state TEXT,repository TEXT,"
+                    "pull_request INTEGER,input_json TEXT,report_json TEXT,error TEXT,"
+                    "created_at TEXT,updated_at TEXT)"
+                )
+                conn.execute(
+                    "INSERT INTO tasks VALUES ('legacy-task','SUCCESS','org/a',1,'{}',NULL,NULL,?,?)",
+                    (utc_now(), utc_now()),
+                )
+            conn.close()
+            store = TaskStore(path)
+            self.assertIsNotNone(store.get_active_skill_version("llm-review"))
+            self.assertIsNotNone(store.get("legacy-task"))
+
+            self.assertTrue(store.migrate_legacy_tenant("tenant-a"))
+            self.assertEqual("legacy", store.get_active_skill_version(
+                "llm-review", "tenant-a")["prompt"])
+            self.assertIsNone(store.get_active_skill_version("llm-review"))
+            self.assertIsNotNone(store.get("legacy-task", "tenant-a"))
+            self.assertIsNone(store.get("legacy-task", "default"))
+            # The marker makes the migration one-shot and keeps its original
+            # target even when the configured default tenant changes.
+            self.assertFalse(store.migrate_legacy_tenant("tenant-b"))
+            self.assertIsNotNone(store.get("legacy-task", "tenant-a"))
+            self.assertIsNone(store.get("legacy-task", "tenant-b"))
+            conn = sqlite3.connect(path)
+            try:
+                marker = conn.execute(
+                    "SELECT value FROM schema_meta "
+                    "WHERE key='legacy_tenant_adopted_to'"
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual("tenant-a", json.loads(marker)["target"])
+
+    def test_conflicting_rows_are_skipped_and_adopted_after_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / "legacy.db")
+            store = TaskStore(path)
+            store.grant_repository("default", "org/a", False)
+            store.grant_repository("tenant-a", "org/a", True)
+
+            # The target already owns the same key: startup must not crash.
+            self.assertFalse(store.migrate_legacy_tenant("tenant-a"))
+            conn = sqlite3.connect(path)
+            try:
+                default_rows = conn.execute(
+                    "SELECT auto_fix FROM repository_grants "
+                    "WHERE tenant_id='default' AND repository='org/a'"
+                ).fetchall()
+                marker = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key='legacy_tenant_adopted_to'"
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual([(0,)], default_rows)
+            self.assertIn("repository_grants", marker)
+
+            # Resolving the collision lets the next startup finish the job.
+            store.revoke_repository("tenant-a", "org/a")
+            self.assertTrue(store.migrate_legacy_tenant("tenant-a"))
+            self.assertEqual(
+                [{"repository": "org/a", "auto_fix": False}],
+                store.list_repository_grants("tenant-a"),
+            )
+            conn = sqlite3.connect(path)
+            try:
+                remaining = conn.execute(
+                    "SELECT COUNT(*) FROM repository_grants WHERE tenant_id='default'"
+                ).fetchone()[0]
+                marker = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key='legacy_tenant_adopted_to'"
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(0, remaining)
+            self.assertNotIn("repository_grants", marker)
+
+    def test_composite_unique_conflicts_do_not_abort_startup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = str(Path(temp) / "legacy.db")
+            store = TaskStore(path)
+            store.save_skill_version("llm-review", "legacy", .5, True, tenant_id="default")
+            store.save_skill_version("llm-review", "target", .7, True, tenant_id="tenant-a")
+
+            self.assertFalse(store.migrate_legacy_tenant("tenant-a"))
+            self.assertEqual(
+                "legacy", store.get_active_skill_version("llm-review", "default")["prompt"],
+            )
+            self.assertEqual(
+                "target", store.get_active_skill_version("llm-review", "tenant-a")["prompt"],
+            )
+            conn = sqlite3.connect(path)
+            try:
+                conn.execute(
+                    "DELETE FROM skill_versions WHERE tenant_id='tenant-a'"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            self.assertTrue(store.migrate_legacy_tenant("tenant-a"))
+            self.assertEqual(
+                "legacy", store.get_active_skill_version("llm-review", "tenant-a")["prompt"],
+            )
+            self.assertIsNone(store.get_active_skill_version("llm-review", "default"))

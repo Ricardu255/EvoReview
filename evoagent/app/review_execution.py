@@ -8,9 +8,9 @@ from typing import Any, Callable, Dict, Optional
 from ..errors import PermanentTaskError
 from ..domain.finding_identity import canonical_identity
 from ..domain.models import TaskState, TraceEvent
-from ..domain.report import to_markdown
 from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
+from .comments import ReviewCommentService
 from .policies import ReviewPolicy
 
 
@@ -66,6 +66,9 @@ class ReviewExecutionService:
         self.build_agentic_reviewer = build_agentic_reviewer
         self.harness_factory = harness_factory
         self.github_client_for_installation = github_client_for_installation
+        self.comments = ReviewCommentService(
+            settings, store, metrics, github_client_for_installation,
+        )
 
     def _execution_assignment(self, tenant_id: str, task_id: str) -> dict:
         assignment = self.releases.assignment(tenant_id, "llm-review", task_id)
@@ -202,19 +205,15 @@ class ReviewExecutionService:
         # Comment delivery is a separate side effect: a GitHub outage must not
         # fail (and re-run) an otherwise successful review.
         if payload.get("github_issue_url") and self.settings.auto_post_review:
-            try:
-                client = self.github_client_for_installation(
-                    payload.get("installation_id")
-                )
-                client.upsert_comment(
-                    payload["github_issue_url"], to_markdown(report.to_dict()),
-                    "<!-- evoagent-review:%s -->" % task_id,
-                )
-            except Exception:
-                logger.exception(
-                    "failed to deliver review comment for task %s", task_id
-                )
-                self.metrics.inc("comment_delivery_failed_total")
+            self.comments.deliver(
+                payload["github_issue_url"], payload.get("installation_id"),
+                task_id, tenant_id, report,
+            )
+
+    def redeliver_comment(
+        self, task_id: str, tenant_id: Optional[str] = None,
+    ) -> dict:
+        return self.comments.redeliver(task_id, tenant_id)
 
     def on_dead_letter(self, payload: Dict[str, Any], error: str) -> None:
         mark_dead_letter(self.store, self.metrics, payload, error)

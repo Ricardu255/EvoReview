@@ -80,6 +80,8 @@ class PostgresSchemaMixin:
             """CREATE TABLE IF NOT EXISTS memberships (
                 user_id TEXT NOT NULL REFERENCES users(id), tenant_id TEXT NOT NULL, role TEXT NOT NULL,
                 PRIMARY KEY(user_id,tenant_id))""",
+            """CREATE TABLE IF NOT EXISTS schema_meta (
+                key TEXT PRIMARY KEY, value TEXT NOT NULL)""",
             """CREATE TABLE IF NOT EXISTS repository_grants (
                 tenant_id TEXT NOT NULL, repository TEXT NOT NULL, auto_fix BOOLEAN NOT NULL DEFAULT FALSE,
                 PRIMARY KEY(tenant_id,repository))""",

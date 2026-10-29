@@ -72,8 +72,8 @@ class StoreAdapterStructureTests(unittest.TestCase):
     def test_shared_contains_dialect_neutral_helpers(self):
         expected = {
             "__init__.py", "auth.py", "failures.py", "installations.py",
-            "memory.py", "prompt.py", "rows.py", "skills.py", "sql.py",
-            "webhook.py",
+            "memory.py", "migrations.py", "prompt.py", "rows.py", "skills.py",
+            "sql.py", "webhook.py",
         }
         self.assertEqual(
             expected,

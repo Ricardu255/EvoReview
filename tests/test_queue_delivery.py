@@ -177,3 +177,61 @@ class QueueDeliveryTests(unittest.TestCase):
         ]
         redis.xrevrange = lambda *args, **kwargs: pages.pop(0) if pages else []
         self.assertEqual("a", queue.dead_letters(1, "a")[0]["payload"]["tenant_id"])
+
+
+class MemoryQueueShutdownTests(unittest.TestCase):
+    def test_memory_workers_are_daemon_and_close_is_bounded(self):
+        started, release = threading.Event(), threading.Event()
+
+        def handler(_payload):
+            started.set()
+            release.wait(5)
+
+        queue = TaskQueue(handler, workers=1)
+        try:
+            queue.submit({"task_id": "blocked", "tenant_id": "default"})
+            self.assertTrue(started.wait(2))
+            self.assertTrue(queue._memory_workers)
+            self.assertTrue(all(thread.daemon for thread in queue._memory_workers))
+            begin = time.monotonic()
+            queue.close(timeout=.2)
+            self.assertLess(time.monotonic() - begin, 2)
+            self.assertTrue(queue._memory_workers[0].is_alive())
+        finally:
+            release.set()
+            queue.close(timeout=2)
+        self.assertFalse(queue._memory_workers[0].is_alive())
+
+    def test_memory_mode_runs_deliveries_once_and_deduplicates(self):
+        calls = []
+        queue = TaskQueue(lambda payload: calls.append(payload["task_id"]), workers=2)
+        self.addCleanup(queue.close)
+        queue.submit({"task_id": "same", "tenant_id": "default"}, message_id="same")
+        deadline = time.monotonic() + 2
+        while not calls and time.monotonic() < deadline:
+            time.sleep(.01)
+        queue.submit({"task_id": "same", "tenant_id": "default"}, message_id="same")
+        time.sleep(.1)
+        queue.close(timeout=3)
+        self.assertEqual(["same"], calls)
+
+    def test_memory_mode_swallows_duplicate_claims(self):
+        release = threading.Event()
+        calls = []
+
+        def handler(payload):
+            calls.append(payload["task_id"])
+            release.wait(3)
+
+        queue = TaskQueue(handler, workers=2)
+        try:
+            queue.submit({"task_id": "same", "tenant_id": "default"}, message_id="same")
+            deadline = time.monotonic() + 2
+            while not calls and time.monotonic() < deadline:
+                time.sleep(.01)
+            queue.submit({"task_id": "same", "tenant_id": "default"}, message_id="same")
+            time.sleep(.1)
+            self.assertEqual(["same"], calls)
+        finally:
+            release.set()
+            queue.close(timeout=3)

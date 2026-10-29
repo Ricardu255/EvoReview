@@ -197,6 +197,12 @@ class SqliteSchemaMixin:
                 )"""
             )
             conn.execute(
+                """CREATE TABLE IF NOT EXISTS schema_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )"""
+            )
+            conn.execute(
                 """CREATE TABLE IF NOT EXISTS repository_grants (
                     tenant_id TEXT NOT NULL,
                     repository TEXT NOT NULL,

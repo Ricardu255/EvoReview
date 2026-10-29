@@ -27,9 +27,21 @@ English | [**简体中文**](docs/README.zh-CN.md)
 - Post-fix compile/test gating, canary rollout, and shadow traffic
 - OpenTelemetry traces, Prometheus metrics, and persistent alerts
 
-### Project boundary
+## Project Boundary
 
 EvoReview owns the review product: multi-agent orchestration, repository tools, evidence gates, and prompt/Skill evolution. Version-level evaluation and cross-project release gating are handled by Assay; EvoReview keeps the raw `ExecutionLedger` and can export it when needed.
+
+## Table of Contents
+
+- [Project Boundary](#project-boundary)
+- [Quick Start](#quick-start)
+- [Continuous Integration](#continuous-integration)
+- [Model Configuration](#model-configuration)
+- [GitHub Webhook](#github-webhook)
+- [API](#api)
+- [Isolation and Task Recovery](#isolation-and-task-recovery)
+- [Architecture](#architecture)
+- [Skills: Purpose and Authoring](#skills-purpose-and-authoring)
 
 ## Quick Start
 
@@ -48,7 +60,7 @@ $env:EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD = '<replace with a password of at least 1
 python -m evoagent
 ```
 
-Do not use the sample placeholders as real passwords or secrets. Environment variables only apply to the current PowerShell window and its child processes; after changing configuration, stop and restart EvoReview. The service can start and serve health checks without a configured model, but a model must be configured (see [Model Configuration](#model-configuration)) before submitting reviews.
+Do not use the sample placeholders as real passwords or secrets. Environment variables only apply to the current PowerShell window and its child processes; after changing configuration, stop and restart EvoReview. `python -m evoagent --check` validates the configuration without binding the port, and `--version` prints the package version. The service can start and serve health checks without a configured model, but a model must be configured (see [Model Configuration](#model-configuration)) before submitting reviews.
 
 The bootstrap administrator is created only when the username does not already exist; restarting will not overwrite the password of an existing admin user.
 
@@ -235,6 +247,8 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/tasks/{id}/feedback` | Feed back false positives, missed findings, or bad fixes |
 | `POST` | `/v1/tasks/{id}/cancel` | Request task cancellation |
 | `POST` | `/v1/tasks/{id}/resume` | Resume a task from its latest checkpoint |
+| `POST` | `/v1/tasks/{id}/comment` | Re-post the stored review comment after a GitHub outage |
+| `GET/POST/DELETE` | `/v1/repository-grants` | List, grant, or revoke tenant repository access |
 | `POST` | `/webhooks/github` | Receive GitHub PR webhooks |
 | `POST` | `/v1/skills/reload` | Dynamically reload Skills |
 | `POST` | `/v1/evolution/auto` | Generate and evaluate a prompt version from failure cases |
@@ -256,11 +270,28 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/queue/dead-letters/replay` | Replay a dead-letter task |
 | `GET/POST` | `/api/deployments/llm-review`, `/v1/deployments/llm-review` | Query or configure canary/shadow rollout |
 
-The `diff` in `POST /v1/reviews` defaults to a 1 MiB maximum; a single task defaults to at most 8 steps and 120 seconds. These can be tuned via environment variables; see `.env.example`.
+The `diff` in `POST /v1/reviews` defaults to a 1 MiB maximum; a single task defaults to at most 8 steps and 120 seconds. These can be tuned via environment variables; see `.env.example`. Markdown reports render at most `EVOAGENT_REPORT_MAX_FINDINGS` (50) findings and note how many were omitted; the JSON report keeps every finding.
 
-## Isolation and task recovery
+## Isolation and Task Recovery
 
-Prompt versions, evaluation samples, evolution runs, and dead-letter operations are scoped to the authenticated tenant. Existing unscoped prompt/evaluation data migrates to the `default` tenant on startup, preserving IDs and version history.
+Prompt versions, evaluation samples, evolution runs, and dead-letter operations are scoped to the authenticated tenant. Rows written before tenancy existed are adopted by `EVOAGENT_DEFAULT_TENANT_ID` on the first startup with a non-`default` value, and the `schema_meta` marker records what was moved. If the target tenant already owns the same unique key (for example the same repository grant), that legacy row is left in `default`, a warning lists it, and the next startup retries it after the collision is resolved.
+
+### Repository Grants
+
+Grants are optional. While a tenant has **no** grant rows, the original single-tenant behaviour is preserved: reviews and automatic repair are open. As soon as one grant exists, only listed repositories are accepted, and `POST /v1/tasks/{id}/fix` additionally requires the grant to have `auto_fix=true`. Set `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` to deny every repository until grants are added. Managers can use the API (all calls are tenant-scoped and audited):
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/repository-grants \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"repository":"org/repo","auto_fix":true}'
+curl http://127.0.0.1:8080/v1/repository-grants -H "Authorization: Bearer $TOKEN"
+curl -X DELETE "http://127.0.0.1:8080/v1/repository-grants?repository=org/repo" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### GitHub App Setup
+
+`/github/setup` requires the `EVOAGENT_GITHUB_SETUP_STATE` nonce and disabled when it is blank. Installations that have not completed setup are rejected by the webhook handler unless `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`; `EVOAGENT_PUBLIC_BASE_URL` is used for the post-setup redirect.
 
 For repository tools, configure `EVOAGENT_REPOSITORY_ROOTS_JSON` on the server, for example `{"default":{"org/repo":"D:/checkouts/repo"}}`. Requests cannot select another server directory; an omitted `repository_root` uses the configured checkout. Without a mapping, review uses only the supplied diff. Paths resolving outside the checkout are rejected.
 

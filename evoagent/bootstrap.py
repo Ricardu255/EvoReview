@@ -190,6 +190,7 @@ def build_container(settings: Settings) -> ServiceContainer:
     repository_roots = _parse_repository_roots(settings)
     llm_config = settings.resolved_llm()
     store = create_store(settings.database_url, settings.db_path)
+    store.migrate_legacy_tenant(settings.default_tenant_id)
     memory = MemoryManager(
         store, settings.memory_enabled, settings.memory_recall_limit,
         settings.memory_working_ttl_seconds,
