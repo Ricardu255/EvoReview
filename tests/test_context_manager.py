@@ -7,7 +7,7 @@ from evoagent.agent.reviewer import AgenticReviewer
 from evoagent.agent.context_manager import ContextManager, estimate_tokens
 from evoagent.domain.diff_parser import parse_unified_diff
 from evoagent.agent.memory import MemoryManager
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 class ContextEvictionTests(unittest.TestCase):

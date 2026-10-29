@@ -11,11 +11,6 @@ PACKAGE = ROOT / "evoagent"
 
 
 class AgentModuleTests(unittest.TestCase):
-    def test_agentic_core_is_only_a_compatibility_reexport(self):
-        source = (PACKAGE / "agentic_core.py").read_text(encoding="utf-8")
-        self.assertIn("from .agent.reviewer import", source)
-        self.assertLessEqual(len(source.splitlines()), 30)
-
     def test_reviewer_facade_stays_small(self):
         source = (PACKAGE / "agent" / "reviewer.py").read_text(encoding="utf-8")
         self.assertLessEqual(len(source.splitlines()), 320)
@@ -96,7 +91,8 @@ class AgentModuleTests(unittest.TestCase):
 
     def test_agent_modules_do_not_import_application_or_adapters(self):
         forbidden = {
-            "service", "bootstrap", "postgres_store", "task_queue",
+            "service", "bootstrap", "adapters.stores.postgres.store",
+            "adapters.stores.sqlite.store", "adapters.task_queue",
             "app", "api",
         }
         for path in (PACKAGE / "agent").glob("*.py"):

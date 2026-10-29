@@ -18,7 +18,8 @@ from evoagent.errors import PermanentTaskError
 from evoagent.agent.repository_tools import RepositoryToolSuite
 from evoagent.agent.runtime import RuntimeCancelled
 from evoagent.service import ReviewService
-from evoagent.store import TaskStore, utc_now
+from evoagent.adapters.stores.sqlite.store import TaskStore
+from evoagent.time_utils import utc_now
 
 
 DIFF = "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old\n+eval(data)\n"

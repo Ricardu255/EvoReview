@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 
+from . import __version__
 from .config import Settings
 from .adapters.auth import Principal
 from .adapters.github import verify_signature
@@ -34,7 +35,7 @@ WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
 class ApiHandler(BaseHTTPRequestHandler):
     service: ReviewService
     settings: Settings
-    server_version = "EvoReview/0.3"
+    server_version = "EvoReview/" + __version__
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print("%s - %s" % (self.address_string(), fmt % args))

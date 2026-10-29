@@ -8,7 +8,7 @@ from evoagent.agent.harness import ReviewHarness
 from evoagent.agent.reviewers import LocalRuleReviewer, Reviewer
 from evoagent.adapters.rollout import ReleaseManager
 from evoagent.service import ReviewService
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 from evoagent.adapters.task_queue import TaskQueue
 from evoagent.adapters.verifier import RepairVerifier
 

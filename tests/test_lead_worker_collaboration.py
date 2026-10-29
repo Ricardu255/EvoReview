@@ -8,7 +8,7 @@ from evoagent.domain.diff_parser import parse_unified_diff
 from evoagent.agent.lead_session import LeadSession
 from evoagent.agent.memory import MemoryManager
 from evoagent.domain.models import Finding, Severity
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 DIFF = "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-old\n+eval(user_input)\n"

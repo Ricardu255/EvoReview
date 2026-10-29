@@ -12,7 +12,7 @@ from evoagent.evaluation.skill_evolution import (
     validate_artifact,
 )
 from evoagent.evaluation.skills import AgentSkill, SkillRegistry
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 RISK_DIFF = "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old\n+dangerous_call(data)\n"

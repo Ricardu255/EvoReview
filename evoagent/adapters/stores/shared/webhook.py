@@ -1,8 +1,8 @@
 """Recoverable webhook claims; unfinished deliveries retain their task identity."""
 import time
 
-from .sql_store import SqlStoreMixin
-from .time_utils import utc_now
+from .sql import SqlStoreMixin
+from ....time_utils import utc_now
 
 
 class WebhookStoreMixin(SqlStoreMixin):

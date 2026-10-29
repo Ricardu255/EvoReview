@@ -11,6 +11,11 @@ import time
 from datetime import datetime
 from typing import Dict
 
+from .. import __version__
+
+
+USER_AGENT = "EvoReview/" + __version__
+
 
 def verify_signature(secret: str, body: bytes, signature: str) -> bool:
     if not secret or not signature.startswith("sha256="):
@@ -26,7 +31,7 @@ class GitHubClient:
         self.max_attempts = max_attempts
 
     def _headers(self, accept: str = "application/vnd.github+json") -> Dict[str, str]:
-        headers = {"Accept": accept, "User-Agent": "EvoReview/0.1", "X-GitHub-Api-Version": "2022-11-28"}
+        headers = {"Accept": accept, "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         return headers
@@ -201,7 +206,7 @@ class GitHubAppAuthenticator:
             "https://api.github.com/app/installations/%d/access_tokens" % installation_id,
             data=b"{}", method="POST",
             headers={"Authorization": "Bearer " + self.app_jwt(), "Accept": "application/vnd.github+json",
-                     "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "EvoReview/0.3",
+                     "X-GitHub-Api-Version": "2022-11-28", "User-Agent": USER_AGENT,
                      "Content-Type": "application/json"},
         )
         with urllib.request.urlopen(request, timeout=30) as response:

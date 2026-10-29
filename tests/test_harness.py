@@ -4,7 +4,7 @@ import unittest
 
 from evoagent.agent.harness import ReviewHarness
 from evoagent.agent.reviewers import LocalRuleReviewer
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 class HarnessTests(unittest.TestCase):

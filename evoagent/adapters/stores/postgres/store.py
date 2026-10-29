@@ -1,15 +1,15 @@
 """PostgreSQL persistence backend composed from capability mixins."""
-from .adapters.stores.postgres.auth import PostgresAuthStoreMixin
-from .adapters.stores.postgres.failures import PostgresFailureStoreMixin
-from .adapters.stores.postgres.installations import PostgresInstallationStoreMixin
-from .adapters.stores.postgres.memory import PostgresMemoryStoreMixin
-from .adapters.stores.postgres.observability import PostgresObservabilityStoreMixin
-from .adapters.stores.postgres.schema import PostgresSchemaMixin
-from .adapters.stores.postgres.skills import PostgresSkillStoreMixin
-from .adapters.stores.postgres.tasks import PostgresTaskStoreMixin
-from .prompt_store import PromptStoreMixin
-from .ports.stores import StoreProtocol
-from .webhook_store import WebhookStoreMixin
+from ....ports.stores import StoreProtocol
+from ..shared.prompt import PromptStoreMixin
+from ..shared.webhook import WebhookStoreMixin
+from .auth import PostgresAuthStoreMixin
+from .failures import PostgresFailureStoreMixin
+from .installations import PostgresInstallationStoreMixin
+from .memory import PostgresMemoryStoreMixin
+from .observability import PostgresObservabilityStoreMixin
+from .schema import PostgresSchemaMixin
+from .skills import PostgresSkillStoreMixin
+from .tasks import PostgresTaskStoreMixin
 
 
 class PostgresTaskStore(
@@ -39,5 +39,5 @@ class PostgresTaskStore(
 def create_store(database_url: str, sqlite_path: str):
     if database_url.startswith(("postgres://", "postgresql://")):
         return PostgresTaskStore(database_url)
-    from .store import TaskStore
+    from ..sqlite.store import TaskStore
     return TaskStore(sqlite_path)

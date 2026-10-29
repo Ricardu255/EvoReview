@@ -1,7 +1,7 @@
 """Product-backed agentic evaluation suite for labelled PRs.
 
 The reviewer arms under evaluation (topologies, single-model baseline and
-factories) live in ``evaluation_arms``; this module owns the scoring side:
+factories) live in ``evoagent.evaluation.arms``; this module owns the scoring side:
 dataset validation, the production harness, bootstrap comparison and the
 fair ablation suite.
 """

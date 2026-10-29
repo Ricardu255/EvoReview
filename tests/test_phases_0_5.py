@@ -10,7 +10,7 @@ from evoagent.evaluation.v2 import validate_real_dataset
 from evoagent.evaluation.evolution_v2 import RootCauseEvolutionGenerator
 from evoagent.adapters.patching import apply_file_patch, parse_unified_patch
 from evoagent.service import ReviewService
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 from evoagent.adapters.verifier import RepairVerifier
 
 

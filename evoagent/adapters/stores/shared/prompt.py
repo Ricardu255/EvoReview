@@ -1,8 +1,8 @@
 """Tenant-scoped prompt persistence shared by the SQLite and PostgreSQL adapters."""
 import json
 
-from .time_utils import utc_now
-from .sql_store import SqlStoreMixin
+from ....time_utils import utc_now
+from .sql import SqlStoreMixin
 
 
 class PromptStoreMixin(SqlStoreMixin):

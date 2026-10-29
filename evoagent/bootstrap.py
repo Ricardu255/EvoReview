@@ -22,7 +22,7 @@ from .adapters.llm import JsonChatClient
 from .agent.memory import MemoryManager
 from .adapters.observability import AlertManager, Observability
 from .adapters.patching import SuggestionOnlyFixer, VerifiedPatchFixer
-from .postgres_store import create_store
+from .adapters.stores.postgres.store import create_store
 from .agent.reviewers import (
     OpenAICompatibleReviewer, ReliabilityRuleReviewer, SecurityRuleReviewer,
 )

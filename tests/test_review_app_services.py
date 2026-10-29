@@ -31,12 +31,8 @@ class ReviewAppServiceTests(unittest.TestCase):
     def test_application_modules_do_not_import_adapters(self):
         for path in APP.glob("review*.py"):
             source = path.read_text(encoding="utf-8")
-            for module in (
-                "postgres_store", "task_queue", "github", "llm",
-                "memory", "observability", "rollout", "verifier",
-                "patching", "fixer",
-            ):
-                self.assertNotIn("from ..%s import" % module, source, path.name)
+            self.assertNotIn("from ..adapters", source, path.name)
+            self.assertNotIn("from ..agent", source, path.name)
 
 
 if __name__ == "__main__":

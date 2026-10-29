@@ -4,14 +4,14 @@
 不依赖外部数据源的离线基准集（离线资产，非在线链路）：
     1. ContextRuleReviewer：扩展的确定性规则审查器（在 LocalRuleReviewer 基础上
        增加路径穿越、yaml.load、弱哈希、不安全临时文件等更多规则，
-       规则名与 evaluation_harness.RULE_TO_CWE 对齐）；
+       规则名与 evoagent.evaluation.harness.RULE_TO_CWE 对齐）；
     2. _risk_scenarios()/_clean_source()：构造“含风险代码”与“干净代码”的源文件对；
     3. generate_controlled_pr_cases()：生成带完整标签的受控 diff 案例，
        供 EndToEndEvaluationHarness 本地演示与回归使用。
 
 【调用关系】
-    上游：evolution_proof（受控证明）、evaluation_v2（基线对照）、本地演示脚本
-    下游：diff_parser、models
+    上游：evaluation.evolution_proof（受控证明）、evaluation.v2（基线对照）、本地演示脚本
+    下游：domain.diff_parser、domain.models
 
 【关键约定】
     - 全部案例确定性生成（无随机性），保证评测可复现。

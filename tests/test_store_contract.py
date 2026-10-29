@@ -12,7 +12,8 @@ import unittest
 import uuid
 
 from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
-from evoagent.store import TaskStore, utc_now
+from evoagent.adapters.stores.sqlite.store import TaskStore
+from evoagent.time_utils import utc_now
 from evoagent.ports.stores import StoreProtocol
 
 DATABASE_URL = os.environ.get("EVOAGENT_TEST_DATABASE_URL", "")
@@ -462,7 +463,7 @@ class PostgresStoreContractTests(StoreContract, unittest.TestCase):
         import psycopg
         from psycopg import sql
         from psycopg.conninfo import make_conninfo
-        from evoagent.postgres_store import PostgresTaskStore
+        from evoagent.adapters.stores.postgres.store import PostgresTaskStore
         schema = "evo_test_" + uuid.uuid4().hex
         with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
             conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))

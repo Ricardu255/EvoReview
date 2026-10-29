@@ -6,7 +6,7 @@ import unittest
 from evoagent.config import Settings
 from evoagent.domain.models import ReviewReport, TaskState, TraceEvent
 from evoagent.service import ReviewService
-from evoagent.store import utc_now
+from evoagent.time_utils import utc_now
 
 
 class FakeFixer:

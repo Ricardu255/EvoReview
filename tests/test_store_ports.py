@@ -15,7 +15,7 @@ from evoagent.ports.stores import (
     TaskStorePort,
     WebhookStorePort,
 )
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 class StorePortCompositionTests(unittest.TestCase):

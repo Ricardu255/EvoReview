@@ -9,7 +9,8 @@ from evoagent.agent.memory import MemoryManager
 from evoagent.agent.runtime import (
     AgentRuntime, AgentTool, RuntimeNode, ToolProtocolError, ToolRegistry,
 )
-from evoagent.store import TaskStore, utc_now
+from evoagent.adapters.stores.sqlite.store import TaskStore
+from evoagent.time_utils import utc_now
 from evoagent.agent.telemetry import ExecutionLedger
 
 

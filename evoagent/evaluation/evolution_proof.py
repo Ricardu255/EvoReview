@@ -19,7 +19,8 @@ from .evolution import DEFAULT_PROMPT, EvolutionEngine, RegressionEvaluator
 from ..domain.models import Finding
 from ..agent.reviewers import LocalRuleReviewer, Reviewer
 from ..agent.review_rules import ContextRuleReviewer
-from ..store import TaskStore, utc_now
+from ..adapters.stores.sqlite.store import TaskStore
+from ..time_utils import utc_now
 
 
 FOCUS_RULE = re.compile(r"\[focus-rule:([A-Z][A-Z0-9_-]{1,79})\]")

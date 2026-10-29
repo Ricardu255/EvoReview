@@ -4,7 +4,7 @@ import unittest
 
 from evoagent.agent.context_manager import ContextManager
 from evoagent.agent.lead_session import CHECKPOINT_NAME, PROTOCOL, LeadSession
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 from evoagent.agent.telemetry import ExecutionLedger
 
 

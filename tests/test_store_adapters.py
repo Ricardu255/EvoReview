@@ -21,9 +21,9 @@ from evoagent.adapters.stores.sqlite.failures import SqliteFailureStoreMixin
 from evoagent.adapters.stores.sqlite.installations import SqliteInstallationStoreMixin
 from evoagent.adapters.stores.sqlite.memory import SqliteMemoryStoreMixin
 from evoagent.adapters.stores.sqlite.skills import SqliteSkillStoreMixin
-from evoagent.postgres_store import PostgresTaskStore
-from evoagent.sql_store import SqlStoreMixin
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.postgres.store import PostgresTaskStore
+from evoagent.adapters.stores.shared.sql import SqlStoreMixin
+from evoagent.adapters.stores.sqlite.store import TaskStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,14 +52,15 @@ class StoreAdapterStructureTests(unittest.TestCase):
             self.assertIn(expected, names)
 
     def test_store_facades_stay_thin(self):
-        for name in ("store.py", "postgres_store.py"):
-            source = (ROOT / "evoagent" / name).read_text(encoding="utf-8")
-            self.assertLessEqual(len(source.splitlines()), 50, name)
+        for backend in ("sqlite", "postgres"):
+            source = (STORES / backend / "store.py").read_text(encoding="utf-8")
+            self.assertLessEqual(len(source.splitlines()), 50, backend)
 
     def test_each_backend_has_the_same_capability_modules(self):
         expected = {
-            "__init__.py", "schema.py", "tasks.py", "memory.py", "failures.py",
-            "skills.py", "installations.py", "auth.py", "observability.py",
+            "__init__.py", "store.py", "schema.py", "tasks.py", "memory.py",
+            "failures.py", "skills.py", "installations.py", "auth.py",
+            "observability.py",
         }
         for backend in ("sqlite", "postgres"):
             self.assertEqual(
@@ -67,6 +68,17 @@ class StoreAdapterStructureTests(unittest.TestCase):
                 {path.name for path in (STORES / backend).glob("*.py")},
                 backend,
             )
+
+    def test_shared_contains_dialect_neutral_helpers(self):
+        expected = {
+            "__init__.py", "auth.py", "failures.py", "installations.py",
+            "memory.py", "prompt.py", "rows.py", "skills.py", "sql.py",
+            "webhook.py",
+        }
+        self.assertEqual(
+            expected,
+            {path.name for path in (STORES / "shared").glob("*.py")},
+        )
 
     def test_adapters_do_not_import_application_or_agent_layers(self):
         for path in STORES.rglob("*.py"):

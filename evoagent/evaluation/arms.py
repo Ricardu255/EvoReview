@@ -3,7 +3,7 @@
 One arm is a configured reviewer (a cheap single-model baseline or a product
 ``AgenticReviewer`` topology) that evaluation harnesses replay labelled cases
 against.  The harnesses and suites that score these arms live in
-``evaluation_v2``.
+``evoagent.evaluation.v2``.
 """
 from collections import Counter
 import json

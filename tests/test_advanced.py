@@ -8,7 +8,7 @@ from evoagent.evaluation.evolution import EvolutionEngine, RegressionEvaluator
 from evoagent.adapters.fixer import SafeFixer
 from evoagent.domain.models import Finding, Severity
 from evoagent.service import ReviewService
-from evoagent.store import TaskStore
+from evoagent.adapters.stores.sqlite.store import TaskStore
 from agentic_fake import enable_agentic_service
 
 
