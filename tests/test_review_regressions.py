@@ -537,6 +537,29 @@ class MissingModelApiTests(unittest.TestCase):
         self.assertEqual(503, result["status"])
         self.assertIn("model", result["body"]["error"])
 
+    def test_null_mode_is_treated_as_absent(self):
+        calls = []
+
+        class Service:
+            def create_review(self, *args, **kwargs):
+                calls.append(kwargs)
+                raise ModelNotConfigured("agentic review requires a configured model")
+
+        handler = ApiHandler.__new__(ApiHandler)
+        handler.service = Service()
+        handler.settings = None
+        handler.path = "/v1/reviews"
+        handler._principal = lambda permission="read": Principal(
+            "alice", "alice", "tenant-a", "admin"
+        )
+        handler._read_body = lambda: (
+            b'{"repository":"org/a","diff":"x","mode":null,"repository_root":null}'
+        )
+        handler._send_json = lambda code, body: None
+        handler.do_POST()
+        self.assertEqual("", calls[0]["mode"])
+        self.assertEqual("", calls[0]["repository_root"])
+
 
 class CommentDeliveryTests(unittest.TestCase):
     def setUp(self):
