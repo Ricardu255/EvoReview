@@ -69,6 +69,38 @@ class StartupValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             replace(self.settings(), host="  ").validate_evolution()
 
+    def test_out_of_range_limits_are_rejected(self):
+        for overrides in (
+            {"report_max_findings": 0},
+            {"max_steps": 0},
+            {"timeout_seconds": 0},
+            {"async_workers": 0},
+            {"queue_max_attempts": 0},
+            {"queue_stream_maxlen": 0},
+            {"queue_dlq_maxlen": 0},
+            {"alert_window_seconds": 0},
+            {"session_ttl_seconds": 0},
+            {"agent_context_input_tokens": 0},
+        ):
+            with self.assertRaises(ValueError, msg=str(overrides)):
+                replace(self.settings(), **overrides).validate_evolution()
+
+    def test_agent_token_budget_must_fit_the_context_window(self):
+        with self.assertRaises(ValueError):
+            replace(
+                self.settings(),
+                agent_context_window_tokens=10000,
+                agent_context_input_tokens=9000,
+                agent_token_budget=5000,
+            ).validate_evolution()
+
+    def test_invalid_trusted_proxy_is_rejected(self):
+        with self.assertRaises(ValueError):
+            replace(self.settings(), trusted_proxies=("not-a-cidr",)).validate_evolution()
+        with patch.dict(os.environ, {"EVOAGENT_TRUSTED_PROXIES": "nope"}, clear=True):
+            with self.assertRaises(ValueError):
+                Settings.from_env()
+
 
 if __name__ == "__main__":
     unittest.main()

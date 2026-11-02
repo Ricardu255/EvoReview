@@ -39,22 +39,28 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
 
     for raw in diff.splitlines():
         if in_hunk:
-            if raw.startswith("\\ No newline"):
-                continue
-            if raw.startswith("+"):
-                added.append(ChangedLine(current_path or "unknown", new_line, raw[1:]))
-                new_line += 1
-                new_remaining -= 1
-            elif raw.startswith("-"):
-                old_remaining -= 1
+            # A body line always starts with " ", "+", "-" or "\".  A section
+            # header can only appear when the declared counts were wrong; end
+            # the hunk instead of parsing the next file as hunk content.
+            if raw.startswith("diff --git ") or raw.startswith("@@"):
+                in_hunk = False
             else:
-                # Context line.  A blank line in a diff may have lost its
-                # leading space in transport; treat it as context.
-                new_line += 1
-                old_remaining -= 1
-                new_remaining -= 1
-            finish_hunk_if_complete()
-            continue
+                if raw.startswith("\\ No newline"):
+                    continue
+                if raw.startswith("+"):
+                    added.append(ChangedLine(current_path or "unknown", new_line, raw[1:]))
+                    new_line += 1
+                    new_remaining -= 1
+                elif raw.startswith("-"):
+                    old_remaining -= 1
+                else:
+                    # Context line.  A blank line in a diff may have lost its
+                    # leading space in transport; treat it as context.
+                    new_line += 1
+                    old_remaining -= 1
+                    new_remaining -= 1
+                finish_hunk_if_complete()
+                continue
 
         if raw.startswith("+++ "):
             current_path = raw[4:].strip().split("\t", 1)[0]

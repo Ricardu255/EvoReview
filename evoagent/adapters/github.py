@@ -118,11 +118,18 @@ class GitHubClient:
                     ) from exc
                 retry_after = exc.headers.get("Retry-After")
                 reset = exc.headers.get("X-RateLimit-Reset")
+                delay = None
                 if retry_after:
-                    delay = float(retry_after)
-                elif reset:
-                    delay = max(0.0, float(reset) - time.time())
-                else:
+                    try:
+                        delay = float(retry_after)
+                    except (TypeError, ValueError):
+                        delay = None
+                if delay is None and reset:
+                    try:
+                        delay = max(0.0, float(reset) - time.time())
+                    except (TypeError, ValueError):
+                        delay = None
+                if delay is None:
                     delay = min(2 ** (attempt - 1) + random.random(), 10)
                 time.sleep(min(delay, 30))
             except (urllib.error.URLError, TimeoutError) as exc:

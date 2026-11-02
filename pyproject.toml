@@ -24,6 +24,12 @@ dev = ["pytest>=7,<9"]
 [project.scripts]
 evoagent = "evoagent.__main__:main"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+evoagent = ["web/*", "skill_assets/*/*"]
+
 [tool.setuptools.packages.find]
 include = ["evoagent*"]
 

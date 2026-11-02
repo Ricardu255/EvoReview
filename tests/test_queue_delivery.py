@@ -66,7 +66,7 @@ class SimulatedRedis:
     def xack(self, *args):
         self.acks.append(args[-1])
 
-    def xadd(self, stream, fields):
+    def xadd(self, stream, fields, **kwargs):
         self.envelopes.append(json.loads(fields["envelope"]))
         return "2-0"
 
@@ -235,3 +235,34 @@ class MemoryQueueShutdownTests(unittest.TestCase):
         finally:
             release.set()
             queue.close(timeout=3)
+
+
+class CancelledDeliveryTests(unittest.TestCase):
+    def test_cancelled_task_is_not_retried_or_dead_lettered(self):
+        from evoagent.agent.runtime import RuntimeCancelled
+
+        calls, dead = [], []
+
+        def handler(payload):
+            calls.append(payload["task_id"])
+            raise RuntimeCancelled("Task was cancelled")
+
+        queue = TaskQueue(
+            handler, workers=1, max_attempts=3,
+            on_dead_letter=lambda payload, error: dead.append(error),
+        )
+        self.addCleanup(queue.close)
+        queue.submit({"task_id": "cancelled", "tenant_id": "default"}, message_id="cancelled")
+        deadline = time.monotonic() + 2
+        while not calls and time.monotonic() < deadline:
+            time.sleep(.01)
+        queue.close(timeout=2)
+        self.assertEqual(["cancelled"], calls)
+        self.assertEqual([], dead)
+        self.assertEqual([], queue.dead_letters())
+
+    def test_retry_delay_backs_off_and_is_capped(self):
+        queue = TaskQueue(lambda payload: None, workers=1)
+        self.addCleanup(queue.close)
+        self.assertLess(queue._retry_delay({"attempt": 1}), 1.5)
+        self.assertLessEqual(queue._retry_delay({"attempt": 20}), 10.5)

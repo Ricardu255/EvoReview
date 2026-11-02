@@ -6,11 +6,13 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+import urllib.parse
 import uuid
 from unittest.mock import patch
 
 from agentic_fake import FakeAgenticClient, enable_agentic_service
 from evoagent.api import ApiHandler, body_optional
+from evoagent.adapters.observability import AlertManager
 from evoagent.errors import ModelNotConfigured
 from evoagent.adapters.auth import Principal
 from evoagent.config import Settings
@@ -901,3 +903,178 @@ class LegacyMigrationTests(unittest.TestCase):
                 "legacy", store.get_active_skill_version("llm-review", "tenant-a")["prompt"],
             )
             self.assertIsNone(store.get_active_skill_version("llm-review", "default"))
+
+
+class _StubHandler(ApiHandler):
+    """Drive ApiHandler routing without a socket."""
+
+    def __init__(self, service, settings, path, headers=None, body=b""):
+        self.service = service
+        self.settings = settings
+        self.path = path
+        self.headers = dict(headers or {})
+        self.client_address = ("127.0.0.1", 50000)
+        self._body = body
+        self.status = None
+        self.body = None
+        self.location = ""
+        self.response_headers = {}
+
+    def send_response(self, code, message=None):
+        self.status = code
+
+    def send_header(self, name, value):
+        self.response_headers[name] = value
+        if name.lower() == "location":
+            self.location = value
+
+    def end_headers(self):
+        pass
+
+    def _send_json(self, code, value):
+        self.status = code
+        self.body = value
+
+    def _send_text(self, code, text, content_type="text/plain; charset=utf-8"):
+        self.status = code
+        self.body = text
+
+    def _read_body(self):
+        return self._body
+
+
+class SecurityHardeningTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.settings = Settings(
+            host="127.0.0.1", port=8080,
+            db_path=str(Path(self.temp.name) / "security.db"),
+            max_diff_bytes=10000, max_steps=8, timeout_seconds=10,
+            llm_base_url="", llm_api_key="", llm_model="",
+            github_webhook_secret="", github_token="", auto_post_review=False,
+            auth_required=True, auth_secret="s" * 32,
+            bootstrap_admin_username="admin",
+            bootstrap_admin_password="Adm1n-password!",
+            default_tenant_id="tenant-default",
+            github_app_slug="evo-demo",
+            github_setup_state="setup-pepper",
+        )
+        self.service = ReviewService(self.settings)
+        self.addCleanup(self.service.queue.close)
+        self.token = self.service.auth.login(
+            "admin", "Adm1n-password!", "",
+        )["access_token"]
+
+    def call(self, path, method="GET", headers=None, body=b""):
+        handler = _StubHandler(self.service, self.settings, path, headers, body)
+        getattr(handler, "do_" + method)()
+        return handler
+
+    def auth_headers(self, **extra):
+        values = {"Authorization": "Bearer " + self.token}
+        values.update(extra)
+        return values
+
+    def test_missing_credentials_answer_401_on_get_and_post(self):
+        self.assertEqual(401, self.call("/api/dashboard").status)
+        self.assertEqual(401, self.call("/v1/skills/reload", "POST").status)
+
+    def test_health_is_minimal_and_detail_requires_auth(self):
+        public = self.call("/health")
+        self.assertEqual(200, public.status)
+        self.assertEqual({"status": "ok"}, public.body)
+        self.assertEqual(401, self.call("/health/detail").status)
+        detail = self.call("/health/detail", headers=self.auth_headers())
+        self.assertEqual(200, detail.status)
+        self.assertIn("llm_provider", detail.body)
+
+    def test_security_headers_include_a_content_security_policy(self):
+        handler = _StubHandler(self.service, self.settings, "/")
+        handler._headers(200, "text/plain", 0)
+        policy = handler.response_headers["Content-Security-Policy"]
+        self.assertIn("default-src 'self'", policy)
+        self.assertIn("object-src 'none'", policy)
+
+    def test_github_install_requires_manage_and_state_is_one_time(self):
+        anonymous = self.call("/github/install")
+        self.assertEqual(401, anonymous.status)
+        self.assertEqual("", anonymous.location)
+
+        started = self.call(
+            "/github/install", headers=self.auth_headers(Accept="application/json"),
+        )
+        self.assertEqual(200, started.status)
+        state = urllib.parse.parse_qs(
+            urllib.parse.urlparse(started.body["url"]).query
+        )["state"][0]
+
+        installed = self.call(
+            "/github/setup?installation_id=4242&state="
+            + urllib.parse.quote(state)
+        )
+        self.assertEqual(302, installed.status)
+        self.assertEqual(
+            "tenant-default", self.service.store.installation_tenant(4242),
+        )
+
+        replay = self.call(
+            "/github/setup?installation_id=4243&state="
+            + urllib.parse.quote(state)
+        )
+        self.assertEqual(403, replay.status)
+        self.assertIsNone(self.service.store.installation_tenant(4243))
+
+    def test_static_setup_state_no_longer_authorizes_anonymous_setup(self):
+        response = self.call(
+            "/github/setup?installation_id=5252&state="
+            + self.settings.github_setup_state
+        )
+        self.assertEqual(403, response.status)
+        self.assertIsNone(self.service.store.installation_tenant(5252))
+
+    def test_trusted_proxy_supplies_the_client_address(self):
+        settings = replace(self.settings, trusted_proxies=("127.0.0.1",))
+        proxied = _StubHandler(self.service, settings, "/v1/auth/login", {
+            "X-Forwarded-For": "198.51.100.7, 127.0.0.1",
+        })
+        self.assertEqual("198.51.100.7", proxied._client_key())
+        direct = _StubHandler(self.service, settings, "/", {
+            "X-Forwarded-For": "198.51.100.7",
+        })
+        direct.client_address = ("192.0.2.5", 5000)
+        self.assertEqual("192.0.2.5", direct._client_key())
+
+    def test_requested_mode_is_persisted_on_the_task(self):
+        task_id = self.service._create_task(
+            "org/a", DIFF, 1, "test", "tenant-default", mode="agentic",
+        )
+        task = self.service.store.get(task_id, "tenant-default")
+        self.assertEqual("agentic", task["input"]["mode"])
+        self.service.chat_client = object()
+        with self.assertRaises(ValueError):
+            self.service.create_review(
+                "org/a", DIFF, tenant_id="tenant-default", mode="scanner",
+            )
+
+    def test_alert_manager_uses_the_configured_window(self):
+        calls = []
+
+        class Store:
+            def dashboard_stats(self, tenant_id, window_seconds=None):
+                calls.append((tenant_id, window_seconds))
+                return {"tasks_total": 0, "tasks_failed": 0}
+
+            def create_alert(self, *args):
+                raise AssertionError("no alert expected")
+
+        AlertManager(Store(), window_seconds=120).evaluate("tenant-a")
+        self.assertEqual([("tenant-a", 120)], calls)
+
+    def test_rollout_rejects_an_unreachable_shadow_band(self):
+        with self.assertRaises(ValueError):
+            self.service.releases.configure("tenant-default", "llm-review", {
+                "candidate_version": 1,
+                "canary_percent": 50,
+                "shadow_percent": 10,
+            })

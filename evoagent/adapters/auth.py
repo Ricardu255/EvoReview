@@ -10,6 +10,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
 
+from ..errors import AuthenticationRequired
+
 
 ROLE_PERMISSIONS = {
     "admin": {"read", "review", "fix", "manage", "audit"},
@@ -176,6 +178,7 @@ class AuthManager:
             self._record_login_failures(keys)
             raise PermissionError("invalid username or password")
         self._clear_login_failures(keys[0][0])
+        self._clear_login_failures(keys[1][0])
         memberships = {item["tenant_id"]: item["role"] for item in user["memberships"]}
         selected = tenant_id or (next(iter(memberships)) if len(memberships) == 1 else "")
         if not selected or selected not in memberships:
@@ -191,21 +194,21 @@ class AuthManager:
 
     def authenticate(self, authorization: str) -> Principal:
         if not authorization.startswith("Bearer "):
-            raise PermissionError("Bearer token is required")
+            raise AuthenticationRequired("Bearer token is required")
         payload = self._decode(authorization[7:].strip())
         # A signed token is not enough: users can be disabled or removed from a
         # tenant, and roles can change, before the token expires.  Re-check the
         # current account state so revocation does not wait for the TTL.
         user = self.store.get_user(str(payload.get("username", "")))
         if not user or not user.get("active"):
-            raise PermissionError("invalid token")
+            raise AuthenticationRequired("invalid token")
         memberships = {
             str(item["tenant_id"]): str(item["role"])
             for item in user.get("memberships", [])
         }
         tenant = str(payload.get("tenant", ""))
         if memberships.get(tenant) != str(payload.get("role", "")):
-            raise PermissionError("invalid token")
+            raise AuthenticationRequired("invalid token")
         return Principal(
             str(payload["sub"]), str(payload["username"]),
             tenant, str(payload["role"]),
@@ -230,14 +233,14 @@ class AuthManager:
             signing_input = (header + "." + body).encode("ascii")
             expected = _b64(hmac.new(self.secret, signing_input, hashlib.sha256).digest())
             if not hmac.compare_digest(expected, supplied):
-                raise PermissionError("invalid token")
+                raise AuthenticationRequired("invalid token")
             payload = json.loads(_unb64(body).decode("utf-8"))
             if int(payload["exp"]) < int(time.time()):
-                raise PermissionError("token has expired")
+                raise AuthenticationRequired("token has expired")
             if payload.get("role") not in ROLE_PERMISSIONS:
-                raise PermissionError("invalid role")
+                raise AuthenticationRequired("invalid role")
             return payload
-        except PermissionError:
+        except AuthenticationRequired:
             raise
         except Exception as exc:
-            raise PermissionError("invalid token") from exc
+            raise AuthenticationRequired("invalid token") from exc

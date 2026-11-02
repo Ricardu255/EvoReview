@@ -160,7 +160,14 @@ class ReviewHarness:
             execution["repository_context"] = reviewer_summary.get("repository_context") or {}
         else:
             collaboration = reviewer_summary or self._persisted_collaboration_summary(state["task_id"])
-            run_mode, components, execution = {}, [], {}
+            run_mode, components = {}, []
+            # Keep the report skeleton stable for consumers even when a
+            # reviewer has no collaboration summary to contribute.
+            execution = {
+                "gates": {},
+                "rejected_findings": [],
+                "repository_context": {},
+            }
         report = ReviewReport(
             repository=state["repository"], pull_request=state.get("pull_request"),
             summary=self._summary(findings, len(parsed.files), risk), risk=risk,

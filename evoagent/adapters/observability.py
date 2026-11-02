@@ -48,18 +48,27 @@ class Observability:
 
 
 class AlertManager:
-    def __init__(self, store, failure_rate: float = .2, min_samples: int = 10):
+    def __init__(
+        self, store, failure_rate: float = .2, min_samples: int = 10,
+        window_seconds: int = 900,
+    ):
         self.store = store
         self.failure_rate = failure_rate
         self.min_samples = min_samples
+        self.window_seconds = max(1, int(window_seconds))
 
     def evaluate(self, tenant_id: str) -> None:
-        stats = self.store.dashboard_stats(tenant_id)
+        # A sliding window keeps an old incident from paging forever and lets
+        # the alert reflect the current health of the deployment.
+        stats = self.store.dashboard_stats(
+            tenant_id, window_seconds=self.window_seconds,
+        )
         if stats["tasks_total"] >= self.min_samples:
             rate = stats["tasks_failed"] / stats["tasks_total"]
             if rate > self.failure_rate:
                 self.store.create_alert(
                     tenant_id, "review-failure-rate", "critical",
-                    "Review failure rate %.1f%% exceeds the %.1f%% threshold."
-                    % (rate * 100, self.failure_rate * 100),
+                    "Review failure rate %.1f%% exceeds the %.1f%% threshold "
+                    "in the last %d seconds."
+                    % (rate * 100, self.failure_rate * 100, self.window_seconds),
                 )

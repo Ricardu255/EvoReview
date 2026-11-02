@@ -18,7 +18,29 @@ from .runtime import AgentTool, ToolRegistry
 from .telemetry import ExecutionLedger
 
 
-SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "dist", "build", ".venv", "venv"}
+SKIP_DIRS = {
+    ".git", ".hg", ".svn", "node_modules", "dist", "build", ".venv", "venv",
+    ".ssh", ".aws", ".gnupg", ".kube",
+}
+# Secrets that must never enter model context, even when the agent asks for
+# them by an exact path.  Example templates are allowed: they carry names, not
+# values.
+_SENSITIVE_PATH = re.compile(
+    r"(^|/)(\.env(\..*)?|\.git(/|$)|\.ssh(/|$)|"
+    r"id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.(pem|key|p12|pfx|jks)|"
+    r"credentials(\..*)?|\.netrc|\.npmrc|\.pypirc)$",
+    re.IGNORECASE,
+)
+_SENSITIVE_TEMPLATE = re.compile(
+    r"\.env\.(example|sample|template|dist)$", re.IGNORECASE,
+)
+
+
+def _sensitive_path(relative: str) -> bool:
+    normalized = os.path.normpath(str(relative)).replace("\\", "/")
+    if _SENSITIVE_TEMPLATE.search(normalized):
+        return False
+    return bool(_SENSITIVE_PATH.search(normalized))
 CONFIG_NAMES = {
     "package.json", "package-lock.json", "requirements.txt", "pyproject.toml",
     "poetry.lock", "Pipfile", "Dockerfile", "docker-compose.yml", ".github",
@@ -58,6 +80,8 @@ class RepositoryToolSuite:
         if not self.root:
             raise ValueError("repository checkout is unavailable for this review")
         relative = str(relative).replace("\\", "/").lstrip("/")
+        if _sensitive_path(relative):
+            raise ValueError("path is not readable for review: %s" % relative)
         target = os.path.realpath(os.path.join(self.root, relative))
         try:
             contained = os.path.commonpath([self.root, target]) == self.root
@@ -65,28 +89,44 @@ class RepositoryToolSuite:
             contained = False
         if not contained:
             raise ValueError("path escapes repository root")
+        # A benign name may still be a symlink to a sensitive file.
+        if _sensitive_path(os.path.relpath(target, self.root)):
+            raise ValueError("path is not readable for review: %s" % relative)
         return target
+
+    def _within_root(self, path: str) -> bool:
+        try:
+            return os.path.commonpath([self.root, os.path.realpath(path)]) == self.root
+        except ValueError:
+            return False
+
+    def _escaping_symlink(self, path: str) -> bool:
+        return os.path.islink(path) and not self._within_root(path)
 
     def _files(self) -> Iterable[str]:
         if not self.root:
             return []
         values = []
         for current, dirs, files in os.walk(self.root):
-            dirs[:] = [item for item in dirs if item not in SKIP_DIRS]
-            safe_dirs = []
-            for name in dirs:
-                try:
-                    self._safe_path(os.path.relpath(os.path.join(current, name), self.root))
-                    safe_dirs.append(name)
-                except ValueError:
-                    continue
-            dirs[:] = safe_dirs
+            dirs[:] = [
+                item for item in dirs
+                if item not in SKIP_DIRS
+                and not self._escaping_symlink(os.path.join(current, item))
+            ]
             for name in files:
                 path = os.path.join(current, name)
+                relative = os.path.relpath(path, self.root).replace("\\", "/")
                 try:
-                    self._safe_path(os.path.relpath(path, self.root))
+                    # Only symlinks need a realpath check; ``self.root`` is
+                    # already canonical, so a regular path cannot escape it.
+                    if _sensitive_path(relative):
+                        continue
+                    if os.path.islink(path) and not self._within_root(path):
+                        continue
+                    if not os.path.isfile(path):
+                        continue
                     if os.path.getsize(path) <= 2_000_000:
-                        values.append(os.path.relpath(path, self.root).replace("\\", "/"))
+                        values.append(relative)
                 except (OSError, ValueError):
                     continue
                 if len(values) >= 20_000:
@@ -276,9 +316,17 @@ class RepositoryToolSuite:
 
     @staticmethod
     def _restricted_env() -> Dict[str, str]:
+        # Toolchains on Windows need the user profile for caches and config;
+        # secrets stay out because only this allowlist is forwarded.
+        allowed = {
+            "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
+            "LANG", "LC_ALL", "TMP", "TEMP", "TMPDIR",
+            "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+            "HOME", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
+            "NUMBER_OF_PROCESSORS",
+        }
         return {
-            key: value for key, value in os.environ.items()
-            if key in {"PATH", "SYSTEMROOT", "WINDIR", "LANG", "LC_ALL", "TMP", "TEMP"}
+            key: value for key, value in os.environ.items() if key in allowed
         }
 
     @staticmethod
@@ -402,10 +450,24 @@ class RepositoryToolSuite:
             })
         with tempfile.TemporaryDirectory(prefix="evoagent-review-check-") as temp:
             checkout = os.path.join(temp, "checkout")
-            shutil.copytree(
-                self.root, checkout,
-                ignore=shutil.ignore_patterns(*SKIP_DIRS),
-            )
+            base_ignore = shutil.ignore_patterns(*SKIP_DIRS)
+
+            def ignore(directory, names):
+                ignored = set(base_ignore(directory, names))
+                for name in names:
+                    if name in ignored:
+                        continue
+                    path = os.path.join(directory, name)
+                    if os.path.islink(path) and (
+                        not os.path.exists(path) or self._escaping_symlink(path)
+                    ):
+                        # Copying the target would pull data from outside the
+                        # repository into the temporary checkout, and a broken
+                        # link would abort the copy.
+                        ignored.add(name)
+                return ignored
+
+            shutil.copytree(self.root, checkout, ignore=ignore)
             command = (
                 [sys.executable, "-m", "compileall", "-q", "."]
                 if kind == "compile" else

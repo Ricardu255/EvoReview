@@ -6,6 +6,7 @@ from .evolution import EvolutionStorePort
 from .failures import FailureStorePort
 from .memory import MemoryStorePort
 from .observability import ObservabilityStorePort
+from .setup import SetupStateStorePort
 from .skills import SkillStorePort
 from .tasks import TaskStorePort
 from .webhooks import WebhookStorePort
@@ -21,6 +22,7 @@ class StoreProtocol(
     WebhookStorePort,
     AuthStorePort,
     ObservabilityStorePort,
+    SetupStateStorePort,
     Protocol,
 ):
     """The aggregate persistence contract composed from narrow ports."""

@@ -13,13 +13,18 @@ from dataclasses import dataclass, field
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
+from ..errors import TaskCancelled
+
 
 class RuntimeBudgetExceeded(RuntimeError):
     """The configured step or wall-clock budget was exhausted."""
 
 
-class RuntimeCancelled(RuntimeError):
+class RuntimeCancelled(TaskCancelled):
     """The owning task requested cancellation."""
+
+    def __init__(self, message: str = "Task was cancelled"):
+        super().__init__(message)
 
 
 class ToolProtocolError(RuntimeError):

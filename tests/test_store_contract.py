@@ -7,7 +7,9 @@ Identifiers are randomised per run so the suite can be re-run against a
 persistent PostgreSQL database.
 """
 import os
+import sqlite3
 import tempfile
+import time
 import unittest
 import uuid
 
@@ -457,6 +459,48 @@ class StoreContract:
         self.assertEqual(1, stats["tasks_success"])
         self.assertEqual(1.0, stats["success_rate"])
         self.assertIn("active_skill_versions", stats)
+
+
+    def test_github_setup_state_is_single_use_and_tenant_bound(self):
+        self.store.save_github_setup_state("hash-one", "tenant-a", time.time() + 60)
+        self.assertEqual("tenant-a", self.store.consume_github_setup_state("hash-one"))
+        self.assertIsNone(self.store.consume_github_setup_state("hash-one"))
+
+    def test_expired_github_setup_state_is_rejected(self):
+        self.store.save_github_setup_state("hash-old", "tenant-a", time.time() - 60)
+        self.assertIsNone(self.store.consume_github_setup_state("hash-old"))
+
+
+class InMemoryStoreTests(unittest.TestCase):
+    def test_memory_database_survives_new_connections(self):
+        store = TaskStore(":memory:")
+        self.addCleanup(store.close)
+        store.create("mem-1", "demo/api", 1, {"mode": "agentic"}, "default")
+        self.assertIsNotNone(store.get("mem-1", "default"))
+        self.assertEqual(1, store.dashboard_stats("default")["tasks_total"])
+
+
+class WindowedStatsTests(unittest.TestCase):
+    def test_window_excludes_older_tasks(self):
+        handle, path = tempfile.mkstemp(suffix=".db")
+        os.close(handle)
+        self.addCleanup(os.unlink, path)
+        store = TaskStore(path)
+        store.create("new-task", "demo/api", 1, {}, "tenant-a")
+        store.create("old-task", "demo/api", 1, {}, "tenant-a")
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute(
+                "UPDATE tasks SET created_at=? WHERE id=?", (EXPIRED, "old-task")
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(2, store.dashboard_stats("tenant-a")["tasks_total"])
+        self.assertEqual(
+            1,
+            store.dashboard_stats("tenant-a", window_seconds=3600)["tasks_total"],
+        )
 
 
 class SqliteStoreContractTests(StoreContract, unittest.TestCase):

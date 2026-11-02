@@ -12,6 +12,10 @@ class ReleaseManager:
         shadow = int(config.get("shadow_percent", 0))
         if not 0 <= canary <= 100 or not 0 <= shadow <= 100:
             raise ValueError("canary_percent and shadow_percent must be between 0 and 100")
+        if 0 < shadow < canary:
+            # shadow_percent is the upper bound of the shadow band, so a
+            # non-zero value below canary_percent would silently disable it.
+            raise ValueError("shadow_percent must be greater than or equal to canary_percent")
         if config.get("candidate_version") is None:
             raise ValueError("candidate_version is required")
         config = dict(config)

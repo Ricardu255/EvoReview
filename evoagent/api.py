@@ -1,11 +1,14 @@
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import mimetypes
 import os
 import re
+import secrets
 import socket
+import time
 import urllib.parse
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +21,7 @@ from .adapters.github import verify_signature
 from .adapters.metrics import metrics
 from .domain.modes import public_taxonomy, resolve_mode
 from .domain.report import to_markdown
-from .errors import ModelNotConfigured
+from .errors import AuthenticationRequired, ModelNotConfigured
 from .service import ReviewService
 
 
@@ -35,7 +38,8 @@ SKILL_ARTIFACT_VERSIONS = re.compile(r"^/v1/skill-evolution/([a-z0-9_-]+)/versio
 SKILL_ARTIFACT_ACTIVATE = re.compile(
     r"^/v1/skill-evolution/([a-z0-9_-]+)/versions/(\d+)/activate$"
 )
-WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web"))
+WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "web"))
+GITHUB_SETUP_STATE_TTL_SECONDS = 600
 logger = logging.getLogger("evoagent")
 
 
@@ -59,7 +63,15 @@ class ApiHandler(BaseHTTPRequestHandler):
     server_version = "EvoReview/" + __version__
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        print("%s - %s" % (self.address_string(), fmt % args))
+        # Setup state tokens travel in the query string; never write them to logs.
+        safe = [
+            re.sub(r"(state=)[^&\s\"]+", r"\1<redacted>", str(arg))
+            for arg in args
+        ]
+        try:
+            print("%s - %s" % (self.address_string(), fmt % tuple(safe)))
+        except (TypeError, ValueError):
+            print("%s - request" % self.address_string())
 
     def _headers(self, status: int, content_type: str, length: int) -> None:
         self.send_response(status)
@@ -68,6 +80,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "same-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; "
+            "script-src 'self'; connect-src 'self'; object-src 'none'; "
+            "base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        )
         self.end_headers()
 
     def _principal(self, permission: str = "read") -> Principal:
@@ -82,16 +100,54 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _authenticate_or_send(self, permission: str = "read"):
         try:
             return self._principal(permission)
-        except PermissionError as exc:
+        except AuthenticationRequired as exc:
             self._send_json(401, {"error": str(exc)})
+            return None
+        except PermissionError as exc:
+            self._send_json(403, {"error": str(exc)})
             return None
 
     def _client_key(self) -> str:
-        """Best-effort client identity for login throttling."""
+        """Best-effort client identity for login throttling.
+
+        Tunnel and reverse-proxy deployments would otherwise put every user in
+        the single ``127.0.0.1`` bucket.  ``X-Forwarded-For`` is honoured only
+        when the socket peer is in ``EVOAGENT_TRUSTED_PROXIES``, and the
+        rightmost untrusted hop is used so clients cannot spoof their way out
+        of the limiter.
+        """
         try:
-            return str(self.client_address[0])
+            peer = str(self.client_address[0])
         except (IndexError, TypeError, AttributeError):
             return "unknown"
+        networks = [
+            ipaddress.ip_network(item, strict=False)
+            for item in self.settings.trusted_proxies
+        ]
+        if not networks:
+            return peer
+        try:
+            peer_address = ipaddress.ip_address(peer)
+        except ValueError:
+            return "unknown"
+        if not any(peer_address in network for network in networks):
+            return peer
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        for hop in reversed([item.strip() for item in forwarded.split(",") if item.strip()]):
+            try:
+                candidate = ipaddress.ip_address(hop)
+            except ValueError:
+                continue
+            if not any(candidate in network for network in networks):
+                return str(candidate)
+        return peer
+
+    def _setup_state_hash(self, token: str) -> str:
+        """Hash a setup token before persistence; tokens are never stored raw."""
+        return hmac.new(
+            self.settings.github_setup_state.encode("utf-8"),
+            token.encode("utf-8"), hashlib.sha256,
+        ).hexdigest()
 
     def _send_json(self, status: int, value: Dict[str, Any]) -> None:
         body = json.dumps(value, ensure_ascii=False, default=str).encode("utf-8")
@@ -156,8 +212,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._handle_get()
         except ValueError as exc:
             self._send_json(400, {"error": str(exc)})
-        except PermissionError as exc:
+        except AuthenticationRequired as exc:
             self._send_json(401, {"error": str(exc)})
+        except PermissionError as exc:
+            self._send_json(403, {"error": str(exc)})
         except Exception:
             metrics.inc("http_errors_total")
             logger.exception("unhandled GET failure for %s", self.path)
@@ -180,60 +238,86 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._serve_file("app.js")
             return
         if path == "/health":
-            mode = resolve_mode(
-                None, bool(self.service.llm_config)
-            )
-            self._send_json(200, {"status": "ok", "reviewer": self.service.reviewer.name,
-                                  "runtime": self.service.harness.name,
-                                  "queue": self.service.queue.backend,
-                                  "llm_provider": self.service.llm_config.get("provider", "local"),
-                                  "llm_model": self.service.llm_config.get("model", ""),
-                                  "run_mode": mode.to_dict(),
-                                  "taxonomy": public_taxonomy()})
+            # Unauthenticated liveness probe only; deployment details live
+            # behind authentication at /health/detail.
+            self._send_json(200, {"status": "ok"})
             return
         if path == "/github/install":
-            if not self.settings.github_app_slug:
-                self._send_json(503, {"error": "EVOAGENT_GITHUB_APP_SLUG is not configured"})
+            if not self.settings.github_app_slug or not self.settings.github_setup_state:
+                self._send_json(503, {
+                    "error": "GitHub App setup requires EVOAGENT_GITHUB_APP_SLUG "
+                             "and EVOAGENT_GITHUB_SETUP_STATE"
+                })
                 return
-            location = "https://github.com/apps/%s/installations/new" % self.settings.github_app_slug
-            if self.settings.github_setup_state:
-                location += "?" + urllib.parse.urlencode(
-                    {"state": self.settings.github_setup_state}
-                )
+            # Minting a setup state is a management action.  Exposing it to
+            # anonymous callers let anyone harvest the state and bind their own
+            # installation to the default tenant.
+            principal = self._principal("manage")
+            token = secrets.token_urlsafe(32)
+            self.service.store.save_github_setup_state(
+                self._setup_state_hash(token), principal.tenant_id,
+                time.time() + GITHUB_SETUP_STATE_TTL_SECONDS,
+            )
+            location = "https://github.com/apps/%s/installations/new?%s" % (
+                self.settings.github_app_slug,
+                urllib.parse.urlencode({"state": token}),
+            )
+            self.service.store.audit(
+                principal.tenant_id, principal.username, "github.install.start",
+                self.settings.github_app_slug, {},
+            )
+            if "application/json" in self.headers.get("Accept", ""):
+                self._send_json(200, {
+                    "url": location, "expires_in": GITHUB_SETUP_STATE_TTL_SECONDS,
+                })
+                return
             self.send_response(302)
             self.send_header("Location", location)
             self.end_headers()
             return
         if path == "/github/setup":
-            # GitHub redirects the browser here without a Bearer token, so the
-            # configured state nonce authorizes the callback.  An authenticated
-            # administrator may instead bind the installation to their tenant.
-            expected_state = self.settings.github_setup_state
-            if not expected_state:
+            # GitHub redirects the browser here without a Bearer token, so a
+            # one-time, tenant-bound state minted by /github/install authorizes
+            # the callback.  An authenticated administrator may instead bind
+            # the installation to their tenant directly.
+            if not self.settings.github_setup_state:
                 self._send_json(503, {
                     "error": "GitHub setup is disabled; configure EVOAGENT_GITHUB_SETUP_STATE"
                 })
-                return
-            if not hmac.compare_digest(
-                expected_state, query.get("state", [""])[0]
-            ):
-                self._send_json(403, {"error": "invalid setup state"})
                 return
             try:
                 installation_id = int(query.get("installation_id", [""])[0])
             except ValueError:
                 self._send_json(400, {"error": "missing installation_id"})
                 return
-            tenant_id = self.settings.default_tenant_id
+            tenant_id = ""
             authorization = self.headers.get("Authorization", "")
-            if self.settings.auth_required and authorization:
-                try:
-                    setup_principal = self.service.auth.authenticate(authorization)
-                    self.service.auth.require(setup_principal, ("manage",))
-                except PermissionError as exc:
-                    self._send_json(403, {"error": str(exc)})
-                    return
+            if authorization:
+                setup_principal = self.service.auth.authenticate(authorization)
+                self.service.auth.require(setup_principal, ("manage",))
                 tenant_id = setup_principal.tenant_id
+            state = query.get("state", [""])[0]
+            if state:
+                state_tenant = self.service.store.consume_github_setup_state(
+                    self._setup_state_hash(state)
+                )
+                if state_tenant:
+                    if tenant_id and tenant_id != state_tenant:
+                        self._send_json(403, {
+                            "error": "setup state belongs to another tenant"
+                        })
+                        return
+                    tenant_id = tenant_id or state_tenant
+                elif not tenant_id:
+                    self._send_json(403, {
+                        "error": "invalid or expired setup state"
+                    })
+                    return
+            if not tenant_id:
+                self._send_json(401, {
+                    "error": "authentication is required to complete GitHub App setup"
+                })
+                return
             existing = self.service.store.installation_tenant(installation_id)
             if existing and existing != tenant_id:
                 self._send_json(
@@ -257,6 +341,18 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         principal = self._authenticate_or_send("read")
         if principal is None:
+            return
+        if path == "/health/detail":
+            mode = resolve_mode(None, bool(self.service.llm_config))
+            self._send_json(200, {
+                "status": "ok", "reviewer": self.service.reviewer.name,
+                "runtime": self.service.harness.name,
+                "queue": self.service.queue.backend,
+                "llm_provider": self.service.llm_config.get("provider", "local"),
+                "llm_model": self.service.llm_config.get("model", ""),
+                "run_mode": mode.to_dict(),
+                "taxonomy": public_taxonomy(),
+            })
             return
         if path == "/metrics":
             self._send_text(200, metrics.prometheus(), "text/plain; version=0.0.4; charset=utf-8")
@@ -715,6 +811,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
         except ValueError as exc:
             self._send_json(400, {"error": str(exc)})
+        except AuthenticationRequired as exc:
+            self._send_json(401, {"error": str(exc)})
         except PermissionError as exc:
             self._send_json(403, {"error": str(exc)})
         except ModelNotConfigured as exc:
@@ -746,6 +844,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "not found"})
         except ValueError as exc:
             self._send_json(400, {"error": str(exc)})
+        except AuthenticationRequired as exc:
+            self._send_json(401, {"error": str(exc)})
         except PermissionError as exc:
             self._send_json(403, {"error": str(exc)})
         except Exception:

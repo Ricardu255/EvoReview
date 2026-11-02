@@ -1,5 +1,6 @@
 """Postgres observability persistence mixin."""
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from ....time_utils import utc_now
@@ -153,14 +154,31 @@ class PostgresObservabilityStoreMixin:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def dashboard_stats(self, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+    def dashboard_stats(
+        self, tenant_id: Optional[str] = None,
+        window_seconds: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        cutoff = None
+        if window_seconds is not None:
+            cutoff = (
+                datetime.now(timezone.utc)
+                - timedelta(seconds=max(0, int(window_seconds)))
+            )
         with self._connect() as conn:
-            where = " WHERE tenant_id=%s" if tenant_id is not None else ""
-            params = (tenant_id,) if tenant_id is not None else ()
+            where = []
+            params = []
+            if tenant_id is not None:
+                where.append("tenant_id=%s")
+                params.append(tenant_id)
+            if cutoff is not None:
+                where.append("created_at>=%s")
+                params.append(cutoff)
+            clause = (" WHERE " + " AND ".join(where)) if where else ""
+            queried = tuple(params)
             row = conn.execute(
                 "SELECT COUNT(*) AS total,COUNT(*) FILTER(WHERE state='SUCCESS') AS success,"
-                "COUNT(*) FILTER(WHERE state='FAILED') AS failed FROM tasks" + where,
-                params,
+                "COUNT(*) FILTER(WHERE state='FAILED') AS failed FROM tasks" + clause,
+                queried,
             ).fetchone()
             if tenant_id is None:
                 failures = conn.execute(

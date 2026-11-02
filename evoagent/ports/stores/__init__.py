@@ -5,6 +5,7 @@ from .failures import FailureStorePort
 from .memory import MemoryStorePort
 from .observability import ObservabilityStorePort
 from .review import ReviewStore
+from .setup import SetupStateStorePort
 from .skills import SkillStorePort
 from .store import StoreProtocol
 from .tasks import TaskStorePort
@@ -17,6 +18,7 @@ __all__ = [
     "MemoryStorePort",
     "ObservabilityStorePort",
     "ReviewStore",
+    "SetupStateStorePort",
     "SkillStorePort",
     "StoreProtocol",
     "TaskStorePort",
