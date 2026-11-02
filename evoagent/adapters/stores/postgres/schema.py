@@ -22,6 +22,9 @@ class PostgresSchemaMixin:
                 parent_version INTEGER, created_at TIMESTAMPTZ NOT NULL, UNIQUE(skill_name, version))""",
             """CREATE TABLE IF NOT EXISTS installations (
                 installation_id BIGINT PRIMARY KEY, account_login TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL)""",
+            """CREATE TABLE IF NOT EXISTS github_setup_states (
+                token_hash TEXT PRIMARY KEY, tenant_id TEXT NOT NULL,
+                expires_at DOUBLE PRECISION NOT NULL, created_at TIMESTAMPTZ NOT NULL)""",
             """CREATE TABLE IF NOT EXISTS evaluation_cases (
                 id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, split TEXT NOT NULL,
                 diff TEXT NOT NULL, expected_json JSONB NOT NULL, source TEXT NOT NULL,

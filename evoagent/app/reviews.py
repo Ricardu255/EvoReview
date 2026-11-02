@@ -65,10 +65,11 @@ class ReviewsApplicationService:
         tenant_id: str = "default", repository_root: str = "",
         enabled_agents: Optional[list] = None,
         enabled_skills: Optional[list] = None,
+        mode: str = "agentic",
     ) -> str:
         return self.lifecycle.create_task(
             repository, diff, pull_request, source, tenant_id,
-            repository_root, enabled_agents, enabled_skills,
+            repository_root, enabled_agents, enabled_skills, mode,
         )
 
     def create_deferred_task(

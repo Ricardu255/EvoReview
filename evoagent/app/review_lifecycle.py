@@ -39,6 +39,7 @@ class ReviewLifecycleService:
         tenant_id: str = "default", repository_root: str = "",
         enabled_agents: Optional[list] = None,
         enabled_skills: Optional[list] = None,
+        mode: str = RunMode.AGENTIC.value,
     ) -> str:
         task_id = str(uuid.uuid4())
         encoded = diff.encode("utf-8")
@@ -47,7 +48,7 @@ class ReviewLifecycleService:
             "source": source, "diff_bytes": len(encoded),
             "diff_sha256": hashlib.sha256(encoded).hexdigest(),
             **assignment,
-            "mode": RunMode.AGENTIC.value,
+            "mode": mode,
             "repository_root": repository_root,
             "enabled_agents": enabled_agents or [],
             "enabled_skills": enabled_skills or [],
@@ -79,7 +80,7 @@ class ReviewLifecycleService:
         enabled_skills: Optional[list] = None,
     ) -> Dict[str, Any]:
         self.policy.validate_review(repository, diff)
-        RunMode.parse(mode) if mode else None
+        selected_mode = RunMode.parse(mode) if mode else RunMode.AGENTIC
         self.policy.require_agentic_model(self.chat_client_provider())
         repository_root = self.policy.resolve_repository_root(
             repository, repository_root, tenant_id,
@@ -89,7 +90,7 @@ class ReviewLifecycleService:
         self.policy.authorize_repository(tenant_id, repository)
         task_id = self.create_task(
             repository, diff, pull_request, source, tenant_id,
-            repository_root, enabled_agents, enabled_skills,
+            repository_root, enabled_agents, enabled_skills, selected_mode.value,
         )
         try:
             with self.observability.span(
@@ -124,7 +125,7 @@ class ReviewLifecycleService:
         enabled_skills: Optional[list] = None,
     ) -> Dict[str, Any]:
         self.policy.validate_review(repository, diff)
-        RunMode.parse(mode) if mode else None
+        selected_mode = RunMode.parse(mode) if mode else RunMode.AGENTIC
         self.policy.require_agentic_model(self.chat_client_provider())
         repository_root = self.policy.resolve_repository_root(
             repository, repository_root, tenant_id,
@@ -134,7 +135,7 @@ class ReviewLifecycleService:
         self.policy.authorize_repository(tenant_id, repository)
         task_id = self.create_task(
             repository, diff, pull_request, source, tenant_id,
-            repository_root, enabled_agents, enabled_skills,
+            repository_root, enabled_agents, enabled_skills, selected_mode.value,
         )
         # Persist delivery metadata so a resumed task can repost its GitHub
         # comment with the same installation-scoped credentials.

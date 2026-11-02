@@ -5,7 +5,7 @@ import sqlite3
 class SqliteSchemaMixin:
     def _init(self) -> None:
         with self._connect() as conn:
-            if self.path != ":memory:":
+            if not getattr(self, "_memory", False):
                 # WAL improves concurrent reader/writer throughput; the mode
                 # persists in the database file.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -52,6 +52,14 @@ class SqliteSchemaMixin:
                 """CREATE TABLE IF NOT EXISTS installations (
                     installation_id INTEGER PRIMARY KEY,
                     account_login TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )"""
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS github_setup_states (
+                    token_hash TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    expires_at REAL NOT NULL,
                     created_at TEXT NOT NULL
                 )"""
             )

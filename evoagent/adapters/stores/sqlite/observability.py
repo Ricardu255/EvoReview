@@ -1,5 +1,6 @@
 """Sqlite observability persistence mixin."""
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from ....time_utils import utc_now
@@ -162,17 +163,36 @@ class SqliteObservabilityStoreMixin:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def dashboard_stats(self, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+    def dashboard_stats(
+        self, tenant_id: Optional[str] = None,
+        window_seconds: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        cutoff = None
+        if window_seconds is not None:
+            cutoff = (
+                datetime.now(timezone.utc)
+                - timedelta(seconds=max(0, int(window_seconds)))
+            ).isoformat()
         with self._connect() as conn:
-            clause = " WHERE tenant_id=?" if tenant_id is not None else ""
-            params = (tenant_id,) if tenant_id is not None else ()
-            total = conn.execute("SELECT COUNT(*) AS n FROM tasks" + clause, params).fetchone()["n"]
+            where = []
+            params = []
+            if tenant_id is not None:
+                where.append("tenant_id=?")
+                params.append(tenant_id)
+            if cutoff is not None:
+                where.append("created_at>=?")
+                params.append(cutoff)
+            clause = (" WHERE " + " AND ".join(where)) if where else ""
+            queried = tuple(params)
+            total = conn.execute(
+                "SELECT COUNT(*) AS n FROM tasks" + clause, queried
+            ).fetchone()["n"]
             state_prefix = clause + (" AND " if clause else " WHERE ")
             success = conn.execute(
-                "SELECT COUNT(*) AS n FROM tasks" + state_prefix + "state='SUCCESS'", params
+                "SELECT COUNT(*) AS n FROM tasks" + state_prefix + "state='SUCCESS'", queried
             ).fetchone()["n"]
             failed = conn.execute(
-                "SELECT COUNT(*) AS n FROM tasks" + state_prefix + "state='FAILED'", params
+                "SELECT COUNT(*) AS n FROM tasks" + state_prefix + "state='FAILED'", queried
             ).fetchone()["n"]
             if tenant_id is None:
                 failures = conn.execute(

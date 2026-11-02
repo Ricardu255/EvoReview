@@ -5,13 +5,14 @@ from collections import OrderedDict
 from contextlib import contextmanager
 import logging
 import queue
+import random
 import socket
 import threading
 import time
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from ..errors import PermanentTaskError
+from ..errors import PermanentTaskError, TaskCancelled
 
 
 logger = logging.getLogger("evoagent")
@@ -33,11 +34,14 @@ class TaskQueue:
         self, handler: Callable[[Dict[str, Any]], None], workers: int = 2,
         redis_url: str = "", max_attempts: int = 3, lease_seconds: int = 60,
         on_dead_letter: Optional[Callable[[Dict[str, Any], str], None]] = None,
+        stream_maxlen: int = 100_000, dlq_maxlen: int = 10_000,
     ):
         self.handler = handler
         self.redis_url = redis_url
-        self.max_attempts = max_attempts
+        self.max_attempts = max(1, int(max_attempts))
         self.lease_seconds = lease_seconds
+        self.stream_maxlen = max(1, int(stream_maxlen))
+        self.dlq_maxlen = max(1, int(dlq_maxlen))
         self.on_dead_letter = on_dead_letter
         self.workers = max(1, int(workers))
         self._workers = []
@@ -86,7 +90,10 @@ class TaskQueue:
             "submitted_at": time.time(),
         }
         if self._redis:
-            self._redis.xadd(self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)})
+            self._redis.xadd(
+                self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)},
+                maxlen=self.stream_maxlen, approximate=True,
+            )
         else:
             self._submit_delivery(envelope)
         return envelope["message_id"]
@@ -217,6 +224,16 @@ class TaskQueue:
             self.handler(envelope["payload"])
         except DeliveryBusy:
             raise
+        except TaskCancelled:
+            # A cancelled task is a successful no-op for delivery: retrying
+            # would only re-raise the cancellation, and a dead letter would
+            # page an operator for something the user asked for.
+            logger.info(
+                "task %s was cancelled; delivery is complete",
+                (envelope.get("payload") or {}).get("task_id", "unknown"),
+            )
+            self._mark_completed(claim)
+            return True
         except PermanentTaskError as exc:
             self._dead_letter(envelope, str(exc))
             return False
@@ -224,17 +241,35 @@ class TaskQueue:
             if envelope["attempt"] >= self.max_attempts:
                 self._dead_letter(envelope, str(exc))
             elif self._redis:
-                self._redis.xadd(self.STREAM, {
-                    "envelope": json.dumps(envelope, ensure_ascii=False)
-                })
+                # Back off in the Redis path too; the worker honours
+                # ``retry_after`` before delivering the requeued entry.
+                envelope["retry_after"] = time.time() + self._retry_delay(envelope)
+                self._redis.xadd(
+                    self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)},
+                    maxlen=self.stream_maxlen, approximate=True,
+                )
             else:
-                delay = min(2 ** (envelope["attempt"] - 1), 10)
-                timer = threading.Timer(delay, self._submit_memory, args=(envelope,))
+                timer = threading.Timer(
+                    self._retry_delay(envelope), self._submit_memory, args=(envelope,)
+                )
                 timer.daemon = True
                 timer.start()
             return False
         self._mark_completed(claim)
         return True
+
+    @staticmethod
+    def _retry_delay(envelope: Dict[str, Any]) -> float:
+        """Exponential backoff with jitter, capped to keep leases meaningful."""
+        attempt = max(1, int(envelope.get("attempt", 1)))
+        return min(2 ** (attempt - 1), 10) + random.uniform(0, 0.5)
+
+    def _wait_for_retry(self, envelope: Dict[str, Any]) -> bool:
+        """Sleep until ``retry_after``; return False when shutdown interrupts."""
+        remaining = float(envelope.get("retry_after", 0) or 0) - time.time()
+        if remaining <= 0:
+            return not self._stop.is_set()
+        return not self._stop.wait(min(remaining, 10.0))
 
     def _submit_memory(self, envelope: Dict[str, Any]) -> None:
         if not self._stop.is_set():
@@ -263,6 +298,8 @@ class TaskQueue:
                         self._redis.xack(self.STREAM, self.GROUP, redis_id)
                         continue
                     try:
+                        if not self._wait_for_retry(envelope):
+                            return
                         self._deliver(envelope, redis_id)
                         # ACK only after work completed or was safely requeued/DLQed.
                         self._redis.xack(self.STREAM, self.GROUP, redis_id)
@@ -288,7 +325,10 @@ class TaskQueue:
     def _dead_letter(self, envelope: Dict[str, Any], error: str) -> None:
         item = {**envelope, "error": error[:2000], "failed_at": time.time()}
         if self._redis:
-            self._redis.xadd(self.DLQ, {"envelope": json.dumps(item, ensure_ascii=False)})
+            self._redis.xadd(
+                self.DLQ, {"envelope": json.dumps(item, ensure_ascii=False)},
+                maxlen=self.dlq_maxlen, approximate=True,
+            )
         else:
             with self._lock:
                 self._memory_dlq.append(item)

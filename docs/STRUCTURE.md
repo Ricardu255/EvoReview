@@ -33,7 +33,9 @@ evoagent/
 ├── adapters/
 ├── domain/
 ├── evaluation/
-└── ports/
+├── ports/
+├── skill_assets/          # bundled Agent Skill packages (package data)
+└── web/                   # console static assets (package data)
 ```
 
 根目录只保留 9 个模块和 6 个子包：38 个旧顶层兼容模块已在 0.4.0 删除，另有 5 个存储相关模块迁入 `adapters/stores/`，不再提供兼容导出或弃用告警。
@@ -78,11 +80,11 @@ evoagent/
 ## SQLite / PostgreSQL stores
 
 - 两个后端按能力拆到 `evoagent/adapters/stores/{sqlite,postgres}/`：`tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`。
-- 每个后端新增 `store.py`，只保留连接、建表和兼容类名；两个文件都 ≤50 行。
+- 每个后端新增 `store.py`，只保留连接、建表和兼容类名；两个文件都 ≤70 行（SQLite 需要额外的 `:memory:` 共享缓存与锚连接）。
 - `evoagent/adapters/stores/sqlite/store.py` 组合 SQLite mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`。
 - `evoagent/adapters/stores/postgres/store.py` 组合 PostgreSQL mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`；`create_store()` 按 URL 选择后端。
-- 持久化协议只位于 `evoagent/ports/stores/`，按任务、记忆、失败案例、进化、Skill、Webhook、认证、可观测性拆分。
-- dialect-neutral 的 auth、failure case、installation、memory、skills 收敛到 `shared/`；`shared/sql.py`、`shared/prompt.py`、`shared/webhook.py` 承载跨后端 SQL 规则，`shared/migrations.py` 承载一次性租户数据迁移。
+- 持久化协议只位于 `evoagent/ports/stores/`，按任务、记忆、失败案例、进化、Skill、Webhook、认证、可观测性、一次性 setup state 拆分。
+- dialect-neutral 的 auth、failure case、installation、memory、skills 收敛到 `shared/`；`shared/sql.py`、`shared/prompt.py`、`shared/webhook.py` 承载跨后端 SQL 规则，`shared/migrations.py` 承载一次性租户数据迁移，`shared/setup_state.py` 承载一次性、绑定租户的 GitHub App setup state。
 - `SqlStoreMixin` 提供 `_write()`、`_in_clause()`、`_greatest()`、`_acquire_key_lock()`，统一 SQLite 进程锁、PostgreSQL advisory lock 和方言差异。
 
 ## Application / Ports
@@ -99,6 +101,7 @@ evoagent/
 - `evoagent/` 内部、`scripts/`、`tests/` 均已改用新包路径。
 - `bootstrap.py` 直接导入 `evoagent.adapters.stores.postgres.store.create_store`。
 - `evaluation/evolution_proof.py` 直接导入 SQLite `TaskStore` 和 `evoagent.time_utils.utc_now`。
+- 控制台静态资源从根目录 `web/` 迁入 `evoagent/web/`，内置 Skill 从 `skills/` 迁入 `evoagent/skill_assets/`，并通过 `pyproject.toml` 的 package-data 随 wheel 分发。
 
 ## 尚未完成
 

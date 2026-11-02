@@ -1,7 +1,8 @@
+import ipaddress
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 
 _DOTENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -16,6 +17,8 @@ _INSECURE_ADMIN_PASSWORDS = {
     "evoagent-local-admin",
 }
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+BUILTIN_SKILLS_DIR = os.path.join(_PACKAGE_DIR, "skill_assets")
 
 
 def load_dotenv(paths: Optional[Iterable[str]] = None) -> None:
@@ -73,6 +76,16 @@ def _non_negative_int(name: str, default: int) -> int:
     return value
 
 
+def _trusted_proxies(raw: str) -> Tuple[str, ...]:
+    """Normalize a comma-separated list of proxy IPs/CIDRs."""
+    values = []
+    for item in (raw or "").split(","):
+        item = item.strip()
+        if item:
+            values.append(str(ipaddress.ip_network(item, strict=False)))
+    return tuple(values)
+
+
 @dataclass(frozen=True)
 class Settings:
     host: str
@@ -93,7 +106,7 @@ class Settings:
     memory_enabled: bool = True
     memory_recall_limit: int = 6
     memory_working_ttl_seconds: int = 86400
-    skills_dir: str = "skills"
+    skills_dir: str = BUILTIN_SKILLS_DIR
     github_app_id: str = ""
     github_app_slug: str = ""
     github_private_key_path: str = ""
@@ -121,8 +134,13 @@ class Settings:
     require_repository_grants: bool = False
     session_ttl_seconds: int = 3600
     webhook_max_age_seconds: int = 600
+    # Only these reverse proxies may supply X-Forwarded-For; any other peer is
+    # identified by its socket address.  Empty keeps the historical behaviour.
+    trusted_proxies: Tuple[str, ...] = ()
     queue_max_attempts: int = 3
     queue_lease_seconds: int = 60
+    queue_stream_maxlen: int = 100_000
+    queue_dlq_maxlen: int = 10_000
     repair_test_command: str = ""
     repair_verify_timeout_seconds: int = 120
     otel_endpoint: str = ""
@@ -130,10 +148,6 @@ class Settings:
     alert_failure_rate: float = 0.20
     alert_min_samples: int = 10
     alert_window_seconds: int = 900
-    alert_webhook_url: str = ""
-    alert_smtp_host: str = ""
-    alert_email_to: str = ""
-    continuous_eval_seconds: int = 0
     agent_token_budget: int = 8000
     agent_time_budget_seconds: int = 60
     agent_context_window_tokens: int = 32768
@@ -225,6 +239,49 @@ class Settings:
             raise ValueError("EVOAGENT_HOST must not be empty")
         if not 1 <= self.port <= 65535:
             raise ValueError("EVOAGENT_PORT must be between 1 and 65535")
+        if self.report_max_findings < 1:
+            raise ValueError("EVOAGENT_REPORT_MAX_FINDINGS must be at least 1")
+        if self.max_steps < 1:
+            raise ValueError("EVOAGENT_MAX_STEPS must be at least 1")
+        if self.timeout_seconds < 1:
+            raise ValueError("EVOAGENT_TIMEOUT_SECONDS must be at least 1")
+        if self.async_workers < 1:
+            raise ValueError("EVOAGENT_ASYNC_WORKERS must be at least 1")
+        if self.queue_max_attempts < 1 or self.queue_lease_seconds < 1:
+            raise ValueError("queue attempts and lease seconds must be at least 1")
+        if self.queue_stream_maxlen < 1 or self.queue_dlq_maxlen < 1:
+            raise ValueError("queue stream and dead-letter limits must be at least 1")
+        if self.alert_window_seconds < 1 or self.alert_min_samples < 1:
+            raise ValueError("alert window and minimum samples must be at least 1")
+        if self.session_ttl_seconds < 1 or self.webhook_max_age_seconds < 1:
+            raise ValueError("session TTL and webhook age must be at least 1 second")
+        if self.memory_recall_limit < 0 or self.memory_working_ttl_seconds < 0:
+            raise ValueError("memory limits cannot be negative")
+        if self.agent_context_input_tokens < 1 or self.agent_token_budget < 1:
+            raise ValueError("agent token budgets must be positive")
+        if (
+            self.agent_context_input_tokens + self.agent_token_budget
+            > self.agent_context_window_tokens
+        ):
+            raise ValueError(
+                "EVOAGENT_AGENT_CONTEXT_INPUT_TOKENS + EVOAGENT_AGENT_TOKEN_BUDGET "
+                "must not exceed EVOAGENT_AGENT_CONTEXT_WINDOW_TOKENS"
+            )
+        for name, value in (
+            ("EVOAGENT_CONTEXT_DIFF_TOKEN_BUDGET", self.context_diff_token_budget),
+            ("EVOAGENT_CONTEXT_OBSERVATION_TOKEN_BUDGET", self.context_observation_token_budget),
+            ("EVOAGENT_CONTEXT_RECENT_OBSERVATIONS", self.context_recent_observations),
+            ("EVOAGENT_CONTEXT_MAP_CHUNK_TOKENS", self.context_map_chunk_tokens),
+        ):
+            if value < 0:
+                raise ValueError("%s cannot be negative" % name)
+        for proxy in self.trusted_proxies:
+            try:
+                ipaddress.ip_network(proxy, strict=False)
+            except ValueError as exc:
+                raise ValueError(
+                    "EVOAGENT_TRUSTED_PROXIES contains an invalid entry: %s" % proxy
+                ) from exc
         if self.eval_min_cases > self.eval_max_cases:
             raise ValueError("EVOAGENT_EVAL_MIN_CASES cannot exceed EVOAGENT_EVAL_MAX_CASES")
         if not 0.0 <= self.eval_min_improvement <= 1.0:
@@ -283,7 +340,7 @@ class Settings:
             memory_working_ttl_seconds=_int(
                 "EVOAGENT_MEMORY_WORKING_TTL_SECONDS", 86400
             ),
-            skills_dir=os.getenv("EVOAGENT_SKILLS_DIR", "skills"),
+            skills_dir=os.getenv("EVOAGENT_SKILLS_DIR", BUILTIN_SKILLS_DIR),
             github_app_id=os.getenv("EVOAGENT_GITHUB_APP_ID", ""),
             github_app_slug=os.getenv("EVOAGENT_GITHUB_APP_SLUG", ""),
             github_private_key_path=os.getenv("EVOAGENT_GITHUB_PRIVATE_KEY_PATH", ""),
@@ -319,8 +376,13 @@ class Settings:
             ),
             session_ttl_seconds=_int("EVOAGENT_SESSION_TTL_SECONDS", 3600),
             webhook_max_age_seconds=_int("EVOAGENT_WEBHOOK_MAX_AGE_SECONDS", 600),
+            trusted_proxies=_trusted_proxies(
+                os.getenv("EVOAGENT_TRUSTED_PROXIES", "")
+            ),
             queue_max_attempts=_int("EVOAGENT_QUEUE_MAX_ATTEMPTS", 3),
             queue_lease_seconds=_int("EVOAGENT_QUEUE_LEASE_SECONDS", 60),
+            queue_stream_maxlen=_int("EVOAGENT_QUEUE_STREAM_MAXLEN", 100_000),
+            queue_dlq_maxlen=_int("EVOAGENT_QUEUE_DLQ_MAXLEN", 10_000),
             repair_test_command=os.getenv("EVOAGENT_REPAIR_TEST_COMMAND", ""),
             repair_verify_timeout_seconds=_int("EVOAGENT_REPAIR_VERIFY_TIMEOUT_SECONDS", 120),
             otel_endpoint=os.getenv("EVOAGENT_OTEL_ENDPOINT", ""),
@@ -328,12 +390,6 @@ class Settings:
             alert_failure_rate=float(os.getenv("EVOAGENT_ALERT_FAILURE_RATE", "0.20")),
             alert_min_samples=_int("EVOAGENT_ALERT_MIN_SAMPLES", 10),
             alert_window_seconds=_int("EVOAGENT_ALERT_WINDOW_SECONDS", 900),
-            alert_webhook_url=os.getenv("EVOAGENT_ALERT_WEBHOOK_URL", ""),
-            alert_smtp_host=os.getenv("EVOAGENT_ALERT_SMTP_HOST", ""),
-            alert_email_to=os.getenv("EVOAGENT_ALERT_EMAIL_TO", ""),
-            continuous_eval_seconds=_non_negative_int(
-                "EVOAGENT_CONTINUOUS_EVAL_SECONDS", 0
-            ),
             agent_token_budget=_int("EVOAGENT_AGENT_TOKEN_BUDGET", 8000),
             agent_time_budget_seconds=_int("EVOAGENT_AGENT_TIME_BUDGET_SECONDS", 60),
             agent_context_window_tokens=_int(

@@ -2,6 +2,7 @@
 from ....ports.stores import StoreProtocol
 from ..shared.migrations import MigrationStoreMixin
 from ..shared.prompt import PromptStoreMixin
+from ..shared.setup_state import SetupStateStoreMixin
 from ..shared.webhook import WebhookStoreMixin
 from .auth import PostgresAuthStoreMixin
 from .failures import PostgresFailureStoreMixin
@@ -18,6 +19,7 @@ class PostgresTaskStore(
     PostgresFailureStoreMixin, PostgresSkillStoreMixin,
     PostgresInstallationStoreMixin, PostgresAuthStoreMixin,
     PostgresObservabilityStoreMixin, PromptStoreMixin, WebhookStoreMixin,
+    SetupStateStoreMixin,
     MigrationStoreMixin,
     StoreProtocol,
 ):

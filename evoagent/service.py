@@ -189,10 +189,11 @@ class ReviewService:
         tenant_id: str = "default", repository_root: str = "",
         enabled_agents: Optional[list] = None,
         enabled_skills: Optional[list] = None,
+        mode: str = "agentic",
     ) -> str:
         return self._reviews_app.create_task(
             repository, diff, pull_request, source, tenant_id,
-            repository_root, enabled_agents, enabled_skills,
+            repository_root, enabled_agents, enabled_skills, mode,
         )
 
     def _create_deferred_task(

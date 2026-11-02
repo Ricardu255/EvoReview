@@ -41,5 +41,6 @@ class ObservabilityStorePort(Protocol):
 
     def dashboard_stats(
         self, tenant_id: Optional[str] = None,
+        window_seconds: Optional[int] = None,
     ) -> Dict[str, Any]:
         ...

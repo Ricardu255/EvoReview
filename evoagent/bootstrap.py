@@ -73,6 +73,8 @@ class ServiceContainer:
             settings.queue_max_attempts,
             settings.queue_lease_seconds,
             dead_letter,
+            stream_maxlen=settings.queue_stream_maxlen,
+            dlq_maxlen=settings.queue_dlq_maxlen,
         )
 
 
@@ -256,7 +258,8 @@ def build_container(settings: Settings) -> ServiceContainer:
     )
     releases = ReleaseManager(store)
     alerts = AlertManager(
-        store, settings.alert_failure_rate, settings.alert_min_samples
+        store, settings.alert_failure_rate, settings.alert_min_samples,
+        settings.alert_window_seconds,
     )
     evolution = EvolutionEngine(
         store,

@@ -204,6 +204,8 @@ The command prints a public HTTPS URL such as `https://example.trycloudflare.com
 
 These quick tunnels expose both the console and the API on port 8080 to the public internet, so you must keep `EVOAGENT_AUTH_REQUIRED=true` with a strong admin password and a random `EVOAGENT_AUTH_SECRET`. For long-term deployment, use a reverse proxy to expose only `/webhooks/github` (and optionally `/health`) rather than exposing the entire console.
 
+When the service sits behind a tunnel or reverse proxy, set `EVOAGENT_TRUSTED_PROXIES` to the proxy addresses (comma-separated IPs/CIDRs, for example `127.0.0.1` for a local cloudflared or ngrok process). Only then is `X-Forwarded-For` used to key login throttling by real client address; otherwise every request shares the proxy address and one attacker could exhaust the shared login limit.
+
 ### 3. Add the Webhook in the GitHub Repository
 
 In the target repository, go to **Settings → Webhooks → Add webhook** and fill in:
@@ -232,11 +234,14 @@ Results are stored only in the console by default. PR comments are written back 
 
 Auto-fix only covers rules that are deterministically safe, such as debug output, `shell=True`, and hardcoded Python credentials; results are always committed to a new `evoagent/fix-pr-*` branch and never modify the source branch directly.
 
+`EVOAGENT_REPAIR_TEST_COMMAND` runs inside an extracted copy of the PR's source repository (which may be an attacker-controlled fork) with a restricted environment but without network or container isolation. Enable it only for repositories you trust, or run EvoReview in a disposable environment.
+
 ## API
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Unauthenticated liveness check (status only) |
+| `GET` | `/health/detail` | Deployment details; requires the `read` permission |
 | `POST` | `/v1/auth/login` | Log in and obtain a short-lived tenant-bound Bearer token |
 | `POST` | `/v1/reviews` | Create a synchronous review task |
 | `POST` | `/v1/reviews?async=true` | Create an asynchronous review task |
@@ -291,13 +296,13 @@ curl -X DELETE "http://127.0.0.1:8080/v1/repository-grants?repository=org/repo" 
 
 ### GitHub App Setup
 
-`/github/setup` requires the `EVOAGENT_GITHUB_SETUP_STATE` nonce and disabled when it is blank. Installations that have not completed setup are rejected by the webhook handler unless `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`; `EVOAGENT_PUBLIC_BASE_URL` is used for the post-setup redirect.
+`EVOAGENT_GITHUB_SETUP_STATE` is a high-entropy server secret that enables App setup; setup is disabled when it is blank. `/github/install` requires a `manage` Bearer token: it mints a one-time, tenant-bound setup state (10-minute TTL) and redirects to GitHub (`Accept: application/json` returns `{"url": ...}` instead). `/github/setup` accepts either that state or an authenticated `manage` token, and consumes the state on first use, so a leaked URL cannot be replayed. Installations that have not completed setup are rejected by the webhook handler unless `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`; `EVOAGENT_PUBLIC_BASE_URL` is used for the post-setup redirect.
 
-For repository tools, configure `EVOAGENT_REPOSITORY_ROOTS_JSON` on the server, for example `{"default":{"org/repo":"D:/checkouts/repo"}}`. Requests cannot select another server directory; an omitted `repository_root` uses the configured checkout. Without a mapping, review uses only the supplied diff. Paths resolving outside the checkout are rejected.
+For repository tools, configure `EVOAGENT_REPOSITORY_ROOTS_JSON` on the server, for example `{"default":{"org/repo":"D:/checkouts/repo"}}`. Requests cannot select another server directory; an omitted `repository_root` uses the configured checkout. Without a mapping, review uses only the supplied diff. Paths resolving outside the checkout are rejected, and secret files (`.env` variants other than templates, `.ssh/`, private keys, and credential files) are never exposed to review tools.
 
 Tasks pin their actual prompt version at creation. Canary tasks execute the candidate; shadow tasks execute a separate candidate task with independent checkpoints and no memory writes or GitHub publication. A task cannot change versions midway through a retry. Cancelled and failed tasks can resume; running tasks cannot. Failed webhook submissions keep a recoverable claim and reuse the same task on redelivery.
 
-Redis delivery renews ownership and deduplicates successful logical deliveries for 24 hours. Delivery remains at least once after outages or expiration of that window; external side effects should retain their own idempotency keys.
+Redis delivery renews ownership, backs off before requeueing a failed task, and deduplicates successful logical deliveries for 24 hours. The stream and dead-letter stream are trimmed to `EVOAGENT_QUEUE_STREAM_MAXLEN` and `EVOAGENT_QUEUE_DLQ_MAXLEN`. Delivery remains at least once after outages or expiration of that window; external side effects should retain their own idempotency keys. Cancelling a task ends its delivery without retries, dead letters, or alerts.
 
 ## Architecture
 
@@ -322,12 +327,12 @@ HTTP / GitHub Webhook
 
 ## Skills: Purpose and Authoring
 
-The directories under `skills/` are agent Skill packages, not tool-connector directories. They are currently centered on the review domain because the product goal of this project is code review. A Skill's job is to inject a domain's judgment criteria, investigation steps, and output constraints into the model — not to execute SQL, call GitHub, or open network connections itself.
+The directories under `evoagent/skill_assets/` are agent Skill packages, not tool-connector directories. They are currently centered on the review domain because the product goal of this project is code review. A Skill's job is to inject a domain's judgment criteria, investigation steps, and output constraints into the model — not to execute SQL, call GitHub, or open network connections itself.
 
 A Skill package contains at least one `SKILL.md`:
 
 ```text
-skills/<skill-name>/
+evoagent/skill_assets/<skill-name>/
 └── SKILL.md                 # YAML metadata + full operating instructions
 ```
 

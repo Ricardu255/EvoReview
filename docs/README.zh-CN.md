@@ -204,6 +204,8 @@ ngrok http 8080
 
 上述快捷转发会把 8080 端口上的管理台和 API 一并暴露到公网，因此必须保持 `EVOAGENT_AUTH_REQUIRED=true`，并使用强管理员密码和随机 `EVOAGENT_AUTH_SECRET`。长期部署建议通过反向代理只公开 `/webhooks/github`（以及按需公开 `/health`），不要向公网暴露整个管理台。
 
+部署在隧道或反向代理之后时，请把代理地址配置到 `EVOAGENT_TRUSTED_PROXIES`（逗号分隔的 IP/CIDR，例如本地 cloudflared 或 ngrok 用 `127.0.0.1`）。只有可信代理提供的 `X-Forwarded-For` 才会用于登录限流，否则所有请求共享代理地址，单个攻击者即可耗尽共享限额。
+
 ### 3. 在 GitHub 仓库中添加 Webhook
 
 进入目标仓库的 **Settings → Webhooks → Add webhook**，填写：
@@ -232,11 +234,14 @@ Invoke-RestMethod https://<公网域名>/health
 
 自动修复只覆盖可确定安全的规则，例如调试输出、`shell=True` 和硬编码 Python 凭据；结果始终提交到新的 `evoagent/fix-pr-*` 分支，不直接修改源分支。
 
+`EVOAGENT_REPAIR_TEST_COMMAND` 会在 PR 源仓库（可能是攻击者控制的 fork）的解压副本中执行；环境变量受限，但没有网络或容器隔离。仅对可信仓库启用，或把 EvoReview 放在一次性环境中运行。
+
 ## API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/health` | 健康检查 |
+| `GET` | `/health` | 未鉴权的存活检查（仅返回状态） |
+| `GET` | `/health/detail` | 部署详情；需要 `read` 权限 |
 | `POST` | `/v1/auth/login` | 登录并获取租户绑定的短期 Bearer Token |
 | `POST` | `/v1/reviews` | 创建同步审查任务 |
 | `POST` | `/v1/reviews?async=true` | 创建异步审查任务 |
@@ -291,13 +296,13 @@ curl -X DELETE "http://127.0.0.1:8080/v1/repository-grants?repository=org/repo" 
 
 ### GitHub App 配置
 
-`/github/setup` 需要 `EVOAGENT_GITHUB_SETUP_STATE` 随机数；未配置时该接口禁用。未完成 setup 的 installation 会被 webhook 拒绝，除非设置 `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`；`EVOAGENT_PUBLIC_BASE_URL` 用于 setup 完成后的跳转。
+`EVOAGENT_GITHUB_SETUP_STATE` 是启用 GitHub App 配置的高熵服务端密钥，留空即禁用 setup。`/github/install` 需要 `manage` Bearer token：它会签发一次性、绑定租户的 setup state（10 分钟有效）并跳转到 GitHub（使用 `Accept: application/json` 时返回 `{"url": ...}`）。`/github/setup` 接受该 state 或已认证的 `manage` token，并在首次使用时消费 state，泄露的 URL 无法重放。未完成 setup 的 installation 会被 webhook 拒绝，除非设置 `EVOAGENT_ALLOW_UNBOUND_INSTALLATIONS=true`；`EVOAGENT_PUBLIC_BASE_URL` 用于 setup 完成后的跳转。
 
-本地仓库工具需要管理员在服务端配置 `EVOAGENT_REPOSITORY_ROOTS_JSON`，例如 `{"default":{"org/repo":"D:/checkouts/repo"}}`。请求不能选择其他服务器目录；省略 `repository_root` 时使用该映射。未配置映射则仅审查传入的 diff，解析后指向 checkout 外部的路径会被拒绝。
+本地仓库工具需要管理员在服务端配置 `EVOAGENT_REPOSITORY_ROOTS_JSON`，例如 `{"default":{"org/repo":"D:/checkouts/repo"}}`。请求不能选择其他服务器目录；省略 `repository_root` 时使用该映射。未配置映射则仅审查传入的 diff，解析后指向 checkout 外部的路径会被拒绝；密钥文件（模板之外的 `.env` 变体、`.ssh/`、私钥和凭据文件）不会提供给仓库工具。
 
 任务创建时固定实际 Prompt 版本；灰度任务执行候选版本，影子任务使用独立任务和检查点，不写入记忆或发布 GitHub 评论。重试不会切换任务版本。取消及失败任务可以恢复，运行中的任务不能重复恢复；Webhook 入队失败后保留可恢复记录，再投递时复用原任务。
 
-Redis 投递会续租，并在 24 小时内去重已成功的逻辑消息。故障或去重窗口过期后仍采用至少一次投递语义，外部副作用应保留自身幂等键。
+Redis 投递会续租、在重投失败任务前先退避，并在 24 小时内去重已成功的逻辑消息。Stream 与死信 Stream 分别按 `EVOAGENT_QUEUE_STREAM_MAXLEN` 和 `EVOAGENT_QUEUE_DLQ_MAXLEN` 裁剪。故障或去重窗口过期后仍采用至少一次投递语义，外部副作用应保留自身幂等键。任务被取消时投递直接结束，不会重试、进入死信或触发告警。
 
 ## 架构
 
@@ -322,12 +327,12 @@ HTTP / GitHub Webhook
 
 ## Skills 的定位与编写方式
 
-`skills/` 下的目录是 Agent Skill 包，不是工具连接器目录。它们目前以审查领域为中心，是因为本项目的产品目标是代码审查；Skill 的职责是把某个领域的判断标准、调查步骤和输出约束注入模型，而不是自己执行 SQL、调用 GitHub 或创建网络连接。
+`evoagent/skill_assets/` 下的目录是 Agent Skill 包，不是工具连接器目录。它们目前以审查领域为中心，是因为本项目的产品目标是代码审查；Skill 的职责是把某个领域的判断标准、调查步骤和输出约束注入模型，而不是自己执行 SQL、调用 GitHub 或创建网络连接。
 
 一个 Skill 包至少包含一个 `SKILL.md`：
 
 ```text
-skills/<skill-name>/
+evoagent/skill_assets/<skill-name>/
 └── SKILL.md                 # YAML 元数据 + 完整运行指令
 ```
 

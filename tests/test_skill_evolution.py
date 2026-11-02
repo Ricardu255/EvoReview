@@ -142,7 +142,7 @@ class SkillEvolutionTests(unittest.TestCase):
             self.assertIsNone(registry.get_agent_skill("review-dangerous-calls"))
 
     def test_bundled_agent_skills_are_discoverable(self):
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "skills"))
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "evoagent", "skill_assets"))
         registry = SkillRegistry(root)
         registry.reload()
         self.assertEqual({
