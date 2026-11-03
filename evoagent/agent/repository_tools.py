@@ -14,6 +14,7 @@ import time
 from typing import Any, Dict, Iterable, Optional, Set
 
 from ..domain.diff_parser import ParsedDiff
+from ..process_env import restricted_env
 from .runtime import AgentTool, ToolRegistry
 from .telemetry import ExecutionLedger
 
@@ -26,10 +27,17 @@ SKIP_DIRS = {
 # them by an exact path.  Example templates are allowed: they carry names, not
 # values.
 _SENSITIVE_PATH = re.compile(
-    r"(^|/)(\.env(\..*)?|\.git(/|$)|\.ssh(/|$)|"
+    r"(^|/)(\.env(\..*)?|"
     r"id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.(pem|key|p12|pfx|jks)|"
     r"credentials(\..*)?|\.netrc|\.npmrc|\.pypirc)$",
     re.IGNORECASE,
+)
+# Directories whose *contents* are never readable either.  These cannot live in
+# the anchored alternation above: that pattern must match to the end of the
+# path, so ``\.git(/|$)`` only blocked a trailing ``/.git/`` and let
+# ``.git/config`` (which may hold credentialed remote URLs) through.
+_SENSITIVE_DIR = re.compile(
+    r"(^|/)(\.git|\.ssh|\.aws|\.gnupg|\.kube)(/|$)", re.IGNORECASE,
 )
 _SENSITIVE_TEMPLATE = re.compile(
     r"\.env\.(example|sample|template|dist)$", re.IGNORECASE,
@@ -40,7 +48,12 @@ def _sensitive_path(relative: str) -> bool:
     normalized = os.path.normpath(str(relative)).replace("\\", "/")
     if _SENSITIVE_TEMPLATE.search(normalized):
         return False
-    return bool(_SENSITIVE_PATH.search(normalized))
+    return bool(
+        _SENSITIVE_PATH.search(normalized)
+        or _SENSITIVE_DIR.search(normalized)
+    )
+
+
 CONFIG_NAMES = {
     "package.json", "package-lock.json", "requirements.txt", "pyproject.toml",
     "poetry.lock", "Pipfile", "Dockerfile", "docker-compose.yml", ".github",
@@ -317,17 +330,8 @@ class RepositoryToolSuite:
     @staticmethod
     def _restricted_env() -> Dict[str, str]:
         # Toolchains on Windows need the user profile for caches and config;
-        # secrets stay out because only this allowlist is forwarded.
-        allowed = {
-            "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC",
-            "LANG", "LC_ALL", "TMP", "TEMP", "TMPDIR",
-            "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
-            "HOME", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
-            "NUMBER_OF_PROCESSORS",
-        }
-        return {
-            key: value for key, value in os.environ.items() if key in allowed
-        }
+        # secrets stay out because only the shared allowlist is forwarded.
+        return restricted_env()
 
     @staticmethod
     def _tool_version(command: str) -> Optional[int]:

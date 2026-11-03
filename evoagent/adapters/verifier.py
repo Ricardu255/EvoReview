@@ -10,6 +10,8 @@ import tokenize
 from io import BytesIO
 from typing import Dict
 
+from ..process_env import restricted_env
+
 
 class RepairVerifier:
     # Repository archives are untrusted input; bound both the compressed
@@ -57,10 +59,7 @@ class RepairVerifier:
             raise ValueError("verification worktree does not exist")
         command = shlex.split(self.test_command, posix=os.name != "nt")
         started = time.monotonic()
-        env = {
-            key: value for key, value in os.environ.items()
-            if key in {"PATH", "SYSTEMROOT", "WINDIR", "LANG", "LC_ALL", "TMP", "TEMP"}
-        }
+        env = restricted_env()
         with tempfile.TemporaryDirectory(prefix="evoagent-verify-") as temp:
             env["TMPDIR"] = temp
             try:
