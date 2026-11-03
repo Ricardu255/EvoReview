@@ -6,6 +6,11 @@
 
 **命名说明：** EvoReview 是产品名；Python 包名保留 `evoagent`，环境变量前缀保留 `EVOAGENT_*` 以保持兼容。
 
+<p align="center">
+  <img src="assets/ui-overview.png" alt="EvoReview 纸册风格 Web 控制台总览">
+</p>
+<p align="center"><em>纸册风格 Web 控制台：运行总览、任务报告、Skills 与演进实验室。</em></p>
+
 - 审查统一 diff，输出结构化问题、修复建议和测试建议
 - GitHub `pull_request` webhook（`opened`、`reopened`、`synchronize`）
 - `agentic` 运行模式：Lead、Security、Correctness/Reliability、Critic 多 Agent 协作
