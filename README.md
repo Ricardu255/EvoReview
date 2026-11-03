@@ -6,6 +6,11 @@ English | [**简体中文**](docs/README.zh-CN.md)
 
 **Naming:** EvoReview is the product name. The Python package remains `evoagent`, and environment variables keep the `EVOAGENT_*` prefix for compatibility.
 
+<p align="center">
+  <img src="docs/assets/ui-overview.png" alt="EvoReview paper-ledger web console overview">
+</p>
+<p align="center"><em>The paper-ledger web console: overview, task reports, Skills, and evolution.</em></p>
+
 - Reviews unified diffs and emits structured findings, fix suggestions, and test recommendations
 - GitHub `pull_request` webhook (`opened`, `reopened`, `synchronize`)
 - `agentic` mode: collaborative Lead, Security, Correctness/Reliability, and Critic agents
