@@ -142,7 +142,7 @@ class RootLayoutTests(unittest.TestCase):
         self.assertEqual(
             {
                 "__init__", "__main__", "api", "bootstrap", "config", "errors",
-                "prompts", "service", "time_utils",
+                "process_env", "prompts", "service", "time_utils",
             },
             {path.stem for path in PACKAGE.glob("*.py")},
         )

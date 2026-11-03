@@ -83,6 +83,23 @@ class SensitiveRepositoryPathTests(unittest.TestCase):
         result = self.suite.read_file(".env.example")
         self.assertIn("EVOAGENT_AUTH_SECRET", result["output"]["content"])
 
+    def test_git_directory_contents_are_not_readable(self):
+        # ``.git/config`` can hold credentialed remote URLs; the anchored
+        # path regex used to let it through and only blocked a trailing "\.git/".
+        self._write(
+            os.path.join(".git", "config"),
+            '[remote "origin"]\n\turl = https://user:token@example.com/repo\n',
+        )
+        files = self.suite.list_repository()["output"]["files"]
+        self.assertNotIn(".git/config", files)
+        with self.assertRaises(ValueError):
+            self.suite.read_file(".git/config")
+
+    def test_public_files_outside_denied_directories_stay_readable(self):
+        self._write(os.path.join("gitsync", "config"), "plain\n")
+        result = self.suite.read_file("gitsync/config")
+        self.assertIn("plain", result["output"]["content"])
+
     def test_search_does_not_return_secret_lines(self):
         hits = self.suite.search_repository("real-secret")["output"]
         self.assertEqual([], hits)
