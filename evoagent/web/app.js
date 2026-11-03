@@ -23,6 +23,9 @@ let selectedTask = null;
 let selectedTaskData = null;
 let accessToken = localStorage.getItem("evoagent_token") || "";
 let toastTimer = null;
+let pageTurning = false;
+let turnTimer = null;
+let turnEndTimer = null;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function escapeHtml(value) {
@@ -98,31 +101,74 @@ function setButtonBusy(button, busy, busyText) {
   }
 }
 
-function show(view, updateHash = true) {
-  if (!titles[view]) {
-    view = "overview";
-    history.replaceState(null, "", "#overview");
-  }
+function viewFromHash(value) {
+  const view = String(value || "").replace(/^\/+/, "");
+  return titles[view] ? view : "overview";
+}
+
+function activeView() {
+  const element = $(".view.active");
+  return element ? element.id.replace(/^view-/, "") : "";
+}
+
+function applyView(view) {
   $$(".view").forEach((element) => element.classList.remove("active"));
   $$(".nav-item").forEach((element) => {
     const active = element.dataset.view === view;
     element.classList.toggle("active", active);
     element.setAttribute("aria-current", active ? "page" : "false");
   });
-  $(`#view-${view}`).classList.add("active");
+  const target = $(`#view-${view}`);
+  if (target) target.classList.add("active");
   $("#page-title").textContent = titles[view];
   document.title = `${titles[view]} · EvoReview`;
-  if (updateHash) history.replaceState(null, "", `#${view}`);
 
   if (view === "tasks") loadTasks();
   if (view === "skills") loadSkills();
   if (view === "evolution") loadFailures();
   window.scrollTo({ top: 0, behavior: reduceMotion.matches ? "auto" : "smooth" });
+  const main = $("#main-content");
+  if (main) main.focus({ preventScroll: true });
+}
+
+function show(view, updateHash = true, animate = true) {
+  view = titles[view] ? view : "overview";
+  if (updateHash && location.hash !== `#${view}`) {
+    history.pushState(null, "", `#${view}`);
+  }
+  const target = $(`#view-${view}`);
+  const current = $(".view.active");
+  if (!target) return;
+
+  if (animate === false || reduceMotion.matches || !current || current === target || pageTurning) {
+    applyView(view);
+    return;
+  }
+
+  pageTurning = true;
+  document.body.classList.add("is-turning");
+  const sheet = $("#page-turn");
+  if (sheet) sheet.classList.add("turning");
+  clearTimeout(turnTimer);
+  clearTimeout(turnEndTimer);
+  turnTimer = setTimeout(() => applyView(view), 280);
+  turnEndTimer = setTimeout(() => {
+    if (sheet) sheet.classList.remove("turning");
+    document.body.classList.remove("is-turning");
+    pageTurning = false;
+  }, 650);
 }
 
 $$(".nav-item").forEach((button) => button.addEventListener("click", () => show(button.dataset.view)));
 $$("[data-jump]").forEach((button) => button.addEventListener("click", () => show(button.dataset.jump)));
-window.addEventListener("hashchange", () => show(location.hash.slice(1), false));
+window.addEventListener("hashchange", () => {
+  const view = viewFromHash(location.hash.slice(1));
+  if (view !== activeView()) show(view, false);
+});
+window.addEventListener("popstate", () => {
+  const view = viewFromHash(location.hash.slice(1));
+  if (view !== activeView()) show(view, false);
+});
 
 function taskRows(tasks) {
   if (!tasks?.length) {
@@ -151,9 +197,10 @@ function bindTasks(root) {
 }
 
 function statCard(label, value, note, style, icon) {
-  return `<article class="stat ${style}">
-    <div class="stat-head"><span>${label}</span><i>${icon}</i></div>
-    <b>${value}</b><small>${note}</small>
+  return `<article class="stat ${escapeAttr(style)}" data-icon="${escapeAttr(icon)}">
+    <span class="ledger-label">${escapeHtml(label)}</span>
+    <b class="ledger-value">${escapeHtml(String(value))}</b>
+    <small class="ledger-note">${escapeHtml(note)}</small>
   </article>`;
 }
 
@@ -222,6 +269,10 @@ async function loadDashboard() {
     $("#system-status").textContent = `${data.queue} · ${data.orchestrator}`;
     const stats = data.stats || {};
     const rate = Math.round(Number(stats.success_rate || 0) * 100);
+    const collageTasks = $("#collage-tasks");
+    if (collageTasks) collageTasks.textContent = String(stats.tasks_total ?? 0);
+    const collageRate = $("#collage-rate");
+    if (collageRate) collageRate.textContent = `${rate}%`;
     $("#stats").innerHTML = [
       statCard("总任务", stats.tasks_total ?? 0, "累计审查任务", "", "ALL"),
       statCard("已完成", stats.tasks_success ?? 0, "通过质量门禁", "success", "OK"),
@@ -235,6 +286,10 @@ async function loadDashboard() {
   } catch (error) {
     renderLlmRuntime({ error: true }, {});
     $("#system-status").textContent = "服务连接异常";
+    const collageTasks = $("#collage-tasks");
+    if (collageTasks) collageTasks.textContent = "—";
+    const collageRate = $("#collage-rate");
+    if (collageRate) collageRate.textContent = "—";
     $("#stats").innerHTML = '<div class="empty-state"><span><b>暂时无法读取数据</b>请检查服务状态后重试</span></div>';
     $("#recent-tasks").innerHTML = '<div class="empty-state"><span>数据加载失败</span></div>';
     toast(error.message);
@@ -254,15 +309,76 @@ async function loadTasks() {
   }
 }
 
+function renderTaskReport(task) {
+  const report = task.report && typeof task.report === "object" ? task.report : null;
+  const state = String(task.state || "PENDING").toUpperCase();
+  const pr = task.pull_request ? `PR #${task.pull_request}` : "手动审查";
+  const meta = `${pr} · ${formatTime(task.created_at)} · ${stateLabels[state] || state}`;
+  const nameNode = $("#report-task-name");
+  if (nameNode) nameNode.textContent = task.repository || "未命名仓库";
+  const metaNode = $("#report-task-meta");
+  if (metaNode) metaNode.textContent = meta;
+
+  if (!report) {
+    return `<p class="report-summary">任务尚未生成报告。</p>
+      <details class="report-details"><summary>查看原始任务数据</summary><pre>${escapeHtml(formatJson(task))}</pre></details>`;
+  }
+
+  const findings = Array.isArray(report.findings) ? report.findings : [];
+  const execution = report.execution || {};
+  const facts = [
+    `<span>风险 <b>${escapeHtml(report.risk || "unknown")}</b></span>`,
+    `<span>审查器 <b>${escapeHtml(report.reviewer || "unknown")}</b></span>`,
+    `<span>结论 <b>${findings.length}</b></span>`,
+  ];
+  if (execution.llm_calls !== undefined || execution.tool_calls !== undefined) {
+    facts.push(
+      `<span>LLM <b>${escapeHtml(String(execution.llm_calls ?? 0))}</b>` +
+      ` · 工具 <b>${escapeHtml(String(execution.tool_calls ?? 0))}</b>` +
+      ` · Tokens <b>${escapeHtml(String(execution.total_tokens ?? 0))}</b></span>`
+    );
+  }
+
+  const findingHtml = findings.length ? findings.map((item) => {
+    const rawSeverity = String(item.severity || "medium").toLowerCase();
+    const severity = ["critical", "high", "medium", "low"].includes(rawSeverity)
+      ? rawSeverity : "medium";
+    const refs = Array.isArray(item.evidence_refs)
+      ? item.evidence_refs.filter((ref) => ref && ref.evidence_id)
+      : [];
+    return `<article class="report-finding">
+      <div class="finding-head">
+        <strong>${escapeHtml(item.title || "未命名结论")}</strong>
+        <span class="sev ${severity}">${escapeHtml(severity.toUpperCase())}</span>
+        <span class="finding-loc">${escapeHtml(item.path || "?")}:${escapeHtml(String(item.line ?? "?"))} · ${escapeHtml(item.rule_id || "")}${item.confidence !== undefined ? ` · 置信度 ${escapeHtml(Number(item.confidence).toFixed(2))}` : ""}</span>
+      </div>
+      <p>${escapeHtml(item.explanation || "")}</p>
+      <dl>
+        <dt>证据</dt><dd><code>${escapeHtml(item.evidence || "—")}</code></dd>
+        <dt>修复</dt><dd>${escapeHtml(item.fix || "—")}</dd>
+        <dt>测试</dt><dd>${escapeHtml(item.test || "—")}</dd>
+        ${refs.length ? `<dt>引用</dt><dd>${refs.map((ref) => escapeHtml(ref.evidence_id)).join(" · ")}</dd>` : ""}
+      </dl>
+    </article>`;
+  }).join("") : '<p class="report-empty">没有通过门禁的结论。</p>';
+
+  return `<p class="report-summary">${escapeHtml(report.summary || "没有摘要。")}</p>
+    <div class="report-facts">${facts.join("")}</div>
+    <div class="report-findings">${findingHtml}</div>
+    <details class="report-details"><summary>查看原始任务数据</summary><pre>${escapeHtml(formatJson(task))}</pre></details>`;
+}
+
 async function openTask(id) {
   show("tasks");
-  $("#task-report").textContent = "正在加载任务报告…";
+  $("#task-report").innerHTML = '<div class="report-empty">正在加载任务报告…</div>';
+  $("#report-task-name").textContent = "任务报告";
+  $("#report-task-meta").textContent = "";
   $("#feedback-panel").classList.add("hidden");
   try {
     const task = await api(`/v1/tasks/${encodeURIComponent(id)}`);
     selectedTask = id;
     selectedTaskData = task;
-    $("#task-report").textContent = formatJson(task);
+    $("#task-report").innerHTML = renderTaskReport(task);
     $("#create-fix").classList.toggle("hidden", !(task.report && task.pull_request));
     const feedbackReady = task.state === "SUCCESS" && task.report;
     $("#feedback-panel").classList.toggle("hidden", !feedbackReady);
@@ -332,10 +448,16 @@ async function loadSkills() {
     const skills = (data.skills || []).filter((skill) => skill.name !== "llm-review");
     root.innerHTML = skills.length ? skills.map((skill) => `
       <article class="skill-card">
-        <span class="skill-label">${skill.sandboxed ? "SANDBOXED SKILL" : "ACTIVE SKILL"}</span>
+        <div class="skill-top">
+          <span class="skill-kind">${skill.sandboxed ? "SANDBOXED SKILL" : "ACTIVE SKILL"}</span>
+          <span class="skill-version">v${escapeHtml(skill.version)}</span>
+        </div>
         <h3>${escapeHtml(skill.name)}</h3>
         <p>${escapeHtml(skill.description || "暂无能力描述")}</p>
-        <span class="skill-meta">v${escapeHtml(skill.version)} · ${escapeHtml(skill.source)}</span>
+        <div class="skill-foot">
+          <span>${escapeHtml(skill.source)}</span>
+          <span>${skill.sandboxed ? "隔离运行" : "可用"}</span>
+        </div>
       </article>`).join("") : '<div class="empty-state"><span><b>尚未加载 Skill</b>扫描目录以加载可用能力</span></div>';
   } catch (error) {
     renderLlmRuntime({ error: true });
@@ -551,7 +673,7 @@ $("#auto-evolve").addEventListener("click", async () => {
 });
 
 $("#refresh").addEventListener("click", async () => {
-  const view = location.hash.slice(1) || "overview";
+  const view = viewFromHash(location.hash.slice(1));
   if (view === "overview") await loadDashboard();
   else if (view === "tasks") await loadTasks();
   else if (view === "skills") await loadSkills();
@@ -607,5 +729,5 @@ diffInput.addEventListener("input", updateDiffStats);
 updateDiffStats();
 
 if (accessToken) $("#logout").classList.remove("hidden");
-show(location.hash.slice(1) || "overview", false);
+show(viewFromHash(location.hash.slice(1)), false, false);
 loadDashboard();

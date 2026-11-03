@@ -1,63 +1,41 @@
-.login-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgba(7, 8, 10, .88);
-  backdrop-filter: blur(14px);
+/* Paper login card for the EvoReview book UI. */
+.login-overlay{
+  position:fixed;inset:0;z-index:180;
+  display:grid;place-items:center;padding:24px;
+  background:
+    radial-gradient(ellipse at 20% 10%,rgba(191,200,224,.5),transparent 34rem),
+    radial-gradient(ellipse at 82% 20%,rgba(232,201,208,.36),transparent 30rem),
+    rgba(238,240,245,.86);
+  backdrop-filter:blur(5px);
 }
-
-.login-card {
-  width: min(430px, calc(100vw - 32px));
-  padding: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-panel);
-  background: #14181e;
-  box-shadow: 0 30px 100px rgba(0, 0, 0, .52);
+.login-card{
+  position:relative;width:min(440px,100%);padding:34px 34px 30px;
+  background:var(--paper-light);box-shadow:var(--paper-shadow);
+  font-family:var(--font-ui);color:var(--ink);
 }
-
-.login-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 34px;
-  color: var(--ink);
-  font-size: 16px;
-  font-weight: 720;
+.login-card::before{content:"";position:absolute;inset:9px;border:1px solid var(--hairline);pointer-events:none}
+.login-brand{display:flex;align-items:center;gap:12px;margin-bottom:20px;position:relative;z-index:1}
+.login-brand .brand-mark{
+  display:grid;place-items:center;width:36px;height:36px;border:1px solid var(--ink);
+  background:var(--paper-light);font-family:var(--font-en);font-size:20px;font-weight:600;
+  box-shadow:0 0 0 3px rgba(255,255,255,.8);
 }
-
-.login-brand .brand-mark {
-  width: 38px;
-  height: 38px;
-  flex-basis: 38px;
+.login-brand span:last-child{display:grid;gap:3px;font-family:var(--font-en);font-size:17px;letter-spacing:.15em;line-height:1}
+.login-brand small{font-family:var(--font-type);font-size:8px;letter-spacing:.2em;color:var(--fog)}
+.login-card h2{
+  position:relative;z-index:1;margin:0 0 6px;font-family:var(--font-serif);
+  font-size:30px;font-weight:600;letter-spacing:-.02em;
 }
-
-.login-card h2 {
-  margin: 0 0 7px;
-  font-size: 28px;
-  letter-spacing: -1px;
+.login-lead{position:relative;z-index:1;margin:0 0 22px;font-family:var(--font-ui);font-size:13.5px;color:var(--ink-soft);line-height:1.75}
+.login-card .field{position:relative;z-index:1}
+.login-card .btn-primary{position:relative;z-index:1;width:100%;justify-content:center;margin-top:4px}
+.login-error{
+  position:relative;z-index:1;min-height:20px;margin:14px 0 0;
+  font-family:var(--font-ui);font-size:12px;line-height:1.6;color:#8a4a54;
 }
+.login-error:empty{display:none}
 
-.login-lead {
-  margin: 0 0 25px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.login-card .button {
-  width: 100%;
-  margin-top: 5px;
-}
-
-.login-error {
-  min-height: 18px;
-  margin: 13px 0 0;
-  color: #ffabab;
-  font-size: 11px;
-}
-
-@media (max-width: 480px) {
-  .login-card { padding: 27px 23px; }
+@media (max-width:480px){
+  .login-card{padding:26px 22px 24px}
+  .login-card h2{font-size:26px}
 }
