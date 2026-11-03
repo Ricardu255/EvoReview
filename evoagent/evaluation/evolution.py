@@ -296,7 +296,10 @@ class EvolutionEngine:
                 raise ValueError("cwe must use the CWE-<number> format")
             identity = (path, start_line, end_line, rule_id)
             if identity in seen:
-                raise ValueError("duplicate expected finding: %s:%s:%s" % identity)
+                raise ValueError(
+                    "duplicate expected finding: %s:%s:%s"
+                    % (path, start_line, end_line)
+                )
             seen.add(identity)
 
     def add_evaluation_case(
