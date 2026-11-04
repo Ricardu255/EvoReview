@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main, 'codex/**', 'evoreview-main']
   pull_request:
 
 jobs:
@@ -47,3 +47,57 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Run tests
         run: python -m pytest tests -q
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t evoreview:test .
+      - name: Start container
+        run: |
+          docker run -d --name evoreview-test -p 8080:8080 \
+            -e EVOAGENT_HOST=0.0.0.0 \
+            -e EVOAGENT_AUTH_REQUIRED=true \
+            -e EVOAGENT_AUTH_SECRET="$(openssl rand -base64 32)" \
+            -e EVOAGENT_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD=test-password-123 \
+            evoreview:test
+      - name: Wait for health
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs evoreview-test
+          exit 1
+      - name: Smoke test API and bundled skills
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          request = urllib.request.Request(
+              "http://127.0.0.1:8080/v1/auth/login",
+              data=json.dumps({
+                  "username": "admin", "password": "test-password-123",
+              }).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          token = json.load(urllib.request.urlopen(request))["access_token"]
+          request = urllib.request.Request(
+              "http://127.0.0.1:8080/api/skills",
+              headers={"Authorization": "Bearer " + token},
+          )
+          skills = json.load(urllib.request.urlopen(request))["skills"]
+          agent_skills = [item for item in skills if item.get("kind") == "agent-skill"]
+          assert len(agent_skills) >= 9, skills
+          print("agent skills:", len(agent_skills))
+          PY
+      - name: Stop container
+        if: always()
+        run: docker rm -f evoreview-test || true

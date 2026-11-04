@@ -106,7 +106,8 @@ python -m unittest discover -s tests -v
 
 Pushes to `main` and `codex/**`, plus all pull requests, run the full test suite on Python 3.9 and 3.11:
 
-1. **pytest** — the full suite with real PostgreSQL 16 and Redis 7 services, including both store contracts and long-running queue delivery. Dataset-dependent tests skip when local corpora are absent. Pushes to `main`, `codex/**`, and pull requests run these checks.
+1. **pytest** — the full suite with real PostgreSQL 16 and Redis 7 services, including both store contracts and long-running queue delivery. Dataset-dependent tests skip when local corpora are absent. Pushes to `main`, `codex/**`, `evoreview-main`, and pull requests run these checks.
+2. **docker** — builds the image, starts a container with authentication enabled, waits for `/health`, logs in, and verifies that the bundled Agent Skills are present in `/api/skills`.
 
 Locally, set `EVOAGENT_TEST_DATABASE_URL` and `EVOAGENT_TEST_REDIS_URL` to enable service integration tests. PostgreSQL tests create and remove isolated test schemas; Redis tests use unique stream names.
 

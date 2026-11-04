@@ -104,9 +104,10 @@ python -m unittest discover -s tests -v
 
 ## 持续集成
 
-推送到 `main` 和 `codex/**` 分支，以及所有 pull request，会在 Python 3.9 和 3.11 上运行全量测试（数据集仅保留在本地，相关测试在 CI 中自动跳过）：
+推送到 `main`、`codex/**`、`evoreview-main` 分支，以及所有 pull request，会在 Python 3.9 和 3.11 上运行全量测试（数据集仅保留在本地，相关测试在 CI 中自动跳过）：
 
-1. **pytest**——使用真实 PostgreSQL 16 和 Redis 7 运行全量测试，覆盖双后端存储契约、长任务续租和重复投递。缺少本地语料的实验测试会跳过。`main`、`codex/**` 分支推送及 PR 都触发检查。
+1. **pytest**——使用真实 PostgreSQL 16 和 Redis 7 运行全量测试，覆盖双后端存储契约、长任务续租和重复投递。缺少本地语料的实验测试会跳过。`main`、`codex/**`、`evoreview-main` 分支推送及 PR 都触发检查。
+2. **docker**——构建镜像并启动开启鉴权的容器，等待 `/health`，完成登录，并验证 `/api/skills` 中包含随包分发的 Agent Skills。
 
 本地可设置 `EVOAGENT_TEST_DATABASE_URL`、`EVOAGENT_TEST_REDIS_URL` 启用服务集成测试；PostgreSQL 测试使用独立临时 schema，Redis 测试使用唯一命名的 Stream。
 
