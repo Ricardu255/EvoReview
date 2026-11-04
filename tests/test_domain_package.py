@@ -5,7 +5,7 @@ import unittest
 
 DOMAIN_MODULES = {
     "__init__.py", "models.py", "modes.py", "gates.py", "diff_parser.py",
-    "finding_identity.py", "report.py",
+    "finding_identity.py", "report.py", "sarif.py",
 }
 
 
