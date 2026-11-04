@@ -203,6 +203,13 @@ class DeliveryOwnershipTests(QueueTestCase):
         items = queue.dead_letters()
         self.assertEqual(["m2", "m1"], [item["message_id"] for item in items])
 
+    def test_memory_replay_removes_the_dead_letter(self):
+        queue = self.memory_queue()
+        queue._dead_letter(envelope(message_id="replay-memory"), "error")
+        self.assertEqual(1, len(queue.dead_letters()))
+        self.assertTrue(queue.replay_dead_letter("replay-memory", "a"))
+        self.assertEqual([], queue.dead_letters())
+
     def test_completed_history_is_bounded(self):
         queue = self.memory_queue()
         queue._completed.update({str(index): time.time() + 100 for index in range(10001)})
@@ -237,6 +244,7 @@ class _RedisDouble:
         self.dlq = []
         self.stream_entries = []
         self.acks = []
+        self.deleted = []
         self.complete_result = 1
         self.renewed = threading.Event()
 
@@ -280,6 +288,9 @@ class _RedisDouble:
 
     def xack(self, *args):
         self.acks.append(args[-1])
+
+    def xdel(self, stream, *ids):
+        self.deleted.extend(ids)
 
     def xrevrange(self, stream, max="+", count=100, **kwargs):
         rows = [
@@ -426,6 +437,7 @@ class RedisWorkerTests(QueueTestCase):
             (payload, message_id)) or message_id
         self.assertTrue(queue.replay_dead_letter("ma", "a"))
         self.assertEqual([({"task_id": "ma", "tenant_id": "a"}, "ma")], submitted)
+        self.assertEqual(1, len(redis.deleted))
         self.assertFalse(queue.replay_dead_letter("missing", "a"))
 
     def test_reclaim_failures_are_ignored(self):
