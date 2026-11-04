@@ -38,6 +38,52 @@ class AuthStoreMixin:
         value["memberships"] = [dict(item) for item in memberships]
         return value
 
+    def list_users(self, tenant_id: str) -> list:
+        with self._connect() as conn:
+            rows = conn.execute(self._sql(
+                "SELECT u.username,u.active,u.created_at,m.role "
+                "FROM users u JOIN memberships m ON m.user_id=u.id "
+                "WHERE m.tenant_id=? ORDER BY u.username"
+            ), (tenant_id,)).fetchall()
+        values = []
+        for row in rows:
+            item = dict(row)
+            item["active"] = bool(item["active"])
+            if hasattr(item.get("created_at"), "isoformat"):
+                item["created_at"] = item["created_at"].isoformat()
+            values.append(item)
+        return values
+
+    def _tenant_user_id(self, conn, username: str, tenant_id: str):
+        return conn.execute(self._sql(
+            "SELECT u.id FROM users u JOIN memberships m ON m.user_id=u.id "
+            "WHERE u.username=? AND m.tenant_id=?"
+        ), (username, tenant_id)).fetchone()
+
+    def update_user_password(
+        self, username: str, tenant_id: str, password_hash: str,
+    ) -> bool:
+        with self._write() as conn:
+            row = self._tenant_user_id(conn, username, tenant_id)
+            if not row:
+                return False
+            conn.execute(self._sql(
+                "UPDATE users SET password_hash=? WHERE id=?"
+            ), (password_hash, row["id"]))
+        return True
+
+    def set_user_active(
+        self, username: str, tenant_id: str, active: bool,
+    ) -> bool:
+        with self._write() as conn:
+            row = self._tenant_user_id(conn, username, tenant_id)
+            if not row:
+                return False
+            conn.execute(self._sql(
+                "UPDATE users SET active=? WHERE id=?"
+            ), (bool(active), row["id"]))
+        return True
+
     def grant_repository(
         self, tenant_id: str, repository: str, auto_fix: bool = False,
     ) -> None:

@@ -33,6 +33,9 @@ CANCEL = re.compile(r"^/v1/tasks/([0-9a-f-]+)/cancel$")
 RESUME = re.compile(r"^/v1/tasks/([0-9a-f-]+)/resume$")
 COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
 ALERT_RESOLVE = re.compile(r"^/api/alerts/(\d+)/resolve$")
+USERS = "/v1/users"
+USER_PASSWORD = re.compile(r"^/v1/users/([^/]+)/password$")
+USER_ACTIVE = re.compile(r"^/v1/users/([^/]+)/active$")
 GRANTS = "/v1/repository-grants"
 ROLLBACK = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions/(\d+)/activate$")
 SKILL_ARTIFACT_VERSIONS = re.compile(r"^/v1/skill-evolution/([a-z0-9_-]+)/versions$")
@@ -418,6 +421,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
             })
             return
+        if path == USERS:
+            if not principal.can("manage"):
+                self._send_json(403, {"error": "permission denied"})
+                return
+            self._send_json(200, {
+                "users": self.service.auth.list_tenant_users(principal.tenant_id)
+            })
+            return
         if path == "/api/deployments/llm-review":
             self._send_json(200, {"deployment": self.service.store.get_deployment(
                 principal.tenant_id, "llm-review"
@@ -690,6 +701,55 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(201, {
                     "repository": repository, "auto_fix": auto_fix,
                 })
+                return
+            if path == USERS:
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                username = text_field(payload, "username").strip()
+                password = text_field(payload, "password")
+                role = text_field(payload, "role").strip() or "maintainer"
+                result = self.service.auth.create_tenant_user(
+                    username, password, principal.tenant_id, role,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "user.create",
+                    username, {"role": role, "created": result["created"]},
+                )
+                self._send_json(201, result)
+                return
+            match = USER_PASSWORD.match(path)
+            if match:
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                username = urllib.parse.unquote(match.group(1))
+                ok = self.service.auth.set_tenant_user_password(
+                    username, text_field(payload, "password"),
+                    principal.tenant_id,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "user.password",
+                    username, {"updated": ok},
+                )
+                self._send_json(200 if ok else 404, {"updated": ok})
+                return
+            match = USER_ACTIVE.match(path)
+            if match:
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                username = urllib.parse.unquote(match.group(1))
+                if username == principal.username:
+                    raise ValueError("cannot change your own active state")
+                active = payload.get("active")
+                if not isinstance(active, bool):
+                    raise ValueError("active must be a boolean")
+                ok = self.service.auth.set_tenant_user_active(
+                    username, principal.tenant_id, active,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "user.active",
+                    username, {"active": active, "updated": ok},
+                )
+                self._send_json(200 if ok else 404, {"updated": ok})
                 return
             if path == "/v1/skills/reload":
                 principal = self._principal("manage")

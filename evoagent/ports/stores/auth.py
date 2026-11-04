@@ -13,6 +13,19 @@ class AuthStorePort(Protocol):
     def get_user(self, username: str) -> Optional[Dict[str, Any]]:
         ...
 
+    def list_users(self, tenant_id: str) -> list:
+        ...
+
+    def update_user_password(
+        self, username: str, tenant_id: str, password_hash: str,
+    ) -> bool:
+        ...
+
+    def set_user_active(
+        self, username: str, tenant_id: str, active: bool,
+    ) -> bool:
+        ...
+
     def grant_repository(
         self, tenant_id: str, repository: str, auto_fix: bool = False,
     ) -> None:

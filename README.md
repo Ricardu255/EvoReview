@@ -260,6 +260,9 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/tasks/{id}/resume` | Resume a task from its latest checkpoint |
 | `POST` | `/v1/tasks/{id}/comment` | Re-post the stored review comment after a GitHub outage |
 | `GET/POST/DELETE` | `/v1/repository-grants` | List, grant, or revoke tenant repository access |
+| `GET/POST` | `/v1/users` | List tenant users or create/update a tenant membership |
+| `POST` | `/v1/users/{username}/password` | Reset a tenant user's password |
+| `POST` | `/v1/users/{username}/active` | Enable or disable a tenant user |
 | `POST` | `/webhooks/github` | Receive GitHub PR webhooks |
 | `POST` | `/v1/skills/reload` | Dynamically reload Skills |
 | `POST` | `/v1/evolution/auto` | Generate and evaluate a prompt version from failure cases |

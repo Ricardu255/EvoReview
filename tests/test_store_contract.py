@@ -354,6 +354,29 @@ class StoreContract:
             {item["tenant_id"]: item["role"] for item in user["memberships"]},
         )
         self.assertIsNone(self.store.get_user("bob-%s" % run))
+        self.assertEqual(
+            ["alice-%s" % run],
+            [item["username"] for item in self.store.list_users("tenant-a")],
+        )
+        self.assertEqual(
+            "admin", self.store.list_users("tenant-a")[0]["role"],
+        )
+        self.assertTrue(self.store.update_user_password(
+            "alice-%s" % run, "tenant-b", "new-hash",
+        ))
+        self.assertEqual(
+            "new-hash", self.store.get_user("alice-%s" % run)["password_hash"],
+        )
+        self.assertFalse(self.store.update_user_password(
+            "alice-%s" % run, "tenant-c", "ignored",
+        ))
+        self.assertTrue(self.store.set_user_active(
+            "alice-%s" % run, "tenant-a", False,
+        ))
+        self.assertFalse(self.store.get_user("alice-%s" % run)["active"])
+        self.assertFalse(self.store.set_user_active(
+            "alice-%s" % run, "tenant-c", True,
+        ))
 
         # With no grants configured, legacy single-tenant behaviour keeps both
         # reviews and automatic repair open.

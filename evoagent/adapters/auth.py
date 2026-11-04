@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -25,6 +26,7 @@ ROLE_PERMISSIONS = {
 MAX_LOGIN_FAILURE_KEYS = 20_000
 LOGIN_PRUNE_INTERVAL_SECONDS = 60.0
 CLIENT_FAILURE_MULTIPLIER = 5
+USERNAME = re.compile(r"^[A-Za-z0-9_.@+-]{1,255}$")
 
 
 def hash_password(password: str, salt: Optional[bytes] = None) -> str:
@@ -191,6 +193,41 @@ class AuthManager:
         token = self._encode(payload)
         return {"access_token": token, "token_type": "Bearer", "expires_in": self.ttl_seconds,
                 "tenant_id": selected, "role": memberships[selected]}
+
+    def list_tenant_users(self, tenant_id: str) -> list:
+        return self.store.list_users(tenant_id)
+
+    def create_tenant_user(
+        self, username: str, password: str, tenant_id: str, role: str,
+    ) -> Dict[str, object]:
+        username = str(username or "").strip()
+        if not USERNAME.fullmatch(username):
+            raise ValueError(
+                "username must use 1-255 letters, digits, dot, underscore, @, + or -"
+            )
+        if role not in ROLE_PERMISSIONS:
+            raise ValueError("unsupported role: %s" % role)
+        existing = self.store.get_user(username)
+        self.store.create_user(
+            str(uuid.uuid5(uuid.NAMESPACE_URL, "evoagent:" + username)),
+            username, hash_password(str(password)), tenant_id, role,
+        )
+        return {
+            "username": username, "tenant_id": tenant_id, "role": role,
+            "created": existing is None,
+        }
+
+    def set_tenant_user_password(
+        self, username: str, password: str, tenant_id: str,
+    ) -> bool:
+        return self.store.update_user_password(
+            str(username), tenant_id, hash_password(str(password)),
+        )
+
+    def set_tenant_user_active(
+        self, username: str, tenant_id: str, active: bool,
+    ) -> bool:
+        return self.store.set_user_active(str(username), tenant_id, bool(active))
 
     def authenticate(self, authorization: str) -> Principal:
         if not authorization.startswith("Bearer "):
