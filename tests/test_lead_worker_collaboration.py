@@ -94,6 +94,58 @@ class HierarchicalClient:
         raise AssertionError((role, task))
 
 
+class NormalToolClient:
+    provider = "fake"
+    model = "fake-model"
+
+    def __init__(self):
+        self.security_calls = 0
+
+    def complete_json(self, role, _system, user, ledger=None, max_tokens=None):
+        managed = json.loads(user)
+        task = json.loads(managed["task"])
+        if ledger:
+            ledger.record_model(
+                role, self.provider, self.model,
+                {"prompt_tokens": 10, "completion_tokens": 5}, 1,
+            )
+        if role == "lead":
+            if task["phase"] == "delegate":
+                return {
+                    "action": "final", "risk_level": "normal",
+                    "delegations": [
+                        {
+                            "assignment_id": "security-1", "worker": "security",
+                            "objective": "Review the changed line.",
+                        },
+                        {
+                            "assignment_id": "reliability-1",
+                            "worker": "correctness-reliability",
+                            "objective": "Review failure behavior.",
+                        },
+                    ],
+                }
+            if task["phase"] == "finalize":
+                return {
+                    "action": "final", "accepted_finding_indices": [],
+                    "confidence_adjustments": [],
+                }
+        if role == "security":
+            self.security_calls += 1
+            if self.security_calls == 1:
+                return {
+                    "action": "tool", "tool": "changed_line",
+                    "arguments": {"path": "app.py", "line": 1},
+                    "reason": "Read the exact changed line.",
+                }
+            return {"action": "final", "findings": []}
+        if role == "correctness-reliability":
+            return {"action": "final", "findings": []}
+        if role == "critic":
+            return {"action": "final", "decisions": []}
+        raise AssertionError(role)
+
+
 class LeadWorkerCollaborationTests(unittest.TestCase):
     def setUp(self):
         handle, self.path = tempfile.mkstemp(suffix=".db")
@@ -108,6 +160,27 @@ class LeadWorkerCollaborationTests(unittest.TestCase):
 
     def tearDown(self):
         os.unlink(self.path)
+
+    def test_normal_task_can_take_one_read_only_tool_step(self):
+        client = NormalToolClient()
+        reviewer = AgenticReviewer(
+            self.store, client, normal_task_tool_steps=1,
+        )
+        reviewer.review_with_context(
+            "task", DIFF, parse_unified_diff(DIFF), "org/repo",
+        )
+        summary = reviewer.collaboration_summary("task")
+        self.assertEqual(2, client.security_calls)
+        self.assertEqual(6, summary["execution"]["llm_calls"])
+        self.assertIn(
+            "changed_line",
+            {item["tool"] for item in summary["execution"]["tool_call_log"]},
+        )
+        changed = next(
+            item for item in summary["execution"]["tool_call_log"]
+            if item["tool"] == "changed_line"
+        )
+        self.assertEqual({"path": "app.py", "line": 1}, changed["arguments"])
 
     def test_lead_delegates_requests_revision_and_synthesizes(self):
         client = HierarchicalClient()

@@ -4,16 +4,21 @@ from .lead_session import LeadSession
 from ..domain.models import ComponentKind
 from ..domain.modes import component
 from ..prompts import ROLE_PERMISSIONS
+from .tools import READ_ONLY_TOOL_NAMES
 
 
 class ReviewOrchestrator(RuntimeBackref):
-    def __init__(self, runtime, scanner, sessions, lead, assignments, findings):
+    def __init__(
+        self, runtime, scanner, sessions, lead, assignments, findings,
+        normal_tool_steps: int = 0,
+    ):
         super().__init__(runtime)
         self.scanner = scanner
         self.sessions = sessions
         self.lead = lead
         self.assignments = assignments
         self.findings = findings
+        self.normal_tool_steps = max(0, min(int(normal_tool_steps), 2))
 
     def _agentic(
         self, task_id, diff, parsed, suite, ledger, enabled, scanners=None,
@@ -81,13 +86,15 @@ class ReviewOrchestrator(RuntimeBackref):
 
         risk_level = session.risk_level
         high_risk = risk_level == "high"
+        normal_tool_scope = "read-only" if self.normal_tool_steps else "none"
         self.assignments._run_pending_assignments(
             task_id, session, diff, parsed, suite, ledger,
             session.delegations, revision_round=0,
             memory_context=memory_context,
             available_skills=available_skills,
-            max_steps=3 if high_risk else 1,
-            allow_tools=high_risk,
+            max_steps=3 if high_risk else max(1, self.normal_tool_steps + 1),
+            allow_tools=high_risk or self.normal_tool_steps > 0,
+            tool_scope="full" if high_risk else normal_tool_scope,
         )
         session.phase = "workers-completed"
         self.sessions._save_lead_session(task_id, session, ledger)
@@ -140,6 +147,7 @@ class ReviewOrchestrator(RuntimeBackref):
                 available_skills=available_skills,
                 max_steps=2,
                 allow_tools=True,
+                tool_scope="full",
             )
             for revision in revision_assignments:
                 key = revision["run_id"]
@@ -253,6 +261,10 @@ class ReviewOrchestrator(RuntimeBackref):
                 tool_permissions=(
                     sorted(ROLE_PERMISSIONS[name])
                     if high_risk and name in {
+                        "security", "correctness-reliability",
+                    } else sorted(
+                        ROLE_PERMISSIONS[name] & READ_ONLY_TOOL_NAMES
+                    ) if self.normal_tool_steps and name in {
                         "security", "correctness-reliability",
                     } else []
                 ),

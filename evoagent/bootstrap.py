@@ -184,6 +184,7 @@ def build_agentic_reviewer(
         None if shadow else memory,
         context_manager,
         active_skills,
+        settings.normal_task_tool_steps,
     )
 
 

@@ -7,6 +7,7 @@ from .bounded_role import BoundedRole
 from ..prompts import RELIABILITY_PROMPT, SECURITY_PROMPT
 from .runtime import ToolRegistry
 from .findings import _parse_findings
+from .tools import READ_ONLY_TOOL_NAMES
 
 
 class AssignmentRunner(RuntimeBackref):
@@ -19,6 +20,7 @@ class AssignmentRunner(RuntimeBackref):
     def _run_pending_assignments(
         self, task_id, session, diff, parsed, suite, ledger, assignments, revision_round,
         memory_context=None, available_skills=None, max_steps=3, allow_tools=True,
+        tool_scope="full",
     ):
         pending = [
             item for item in assignments
@@ -79,7 +81,12 @@ class AssignmentRunner(RuntimeBackref):
             }
             tools = (
                 suite.registry(
-                    worker, self.tools._skill_tool_permissions(worker, selected_skills)
+                    worker,
+                    (
+                        self.tools._skill_tool_permissions(worker, selected_skills)
+                        & READ_ONLY_TOOL_NAMES
+                    ) if tool_scope == "read-only" else
+                    self.tools._skill_tool_permissions(worker, selected_skills),
                 ) if allow_tools else ToolRegistry()
             )
             if allow_tools:

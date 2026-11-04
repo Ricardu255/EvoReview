@@ -18,7 +18,7 @@ English | [**简体中文**](docs/README.zh-CN.md) | [Documentation](docs/INDEX.
 - JSON API and Markdown reports
 - HMAC-SHA256 webhook signature verification and optional GitHub PR comment write-back
 - Web console, task dashboard, and Prometheus metrics
-- Fixed single-round multi-agent collaboration for normal tasks (2 Lead calls, 1 per worker, 1 Critic — 5 LLM calls total); high-risk tasks allow at most one worker rework round
+- Normal tasks use five base LLM calls (2 Lead, 1 per worker, 1 Critic); each worker may take at most one read-only tool step, for up to seven calls when tools are used. High-risk tasks allow at most one worker rework round
 - Closed-loop auto-fix via LLM unified patch, AST/CST transforms, isolated-copy before/after test comparison, and Draft-PR-only delivery
 - PostgreSQL and Redis for production deployments
 - Failure-case feedback loop, prompt evaluation, and version activation/rollback

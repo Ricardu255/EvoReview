@@ -157,6 +157,9 @@ class Settings:
     context_recent_observations: int = 2
     context_map_chunk_tokens: int = 3000
     enabled_agents: str = "lead,security,correctness-reliability,critic"
+    # Extra read-only tool steps available to normal-risk workers.  0 preserves
+    # the original fixed 5-call single-pass behaviour.
+    normal_task_tool_steps: int = 1
     llm_input_cost_per_million: float = 0.0
     llm_output_cost_per_million: float = 0.0
     evaluation_min_public_prs: int = 300
@@ -251,6 +254,8 @@ class Settings:
             raise ValueError("queue attempts and lease seconds must be at least 1")
         if self.queue_stream_maxlen < 1 or self.queue_dlq_maxlen < 1:
             raise ValueError("queue stream and dead-letter limits must be at least 1")
+        if not 0 <= self.normal_task_tool_steps <= 2:
+            raise ValueError("EVOAGENT_NORMAL_TASK_TOOL_STEPS must be between 0 and 2")
         if self.alert_window_seconds < 1 or self.alert_min_samples < 1:
             raise ValueError("alert window and minimum samples must be at least 1")
         if self.session_ttl_seconds < 1 or self.webhook_max_age_seconds < 1:
@@ -413,6 +418,9 @@ class Settings:
             enabled_agents=os.getenv(
                 "EVOAGENT_ENABLED_AGENTS",
                 "lead,security,correctness-reliability,critic",
+            ),
+            normal_task_tool_steps=_non_negative_int(
+                "EVOAGENT_NORMAL_TASK_TOOL_STEPS", 1
             ),
             llm_input_cost_per_million=float(
                 os.getenv("EVOAGENT_LLM_INPUT_COST_PER_MILLION", "0")
