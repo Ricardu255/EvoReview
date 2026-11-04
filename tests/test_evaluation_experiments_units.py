@@ -21,7 +21,7 @@ DIFF = "--- a/app.py\n+++ b/app.py\n@@ -0,0 +1 @@\n+result = eval(raw)\n"
 
 NEEDS_CONTROLLED_DATASET = unittest.skipUnless(
     os.path.exists(DEFAULT_CONTROLLED_DATASET),
-    "evaluation_data/pr_diff_100.jsonl is not present",
+    "evaluation_data/pr_diff_100.jsonl is missing",
 )
 
 

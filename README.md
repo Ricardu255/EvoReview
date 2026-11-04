@@ -266,6 +266,8 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/tasks/{id}/comment` | Re-post the stored review comment after a GitHub outage |
 | `GET/POST/DELETE` | `/v1/repository-grants` | List, grant, or revoke tenant repository access |
 | `GET/POST` | `/v1/users` | List tenant users or create/update a tenant membership |
+| `GET/POST` | `/v1/tenants` | List or create tenants (platform scope) |
+| `POST` | `/v1/platform/users/{username}/platform-admin` | Grant or revoke platform scope (platform scope) |
 | `POST` | `/v1/users/{username}/password` | Reset a tenant user's password |
 | `POST` | `/v1/users/{username}/active` | Enable or disable a tenant user |
 | `POST` | `/webhooks/github` | Receive GitHub PR webhooks |
@@ -300,6 +302,10 @@ Prompt versions, evaluation samples, evolution runs, and dead-letter operations 
 ### Data Retention
 
 Set `EVOAGENT_TASK_DATA_RETENTION_DAYS` to a positive number to periodically remove raw diff payloads, checkpoints, and collaboration messages from successful, failed, or cancelled tasks older than that window. Task rows, final reports, and trace events remain for audit. The default of `0` disables retention.
+
+### Tenant Lifecycle
+
+Platform scope is separate from a tenant administrator's `manage` permission. Set `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true` for the initial operator, create tenants through `POST /v1/tenants`, and create memberships in another tenant with `POST /v1/users` plus `tenant_id`. Platform scope can be granted or revoked through `/v1/platform/users/{username}/platform-admin`.
 
 ### Repository Grants
 

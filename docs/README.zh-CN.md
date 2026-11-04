@@ -266,6 +266,8 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/tasks/{id}/comment` | GitHub 故障后重新投递已保存的审查评论 |
 | `GET/POST/DELETE` | `/v1/repository-grants` | 查询、授予或撤销租户的仓库访问权限 |
 | `GET/POST` | `/v1/users` | 查询租户用户，或创建/更新租户成员关系 |
+| `GET/POST` | `/v1/tenants` | 查询或创建租户（平台权限） |
+| `POST` | `/v1/platform/users/{username}/platform-admin` | 授予或撤销平台权限（平台权限） |
 | `POST` | `/v1/users/{username}/password` | 重置租户用户密码 |
 | `POST` | `/v1/users/{username}/active` | 启用或停用租户用户 |
 | `POST` | `/webhooks/github` | 接收 GitHub PR webhook |
@@ -300,6 +302,10 @@ Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔�
 ### 数据保留
 
 将 `EVOAGENT_TASK_DATA_RETENTION_DAYS` 设为正数后，系统会定期删除超过保留窗口的成功、失败或取消任务的原始 diff、checkpoint 与协作消息；任务记录、最终报告和 trace 事件仍保留用于审计。默认值 `0` 表示关闭。
+
+### 租户生命周期
+
+平台权限与租户管理员的 `manage` 权限分离。为初始运维账号设置 `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true`，通过 `POST /v1/tenants` 创建租户，并使用带 `tenant_id` 的 `POST /v1/users` 在其他租户中创建成员关系。平台权限可通过 `/v1/platform/users/{username}/platform-admin` 授予或撤销。
 
 ### 仓库授权
 

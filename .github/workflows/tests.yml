@@ -32,8 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         # 3.9 matches the current local development runtime; 3.11 is the
-        # documented project target.  The evaluation corpora are kept local
-        # (see .gitignore), so their tests skip cleanly here.
+        # documented project target.  Evaluation corpora are kept local and
+        # their tests skip cleanly in CI.
         python-version: ["3.9", "3.11"]
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
       - name: Run tests
-        run: python -m pytest tests -q
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests -q --tb=short 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "^(FAILED|ERROR) " pytest.log | head -20 | while IFS= read -r line; do
+              echo "::error title=Pytest failure::$line"
+            done
+            summary=$(grep -E "^[0-9]+ (failed|passed)" pytest.log | tail -1)
+            echo "::error title=Pytest summary::$summary"
+          fi
+          exit "$status"
 
   docker:
     runs-on: ubuntu-latest

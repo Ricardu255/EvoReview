@@ -170,8 +170,15 @@ class AgentSkill:
             raise FileNotFoundError("skill resource not found: %s/%s" % (self.name, path))
         if path in self.resource_contents:
             return self.resource_contents[path]
-        absolute = os.path.abspath(os.path.join(self.directory, *path.split("/")))
-        if not absolute.startswith(self.directory + os.sep):
+        if not self.directory:
+            raise PermissionError("skill resource directory is unavailable")
+        directory = os.path.abspath(self.directory)
+        absolute = os.path.abspath(os.path.join(directory, *path.split("/")))
+        try:
+            contained = os.path.commonpath([directory, absolute]) == directory
+        except ValueError:
+            contained = False
+        if not contained:
             raise PermissionError("skill resource path escapes its package")
         with open(absolute, "r", encoding="utf-8") as handle:
             value = handle.read(MAX_RESOURCE_BYTES + 1)

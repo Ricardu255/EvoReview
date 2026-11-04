@@ -6,8 +6,20 @@ from typing import Any, Dict, Optional, Protocol, runtime_checkable
 class AuthStorePort(Protocol):
     def create_user(
         self, user_id: str, username: str, password_hash: str,
-        tenant_id: str, role: str,
+        tenant_id: str, role: str, platform_admin: bool = False,
     ) -> None:
+        ...
+
+    def set_platform_admin(self, username: str, enabled: bool) -> bool:
+        ...
+
+    def create_tenant(self, tenant_id: str) -> bool:
+        ...
+
+    def list_tenants(self) -> list:
+        ...
+
+    def tenant_exists(self, tenant_id: str) -> bool:
         ...
 
     def get_user(self, username: str) -> Optional[Dict[str, Any]]:

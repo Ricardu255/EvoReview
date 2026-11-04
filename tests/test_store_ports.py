@@ -63,10 +63,10 @@ class StorePortCompositionTests(unittest.TestCase):
         # ``dir`` avoids the private Protocol internals that differ before 3.12.
         # Additions are deliberate: grant management (list/revoke), the
         # one-time legacy-tenant migration hook, one-time GitHub App setup
-        # states (save/consume), alert resolution, tenant user management, and
-        # expired task-data retention.
+        # states (save/consume), alert resolution, tenant user management,
+        # expired task-data retention, and tenant/platform administration.
         names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
-        self.assertEqual(73, len(names))
+        self.assertEqual(77, len(names))
 
 
 if __name__ == "__main__":

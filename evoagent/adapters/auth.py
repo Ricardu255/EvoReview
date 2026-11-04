@@ -67,8 +67,15 @@ class Principal:
     username: str
     tenant_id: str
     role: str
+    platform_admin: bool = False
 
     def can(self, permission: str) -> bool:
+        if permission == "platform":
+            return bool(self.platform_admin)
+        if self.platform_admin and permission in {
+            "read", "review", "fix", "manage", "audit",
+        }:
+            return True
         return permission in ROLE_PERMISSIONS.get(self.role, set())
 
 
@@ -79,6 +86,7 @@ class AuthManager:
         default_tenant_id: str = "default",
         login_max_failures: int = 10, login_window_seconds: int = 300,
         api_token_ttl_seconds: int = 30 * 24 * 3600,
+        bootstrap_platform_admin: bool = False,
     ):
         self.store = store
         self.secret = secret.encode("utf-8")
@@ -99,8 +107,12 @@ class AuthManager:
             self.store.create_user(
                 str(uuid.uuid5(uuid.NAMESPACE_URL, "evoagent:" + bootstrap_username)),
                 bootstrap_username, hash_password(bootstrap_password),
-                default_tenant_id, "admin",
+                default_tenant_id, "admin", bool(bootstrap_platform_admin),
             )
+            if bootstrap_platform_admin:
+                # Promote an admin created by an earlier version without the
+                # platform flag; the password is deliberately unchanged.
+                self.store.set_platform_admin(bootstrap_username, True)
 
     def _login_keys(self, username: str, client_key: str):
         # One key stops password guessing against a single account from one
@@ -278,7 +290,7 @@ class AuthManager:
             raise AuthenticationRequired("invalid token")
         return Principal(
             str(payload["sub"]), str(payload["username"]),
-            tenant, str(payload["role"]),
+            tenant, str(payload["role"]), bool(user.get("platform_admin")),
         )
 
     @staticmethod

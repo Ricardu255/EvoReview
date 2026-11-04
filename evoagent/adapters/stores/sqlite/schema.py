@@ -192,6 +192,17 @@ class SqliteSchemaMixin:
                     username TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     active INTEGER NOT NULL DEFAULT 1,
+                    platform_admin INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )"""
+            )
+            self._ensure_column(
+                conn, "users", "platform_admin",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS tenants (
+                    tenant_id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL
                 )"""
             )

@@ -760,13 +760,27 @@ $("#task-repository-filter").addEventListener("input", () => {
 });
 
 async function loadAdmin() {
-  const [users, grants, alerts, audit, deadLetters] = await Promise.allSettled([
+  const [tenants, users, grants, alerts, audit, deadLetters] = await Promise.allSettled([
+    api("/v1/tenants"),
     api("/v1/users"),
     api("/v1/repository-grants"),
     api("/api/alerts"),
     api("/api/audit?limit=20"),
     api("/api/queue/dead-letters?limit=20"),
   ]);
+  const tenantsRoot = $("#admin-tenants");
+  if (tenants.status === "fulfilled") {
+    const values = tenants.value.tenants || [];
+    tenantsRoot.innerHTML = values.length ? values.map((item) => `
+      <div class="task-row">
+        <span class="task-main"><span class="task-glyph">T</span><span class="task-copy">
+          <span class="task-name">${escapeHtml(item.tenant_id)}</span>
+          <span class="task-meta"><span>${escapeHtml(item.created_at || "隐式租户")}</span></span>
+        </span></span>
+      </div>`).join("") : '<div class="empty-state"><span>尚无独立租户</span></div>';
+  } else {
+    tenantsRoot.innerHTML = '<div class="empty-state"><span>需要平台权限才能查看租户</span></div>';
+  }
   const usersRoot = $("#admin-users");
   if (users.status === "fulfilled") {
     const values = users.value.users || [];
@@ -774,8 +788,9 @@ async function loadAdmin() {
       <div class="task-row">
         <span class="task-main"><span class="task-glyph">U</span><span class="task-copy">
           <span class="task-name">${escapeHtml(item.username)}</span>
-          <span class="task-meta"><span>${escapeHtml(item.role)}</span><span>${item.active ? "启用" : "停用"}</span></span>
+          <span class="task-meta"><span>${escapeHtml(item.role)}</span><span>${item.active ? "启用" : "停用"}</span>${item.platform_admin ? "<span>平台权限</span>" : ""}</span>
         </span></span>
+        <button class="btn-text" data-platform-action="toggle" data-username="${escapeAttr(item.username)}" data-platform="${item.platform_admin ? "true" : "false"}">${item.platform_admin ? "撤销平台" : "授予平台"}</button>
         <button class="btn-text" data-user-action="toggle" data-username="${escapeAttr(item.username)}" data-active="${item.active ? "true" : "false"}">${item.active ? "停用" : "启用"}</button>
       </div>`).join("") : '<div class="empty-state"><span>尚无租户用户</span></div>';
   } else {
@@ -835,6 +850,9 @@ async function loadAdmin() {
 
   $$("[data-user-action]").forEach((button) => {
     button.addEventListener("click", () => toggleAdminUser(button));
+  });
+  $$("[data-platform-action]").forEach((button) => {
+    button.addEventListener("click", () => togglePlatformAdmin(button));
   });
   $$("[data-grant-revoke]").forEach((button) => {
     button.addEventListener("click", () => revokeAdminGrant(button));
@@ -913,6 +931,47 @@ async function replayAdminDeadLetter(button) {
     setButtonBusy(button, false);
   }
 }
+
+async function togglePlatformAdmin(button) {
+  const username = button.dataset.username;
+  const active = button.dataset.platform !== "true";
+  setButtonBusy(button, true, "保存中…");
+  try {
+    await api(`/v1/platform/users/${encodeURIComponent(username)}/platform-admin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    });
+    toast(active ? "已授予平台权限" : "已撤销平台权限");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+$("#tenant-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $('button[type="submit"]', form);
+  const values = new FormData(form);
+  setButtonBusy(button, true, "创建中…");
+  try {
+    await api("/v1/tenants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: values.get("tenant_id") }),
+    });
+    toast("租户已创建");
+    form.reset();
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
 
 $("#user-form").addEventListener("submit", async (event) => {
   event.preventDefault();

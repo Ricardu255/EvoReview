@@ -11,6 +11,7 @@ import json
 import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from evoagent.adapters.auth import Principal
 from evoagent.api import ApiHandler, body_optional, text_field
@@ -54,6 +55,22 @@ class FakeStore:
     def resolve_alert(self, tenant_id, alert_id):
         self._record("resolve_alert", tenant_id, alert_id)
         return alert_id == 1
+
+    def create_tenant(self, tenant_id):
+        self._record("create_tenant", tenant_id)
+        return tenant_id == "new-tenant"
+
+    def list_tenants(self):
+        self._record("list_tenants")
+        return [{"tenant_id": "default"}, {"tenant_id": "tenant-a"}]
+
+    def tenant_exists(self, tenant_id):
+        self._record("tenant_exists", tenant_id)
+        return tenant_id in {"default", "tenant-a", "new-tenant"}
+
+    def set_platform_admin(self, username, active):
+        self._record("set_platform_admin", username, active)
+        return username == "alice"
 
     def list_repository_grants(self, tenant_id):
         self._record("list_repository_grants", tenant_id)
@@ -416,6 +433,7 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, self.call("/api/audit?limit=3").status)
         self.assertEqual(200, self.call("/api/alerts").status)
         self.assertEqual(200, self.call("/v1/users").status)
+        self.assertEqual(200, self.call("/v1/tenants").status)
         self.assertEqual(200, self.call("/v1/repository-grants").status)
         self.assertEqual(200, self.call("/api/deployments/llm-review").status)
         self.assertEqual(200, self.call("/api/queue/dead-letters?limit=2").status)
@@ -736,6 +754,50 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertTrue(any(
             event[2] == "alert.resolve" for event in self.service.store.audit_events
         ))
+
+    def test_tenant_and_platform_administration_routes(self):
+        created = self.call("/v1/tenants", "POST", {"tenant_id": "new-tenant"})
+        self.assertEqual(201, created.status)
+        self.assertTrue(created.body["created"])
+        self.assertEqual(409, self.call(
+            "/v1/tenants", "POST", {"tenant_id": "default"},
+        ).status)
+        self.assertEqual(400, self.call(
+            "/v1/tenants", "POST", {"tenant_id": "../bad"},
+        ).status)
+
+        platform = self.call(
+            "/v1/platform/users/alice/platform-admin", "POST", {"active": True},
+        )
+        self.assertEqual(200, platform.status)
+        self.assertEqual(
+            404, self.call(
+                "/v1/platform/users/missing/platform-admin", "POST",
+                {"active": False},
+            ).status,
+        )
+        self.assertEqual(400, self.call(
+            "/v1/platform/users/local-development/platform-admin", "POST",
+            {"active": False},
+        ).status)
+
+        user = self.call("/v1/users", "POST", {
+            "username": "bob", "password": "long-enough-password",
+            "role": "maintainer", "tenant_id": "tenant-a",
+        })
+        self.assertEqual(201, user.status)
+        self.assertEqual("tenant-a", self.service.auth.calls[-1][3])
+
+        non_platform = Principal(
+            "u", "tenant-admin", "default", "admin", False,
+        )
+        with patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": non_platform):
+            self.assertEqual(403, self.call("/v1/tenants").status)
+            self.assertEqual(403, self.call("/v1/users", "POST", {
+                "username": "bob", "password": "long-enough-password",
+                "role": "maintainer", "tenant_id": "tenant-a",
+            }).status)
 
     def test_api_token_issuance(self):
         secure = replace(self.settings, auth_required=True)
