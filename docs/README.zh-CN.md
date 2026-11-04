@@ -251,6 +251,7 @@ Invoke-RestMethod https://<公网域名>/health
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/health` | 未鉴权的存活检查（仅返回状态） |
+| `GET` | `/openapi.json` | 面向公开 API 的 OpenAPI 3.0 机器可读契约 |
 | `GET` | `/health/detail` | 部署详情；需要 `read` 权限 |
 | `POST` | `/v1/auth/login` | 登录并获取租户绑定的短期 Bearer Token |
 | `POST` | `/v1/auth/token` | 签发租户绑定的长效 Bearer Token（需要 manage 权限） |
