@@ -167,6 +167,9 @@ class Settings:
     evaluation_min_f1_improvement: float = 0.03
     evaluation_min_high_risk_improvement: float = 0.05
     report_max_findings: int = 50
+    # Purge bulky task data (payloads, checkpoints, collaboration messages)
+    # for terminal tasks older than this many days. 0 disables retention.
+    task_data_retention_days: int = 0
 
     def resolved_llm(self) -> Dict[str, object]:
         """Resolve a named provider to the existing OpenAI-compatible transport."""
@@ -320,6 +323,8 @@ class Settings:
             raise ValueError("LLM token prices cannot be negative")
         if self.evaluation_min_public_prs < 300:
             raise ValueError("EVOAGENT_EVALUATION_MIN_PUBLIC_PRS must be at least 300")
+        if self.task_data_retention_days < 0:
+            raise ValueError("EVOAGENT_TASK_DATA_RETENTION_DAYS cannot be negative")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -440,4 +445,7 @@ class Settings:
                 os.getenv("EVOAGENT_EVALUATION_MIN_HIGH_RISK_IMPROVEMENT", "0.05")
             ),
             report_max_findings=_int("EVOAGENT_REPORT_MAX_FINDINGS", 50),
+            task_data_retention_days=_non_negative_int(
+                "EVOAGENT_TASK_DATA_RETENTION_DAYS", 0
+            ),
         )

@@ -206,3 +206,30 @@ class SqliteTaskStoreMixin:
                 "INSERT INTO trace_events(task_id,step,state,message,created_at) VALUES (?,?,?,?,?)",
                 (task_id, event.step, event.state.value, event.message, event.created_at),
             )
+
+    def purge_expired_task_data(self, before: str, limit: int = 1000) -> Dict[str, int]:
+        limit = max(1, min(int(limit), 5000))
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM tasks WHERE state IN (?,?,?) AND created_at<? "
+                "ORDER BY created_at LIMIT ?",
+                (
+                    TaskState.SUCCESS.value, TaskState.FAILED.value,
+                    TaskState.CANCELLED.value, before, limit,
+                ),
+            ).fetchall()
+            task_ids = [row["id"] for row in rows]
+            if not task_ids:
+                return {
+                    "tasks": 0, "task_payloads": 0,
+                    "checkpoints": 0, "agent_messages": 0,
+                }
+            placeholders = ",".join("?" for _ in task_ids)
+            counts = {"tasks": len(task_ids)}
+            for table in ("task_payloads", "checkpoints", "agent_messages"):
+                cursor = conn.execute(
+                    "DELETE FROM %s WHERE task_id IN (%s)" % (table, placeholders),
+                    task_ids,
+                )
+                counts[table] = max(0, cursor.rowcount)
+        return counts
