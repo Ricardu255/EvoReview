@@ -46,6 +46,7 @@ class AgenticReviewer(Reviewer):
         memory_manager=None,
         context_manager: Optional[ContextManager] = None,
         skill_provider=None,
+        normal_task_tool_steps: int = 0,
     ):
         self.store = store
         self.client = llm_client
@@ -65,6 +66,9 @@ class AgenticReviewer(Reviewer):
         self.memory_manager = memory_manager
         self.context_manager = context_manager or ContextManager()
         self.skill_provider = skill_provider
+        self.normal_task_tool_steps = max(
+            0, min(int(normal_task_tool_steps), 2),
+        )
         if self.structured_config:
             self.prompt_overlay += "\nStructured runtime policy:\n" + json.dumps(
                 self.structured_config, ensure_ascii=False, sort_keys=True
@@ -92,7 +96,7 @@ class AgenticReviewer(Reviewer):
         )
         self.orchestrator = ReviewOrchestrator(
             self.runtime, self.scanner, self.sessions, self.lead,
-            self.assignments, self.findings,
+            self.assignments, self.findings, self.normal_task_tool_steps,
         )
 
     def _token_budget(self, role: str) -> int:

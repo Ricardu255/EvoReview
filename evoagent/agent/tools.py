@@ -4,6 +4,13 @@ from ..prompts import ROLE_PERMISSIONS
 from .runtime import AgentTool
 
 
+READ_ONLY_TOOL_NAMES = frozenset({
+    "list_repository", "search_repository", "search_diff", "read_file",
+    "changed_line", "symbol", "locate_tests", "read_project_controls",
+    "ast_analyze", "git_context",
+})
+
+
 class ToolPolicy(RuntimeBackref):
     @staticmethod
     def _skill_tool_permissions(worker, skills):

@@ -18,7 +18,7 @@
 - JSON API 与 Markdown 报告
 - webhook HMAC-SHA256 签名校验，以及可选的 GitHub PR 评论回写
 - Web 管理台、任务 Dashboard 与 Prometheus 指标
-- 普通任务采用固定单轮多 Agent 协作（Lead 2 次、双 Worker 各 1 次、Critic 1 次，共 5 次 LLM 调用）；高风险任务最多允许一轮 Worker 返工
+- 普通任务使用 5 次基础 LLM 调用（Lead 2 次、双 Worker 各 1 次、Critic 1 次）；每个 Worker 最多可额外执行一次只读工具步骤，使用工具时最多 7 次调用。高风险任务最多允许一轮 Worker 返工
 - LLM unified patch、AST/CST、隔离副本前后测试对比与仅 Draft PR 的修复闭环
 - PostgreSQL、Redis 生产模式
 - 失败案例回流、提示词评测、版本激活与回滚
