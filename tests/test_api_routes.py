@@ -551,6 +551,17 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertEqual(202, queued.status)
         self.assertEqual(1, len(self.service.enqueue_calls))
 
+    def test_review_audit_failure_does_not_double_send(self):
+        def broken_audit(*args):
+            raise RuntimeError("audit unavailable")
+
+        self.service.store.audit = broken_audit
+        response = self.call("/v1/reviews", "POST", {
+            "repository": "org/repo", "diff": "x",
+        })
+        self.assertEqual(500, response.status)
+        self.assertEqual(1, len(self.service.review_calls))
+
     def test_review_payload_validation(self):
         for payload in (
             {"repository": "org/repo", "diff": "x", "pull_request": "3"},

@@ -650,11 +650,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 }
                 if query.get("async", ["false"])[0].lower() == "true":
                     result = self.service.enqueue_review(*args, **options)
-                    self._send_json(202, result)
+                    status = 202
                 else:
-                    self._send_json(201, self.service.create_review(
-                        *args, **options
-                    ))
+                    result = self.service.create_review(*args, **options)
+                    status = 201
                 self.service.store.audit(
                     principal.tenant_id, principal.username, "review.create",
                     text_field(payload, "repository"), {
@@ -662,6 +661,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "mode": text_field(payload, "mode"),
                     },
                 )
+                self._send_json(status, result)
                 return
             if path == "/webhooks/github":
                 if self.headers.get("X-GitHub-Event", "") != "pull_request":
