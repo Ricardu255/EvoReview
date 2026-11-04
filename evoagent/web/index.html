@@ -321,6 +321,14 @@
         </div>
         <div class="panels">
           <article class="paper-card plain">
+            <div class="panel-head"><h3>租户</h3><span class="small">TENANTS</span></div>
+            <div id="admin-tenants" class="task-list"><div class="list-loading"></div></div>
+            <form id="tenant-form">
+              <label class="field"><span>租户 ID</span><input name="tenant_id" placeholder="例如 team-alpha" required></label>
+              <button class="btn-primary" type="submit">创建租户</button>
+            </form>
+          </article>
+          <article class="paper-card plain">
             <div class="panel-head"><h3>租户用户</h3><span class="small">MEMBRES</span></div>
             <div id="admin-users" class="task-list"><div class="list-loading"></div></div>
             <form id="user-form">

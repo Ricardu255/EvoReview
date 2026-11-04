@@ -428,6 +428,20 @@ class StoreContract:
         self.assertFalse(self.store.set_user_active(
             "alice-%s" % run, "tenant-c", True,
         ))
+        self.assertTrue(self.store.set_platform_admin("alice-%s" % run, True))
+        self.assertTrue(self.store.get_user("alice-%s" % run)["platform_admin"])
+        self.assertTrue(self.store.set_platform_admin("alice-%s" % run, False))
+        self.assertFalse(self.store.get_user("alice-%s" % run)["platform_admin"])
+
+        self.assertTrue(self.store.create_tenant("tenant-new-%s" % run))
+        self.assertFalse(self.store.create_tenant("tenant-new-%s" % run))
+        self.assertTrue(self.store.tenant_exists("tenant-new-%s" % run))
+        self.assertTrue(self.store.tenant_exists("tenant-a"))
+        self.assertFalse(self.store.tenant_exists("tenant-missing-%s" % run))
+        self.assertIn(
+            "tenant-new-%s" % run,
+            [item["tenant_id"] for item in self.store.list_tenants()],
+        )
 
         # With no grants configured, legacy single-tenant behaviour keeps both
         # reviews and automatic repair open.

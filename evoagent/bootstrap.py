@@ -265,6 +265,7 @@ def build_container(settings: Settings) -> ServiceContainer:
         settings.bootstrap_admin_username, settings.bootstrap_admin_password,
         settings.default_tenant_id,
         api_token_ttl_seconds=settings.api_token_ttl_seconds,
+        bootstrap_platform_admin=settings.bootstrap_admin_platform_admin,
     )
     alert_notifier = AlertNotifier(settings.alert_webhook_url)
     releases = ReleaseManager(store, alert_notifier)

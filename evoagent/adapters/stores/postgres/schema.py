@@ -80,6 +80,9 @@ class PostgresSchemaMixin:
             """CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
                 active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL)""",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS platform_admin BOOLEAN NOT NULL DEFAULT FALSE",
+            """CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL)""",
             """CREATE TABLE IF NOT EXISTS memberships (
                 user_id TEXT NOT NULL REFERENCES users(id), tenant_id TEXT NOT NULL, role TEXT NOT NULL,
                 PRIMARY KEY(user_id,tenant_id))""",

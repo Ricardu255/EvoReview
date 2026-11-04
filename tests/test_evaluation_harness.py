@@ -15,12 +15,11 @@ from evoagent.evaluation.harness import (
 from evoagent.domain.models import Finding, Severity
 
 
-# The 100-case corpus is kept local and is not checked in; tests that read it
-# run where the file exists and skip cleanly everywhere else.
+# The 100-case controlled fixture is tracked; tests that read it skip only
+# when the corpus is missing from a partial checkout.
 NEEDS_CONTROLLED_DATASET = unittest.skipUnless(
     os.path.exists(DEFAULT_CONTROLLED_DATASET),
-    "evaluation_data/pr_diff_100.jsonl is not checked in; the controlled "
-    "corpus is kept local",
+    "evaluation_data/pr_diff_100.jsonl is missing",
 )
 
 

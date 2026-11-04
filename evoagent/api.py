@@ -34,8 +34,11 @@ RESUME = re.compile(r"^/v1/tasks/([0-9a-f-]+)/resume$")
 COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
 ALERT_RESOLVE = re.compile(r"^/api/alerts/(\d+)/resolve$")
 USERS = "/v1/users"
+TENANTS = "/v1/tenants"
 USER_PASSWORD = re.compile(r"^/v1/users/([^/]+)/password$")
 USER_ACTIVE = re.compile(r"^/v1/users/([^/]+)/active$")
+PLATFORM_ADMIN = re.compile(r"^/v1/platform/users/([^/]+)/platform-admin$")
+TENANT_ID = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 GRANTS = "/v1/repository-grants"
 ROLLBACK = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions/(\d+)/activate$")
 PROMPT_VERSIONS = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions$")
@@ -101,7 +104,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _principal(self, permission: str = "read") -> Principal:
         if not self.settings.auth_required:
             return Principal(
-                "local", "local-development", self.settings.default_tenant_id, "admin"
+                "local", "local-development", self.settings.default_tenant_id,
+                "admin", True,
             )
         principal = self.service.auth.authenticate(self.headers.get("Authorization", ""))
         self.service.auth.require(principal, (permission,))
@@ -438,9 +442,20 @@ class ApiHandler(BaseHTTPRequestHandler):
             if not principal.can("manage"):
                 self._send_json(403, {"error": "permission denied"})
                 return
+            tenant_id = query.get("tenant_id", [principal.tenant_id])[0].strip() or principal.tenant_id
+            if tenant_id != principal.tenant_id and not principal.can("platform"):
+                self._send_json(403, {"error": "permission denied"})
+                return
             self._send_json(200, {
-                "users": self.service.auth.list_tenant_users(principal.tenant_id)
+                "users": self.service.auth.list_tenant_users(tenant_id),
+                "tenant_id": tenant_id,
             })
+            return
+        if path == TENANTS:
+            if not principal.can("platform"):
+                self._send_json(403, {"error": "platform permission denied"})
+                return
+            self._send_json(200, {"tenants": self.service.store.list_tenants()})
             return
         if path == "/api/deployments/llm-review":
             self._send_json(200, {"deployment": self.service.store.get_deployment(
@@ -758,17 +773,41 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "repository": repository, "auto_fix": auto_fix,
                 })
                 return
+            if path == TENANTS:
+                principal = self._principal("platform")
+                payload = self._read_json(body)
+                tenant_id = text_field(payload, "tenant_id").strip()
+                if not TENANT_ID.fullmatch(tenant_id):
+                    raise ValueError(
+                        "tenant_id must use 1-100 letters, digits, dot, underscore or hyphen"
+                    )
+                created = self.service.store.create_tenant(tenant_id)
+                self.service.store.audit(
+                    tenant_id, principal.username, "tenant.create",
+                    tenant_id, {"created": created},
+                )
+                self._send_json(201 if created else 409, {
+                    "tenant_id": tenant_id, "created": created,
+                })
+                return
             if path == USERS:
                 principal = self._principal("manage")
                 payload = self._read_json(body)
                 username = text_field(payload, "username").strip()
                 password = text_field(payload, "password")
                 role = text_field(payload, "role").strip() or "maintainer"
+                tenant_id = (
+                    text_field(payload, "tenant_id").strip() or principal.tenant_id
+                )
+                if tenant_id != principal.tenant_id:
+                    self.service.auth.require(principal, ("platform",))
+                    if not self.service.store.tenant_exists(tenant_id):
+                        raise ValueError("tenant does not exist")
                 result = self.service.auth.create_tenant_user(
-                    username, password, principal.tenant_id, role,
+                    username, password, tenant_id, role,
                 )
                 self.service.store.audit(
-                    principal.tenant_id, principal.username, "user.create",
+                    tenant_id, principal.username, "user.create",
                     username, {"role": role, "created": result["created"]},
                 )
                 self._send_json(201, result)
@@ -803,6 +842,23 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 self.service.store.audit(
                     principal.tenant_id, principal.username, "user.active",
+                    username, {"active": active, "updated": ok},
+                )
+                self._send_json(200 if ok else 404, {"updated": ok})
+                return
+            match = PLATFORM_ADMIN.match(path)
+            if match:
+                principal = self._principal("platform")
+                payload = self._read_json(body)
+                username = urllib.parse.unquote(match.group(1))
+                active = payload.get("active")
+                if not isinstance(active, bool):
+                    raise ValueError("active must be a boolean")
+                if username == principal.username and not active:
+                    raise ValueError("cannot remove your own platform scope")
+                ok = self.service.store.set_platform_admin(username, active)
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "user.platform_admin",
                     username, {"active": active, "updated": ok},
                 )
                 self._send_json(200 if ok else 404, {"updated": ok})

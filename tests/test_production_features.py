@@ -39,6 +39,25 @@ class ProductionFeatureTests(unittest.TestCase):
         self.assertIsNone(self.store.get("b", principal.tenant_id))
         self.assertEqual(["a"], [item["id"] for item in self.store.list_tasks(10, "tenant-a")])
 
+    def test_platform_scope_is_bootstrap_configurable(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="alice",
+            bootstrap_password="correct-horse", default_tenant_id="tenant-a",
+            bootstrap_platform_admin=True,
+        )
+        principal = auth.authenticate(
+            "Bearer " + auth.login("alice", "correct-horse")["access_token"]
+        )
+        self.assertTrue(principal.platform_admin)
+        self.assertTrue(principal.can("platform"))
+        self.assertTrue(principal.can("audit"))
+        self.store.set_platform_admin("alice", False)
+        principal = auth.authenticate(
+            "Bearer " + auth.login("alice", "correct-horse")["access_token"]
+        )
+        self.assertFalse(principal.platform_admin)
+        self.assertFalse(principal.can("platform"))
+
     def test_api_tokens_are_tenant_bound_and_follow_user_state(self):
         auth = AuthManager(
             self.store, "a" * 32, bootstrap_username="alice",

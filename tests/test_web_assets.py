@@ -48,14 +48,16 @@ class WebAssetTests(unittest.TestCase):
         html = (WEB / "index.html").read_text(encoding="utf-8")
         source = (WEB / "app.js").read_text(encoding="utf-8")
         for element_id in (
-            "view-admin", "admin-users", "admin-grants", "admin-alerts",
-            "admin-audit", "admin-dlq", "user-form", "grant-form",
+            "view-admin", "admin-users", "admin-tenants", "admin-grants",
+            "admin-alerts", "admin-audit", "admin-dlq", "user-form",
+            "tenant-form", "grant-form",
         ):
             with self.subTest(element_id=element_id):
                 self.assertIn('id="%s"' % element_id, html)
         for route in (
-            "/v1/users", "/v1/repository-grants", "/api/alerts", "/api/audit",
-            "/api/queue/dead-letters", "/v1/queue/dead-letters/replay",
+            "/v1/users", "/v1/tenants", "/v1/repository-grants",
+            "/api/alerts", "/api/audit", "/api/queue/dead-letters",
+            "/v1/queue/dead-letters/replay", "/platform-admin",
         ):
             with self.subTest(route=route):
                 self.assertIn(route, source)

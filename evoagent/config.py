@@ -131,6 +131,7 @@ class Settings:
     auth_secret: str = ""
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
+    bootstrap_admin_platform_admin: bool = False
     default_tenant_id: str = "default"
     repository_roots_json: str = "{}"
     require_repository_grants: bool = False
@@ -389,6 +390,9 @@ class Settings:
             auth_secret=os.getenv("EVOAGENT_AUTH_SECRET", ""),
             bootstrap_admin_username=os.getenv("EVOAGENT_BOOTSTRAP_ADMIN_USERNAME", ""),
             bootstrap_admin_password=os.getenv("EVOAGENT_BOOTSTRAP_ADMIN_PASSWORD", ""),
+            bootstrap_admin_platform_admin=_bool(
+                "EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN", False
+            ),
             default_tenant_id=os.getenv("EVOAGENT_DEFAULT_TENANT_ID", "default"),
             repository_roots_json=os.getenv("EVOAGENT_REPOSITORY_ROOTS_JSON", "{}"),
             require_repository_grants=_bool(
