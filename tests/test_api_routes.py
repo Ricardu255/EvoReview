@@ -78,6 +78,14 @@ class FakeStore:
         self._record("list_skill_artifact_versions", name, tenant_id)
         return [{"version": 1}]
 
+    def list_skill_versions(self, name, tenant_id):
+        self._record("list_skill_versions", name, tenant_id)
+        return [{
+            "version": 1, "score": 1.0, "active": True,
+            "parent_version": None, "created_at": "2026-01-01",
+            "prompt": "prompt text",
+        }]
+
     def get(self, task_id, tenant_id):
         self._record("get", task_id, tenant_id)
         if self.task and task_id == self.task.get("id"):
@@ -396,6 +404,11 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, self.call("/api/queue/dead-letters?limit=2").status)
         self.assertEqual(200, self.call("/v1/evolution/runs?limit=4").status)
         self.assertEqual(200, self.call("/v1/evolution/status").status)
+        versions = self.call("/v1/skills/llm-review/versions")
+        self.assertEqual(200, versions.status)
+        self.assertEqual(1, versions.body["versions"][0]["version"])
+        self.assertNotIn("prompt", versions.body["versions"][0])
+        self.assertIn("prompt_preview", versions.body["versions"][0])
         self.assertEqual(200, self.call("/v1/skill-evolution/status?skill_name=x").status)
         self.assertEqual(200, self.call("/v1/skill-evolution/runs").status)
         self.assertEqual(200, self.call("/v1/skill-evolution/skill/versions").status)
@@ -453,6 +466,7 @@ class GetRouteTests(ApiRouteTestCase):
 
         for path in (
             "/v1/repository-grants", "/api/queue/dead-letters",
+            "/v1/skills/llm-review/versions",
             "/v1/skill-evolution/status", "/v1/skill-evolution/runs",
             "/v1/skill-evolution/x/versions",
         ):
