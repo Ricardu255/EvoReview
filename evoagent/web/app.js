@@ -760,11 +760,12 @@ $("#task-repository-filter").addEventListener("input", () => {
 });
 
 async function loadAdmin() {
-  const [users, grants, alerts, audit] = await Promise.allSettled([
+  const [users, grants, alerts, audit, deadLetters] = await Promise.allSettled([
     api("/v1/users"),
     api("/v1/repository-grants"),
     api("/api/alerts"),
     api("/api/audit?limit=20"),
+    api("/api/queue/dead-letters?limit=20"),
   ]);
   const usersRoot = $("#admin-users");
   if (users.status === "fulfilled") {
@@ -817,6 +818,21 @@ async function loadAdmin() {
     )).join("\n") || "暂无审计记录"
     : "审计记录读取失败";
 
+  const dlqRoot = $("#admin-dlq");
+  if (deadLetters.status === "fulfilled") {
+    const values = deadLetters.value.messages || [];
+    dlqRoot.innerHTML = values.length ? values.map((item) => `
+      <div class="task-row">
+        <span class="task-main"><span class="task-glyph">DLQ</span><span class="task-copy">
+          <span class="task-name">${escapeHtml(item.payload?.task_id || item.message_id)}</span>
+          <span class="task-meta"><span>${escapeHtml(item.error || "unknown error")}</span></span>
+        </span></span>
+        <button class="btn-text" data-dlq-replay="${escapeAttr(item.message_id)}">重放</button>
+      </div>`).join("") : '<div class="empty-state"><span>死信队列为空</span></div>';
+  } else {
+    dlqRoot.innerHTML = '<div class="empty-state"><span>死信队列读取失败</span></div>';
+  }
+
   $$("[data-user-action]").forEach((button) => {
     button.addEventListener("click", () => toggleAdminUser(button));
   });
@@ -825,6 +841,9 @@ async function loadAdmin() {
   });
   $$("[data-alert-resolve]").forEach((button) => {
     button.addEventListener("click", () => resolveAdminAlert(button));
+  });
+  $$("[data-dlq-replay]").forEach((button) => {
+    button.addEventListener("click", () => replayAdminDeadLetter(button));
   });
 }
 
@@ -870,6 +889,23 @@ async function resolveAdminAlert(button) {
       method: "POST",
     });
     toast("告警已解决");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function replayAdminDeadLetter(button) {
+  setButtonBusy(button, true, "重放中…");
+  try {
+    await api("/v1/queue/dead-letters/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_id: button.dataset.dlqReplay }),
+    });
+    toast("死信已重新入队");
     loadAdmin();
   } catch (error) {
     toast(error.message);

@@ -49,12 +49,13 @@ class WebAssetTests(unittest.TestCase):
         source = (WEB / "app.js").read_text(encoding="utf-8")
         for element_id in (
             "view-admin", "admin-users", "admin-grants", "admin-alerts",
-            "admin-audit", "user-form", "grant-form",
+            "admin-audit", "admin-dlq", "user-form", "grant-form",
         ):
             with self.subTest(element_id=element_id):
                 self.assertIn('id="%s"' % element_id, html)
         for route in (
             "/v1/users", "/v1/repository-grants", "/api/alerts", "/api/audit",
+            "/api/queue/dead-letters", "/v1/queue/dead-letters/replay",
         ):
             with self.subTest(route=route):
                 self.assertIn(route, source)
