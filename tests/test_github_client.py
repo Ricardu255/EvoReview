@@ -297,6 +297,26 @@ class EndpointTests(unittest.TestCase):
                         repository, "title", "head", "main", "body",
                     )
 
+    def test_post_review_sends_comments_to_the_reviews_endpoint(self):
+        calls = []
+
+        def fake_json(method, url, payload=None):
+            calls.append((method, url, payload))
+            return {"id": 1}
+
+        comments = [{
+            "path": "app.py", "line": 7, "side": "RIGHT", "body": "finding",
+        }]
+        with patch.object(self.client, "_json", side_effect=fake_json):
+            self.client.post_review("org/repo", 12, "summary", comments)
+        self.assertEqual(
+            "https://api.github.com/repos/org/repo/pulls/12/reviews",
+            calls[0][1],
+        )
+        self.assertEqual("summary", calls[0][2]["body"])
+        self.assertEqual("COMMENT", calls[0][2]["event"])
+        self.assertEqual(comments, calls[0][2]["comments"])
+
     def test_ensure_repository_access_checks_full_name_case_insensitively(self):
         with patch.object(self.client, "get_repository",
                           return_value={"full_name": "Org/Repo"}):

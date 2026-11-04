@@ -2,9 +2,9 @@
 import hashlib
 import logging
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
-from ..domain.report import to_markdown
+from ..domain.report import to_inline_markdown, to_markdown
 
 
 logger = logging.getLogger("evoagent")
@@ -51,7 +51,8 @@ class ReviewCommentService:
 
     def deliver(
         self, issue_url: str, installation_id: Optional[int], task_id: str,
-        tenant_id: str, report: Any,
+        tenant_id: str, report: Any, repository: str = "",
+        pull_request: Optional[int] = None,
     ) -> bool:
         value = report.to_dict() if hasattr(report, "to_dict") else report
         error = None
@@ -64,6 +65,9 @@ class ReviewCommentService:
                     review_comment_marker(tenant_id, issue_url, task_id),
                 )
                 self.metrics.inc("comment_delivered_total")
+                self._deliver_inline(
+                    client, task_id, tenant_id, repository, pull_request, value,
+                )
                 return True
             except Exception as exc:
                 error = exc
@@ -85,6 +89,50 @@ class ReviewCommentService:
             logger.exception("failed to audit comment delivery failure")
         return False
 
+    def _deliver_inline(
+        self, client: Any, task_id: str, tenant_id: str, repository: str,
+        pull_request: Optional[int], value: Dict[str, Any],
+    ) -> None:
+        if not getattr(self.settings, "inline_review_comments", False):
+            return
+        if not repository or pull_request is None:
+            return
+        try:
+            comments = []
+            for finding in value.get("findings", [])[:20]:
+                if not finding.get("path") or not finding.get("line"):
+                    continue
+                comments.append({
+                    "path": str(finding["path"]),
+                    "line": int(finding["line"]),
+                    "side": "RIGHT",
+                    "body": to_inline_markdown(finding),
+                })
+            if not comments:
+                return
+            client.post_review(
+                repository, int(pull_request),
+                "EvoReview found %d actionable issue(s) in this change."
+                % len(comments),
+                comments,
+            )
+            self.metrics.inc("inline_comments_delivered_total", len(comments))
+        except Exception as exc:
+            # The summary comment is already delivered.  Inline comments are a
+            # best-effort enhancement and must not trigger a full redelivery.
+            logger.warning(
+                "failed to deliver inline review for task %s: %s", task_id, exc,
+            )
+            self.metrics.inc("inline_comments_failed_total")
+            try:
+                self.store.audit(
+                    tenant_id, "service", "comment.inline_failed", task_id,
+                    {"repository": repository, "pull_request": pull_request,
+                     "error": str(exc)[:500]},
+                )
+            except Exception:
+                logger.exception("failed to audit inline comment failure")
+
     def redeliver(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         """Re-post a stored review comment after a transient GitHub outage."""
         task = self.store.get(task_id, tenant_id)
@@ -99,5 +147,6 @@ class ReviewCommentService:
         delivered = self.deliver(
             issue_url, task_input.get("installation_id"), task_id,
             task.get("tenant_id") or tenant_id or "default", task["report"],
+            task.get("repository", ""), task.get("pull_request"),
         )
         return {"task_id": task_id, "delivered": delivered}

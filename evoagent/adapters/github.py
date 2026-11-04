@@ -51,6 +51,17 @@ class GitHubClient:
         )
         return body.decode("utf-8", errors="replace")
 
+    def post_review(
+        self, repository: str, number: int, body: str,
+        comments: list, event: str = "COMMENT",
+    ) -> dict:
+        repository = self._validate_repository(repository)
+        return self._json(
+            "POST", "https://api.github.com/repos/%s/pulls/%d/reviews"
+            % (repository, int(number)),
+            {"body": body, "event": event, "comments": list(comments)},
+        )
+
     def post_comment(self, api_url: str, markdown: str) -> None:
         url = api_url.rstrip("/") + "/comments"
         request = urllib.request.Request(
