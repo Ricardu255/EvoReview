@@ -26,6 +26,7 @@ class TaskStorePort(ReviewStore, Protocol):
 
     def list_tasks(
         self, limit: int = 50, tenant_id: Optional[str] = None,
+        state: str = "", repository: str = "",
     ) -> list:
         ...
 

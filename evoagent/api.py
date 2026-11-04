@@ -44,6 +44,10 @@ SKILL_ARTIFACT_ACTIVATE = re.compile(
 )
 WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "web"))
 GITHUB_SETUP_STATE_TTL_SECONDS = 600
+TASK_STATES = {
+    "PENDING", "PLANNING", "EXECUTING", "REVIEWING",
+    "SUCCESS", "FAILED", "CANCELLED",
+}
 logger = logging.getLogger("evoagent")
 
 
@@ -379,8 +383,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                                   "taxonomy": public_taxonomy()})
             return
         if path == "/api/tasks":
+            state = query.get("state", [""])[0].strip().upper()
+            if state and state not in TASK_STATES:
+                raise ValueError(
+                    "state must be one of: %s" % ", ".join(sorted(TASK_STATES))
+                )
+            repository = query.get("repository", [""])[0].strip()
             self._send_json(200, {"tasks": self.service.store.list_tasks(
-                self._query_int(query, "limit", 50), principal.tenant_id)})
+                self._query_int(query, "limit", 50), principal.tenant_id,
+                state, repository,
+            )})
             return
         if path == "/api/skills":
             self._send_json(200, {

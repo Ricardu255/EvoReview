@@ -29,6 +29,14 @@ class WebAssetTests(unittest.TestCase):
         self.assertIn("$(\"#resume-task\").addEventListener", source)
         self.assertIn("$(\"#redeliver-comment\").addEventListener", source)
 
+    def test_task_filters_are_wired(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        source = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="task-state-filter"', html)
+        self.assertIn('id="task-repository-filter"', html)
+        self.assertIn('params.set("state", state)', source)
+        self.assertIn('params.set("repository", repository)', source)
+
 
 if __name__ == "__main__":
     unittest.main()

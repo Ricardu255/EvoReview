@@ -30,8 +30,8 @@ class FakeStore:
         self._record("dashboard_stats", tenant_id)
         return {"tasks_total": 1, "tasks_failed": 0}
 
-    def list_tasks(self, limit, tenant_id):
-        self._record("list_tasks", limit, tenant_id)
+    def list_tasks(self, limit, tenant_id, state="", repository=""):
+        self._record("list_tasks", limit, tenant_id, state, repository)
         return [{"id": "task-1"}]
 
     def list_failure_cases(self, unresolved_only, limit, tenant_id=None):
@@ -374,7 +374,17 @@ class GetRouteTests(ApiRouteTestCase):
         tasks = self.call("/api/tasks?limit=5")
         self.assertEqual(200, tasks.status)
         self.assertEqual([{"id": "task-1"}], tasks.body["tasks"])
-        self.assertIn(("list_tasks", (5, "default"), {}), self.service.store.calls)
+        self.assertIn(
+            ("list_tasks", (5, "default", "", ""), {}),
+            self.service.store.calls,
+        )
+        filtered = self.call("/api/tasks?state=failed&repository=org/repo")
+        self.assertEqual(200, filtered.status)
+        self.assertIn(
+            ("list_tasks", (50, "default", "FAILED", "org/repo"), {}),
+            self.service.store.calls,
+        )
+        self.assertEqual(400, self.call("/api/tasks?state=unknown").status)
 
         self.assertEqual(200, self.call("/api/skills").status)
         self.assertEqual(200, self.call("/api/failures").status)
