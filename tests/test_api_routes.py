@@ -46,6 +46,10 @@ class FakeStore:
         self._record("list_alerts", tenant_id)
         return [{"kind": "review-failure-rate"}]
 
+    def list_users(self, tenant_id):
+        self._record("list_users", tenant_id)
+        return [{"username": "alice", "role": "maintainer", "active": True}]
+
     def resolve_alert(self, tenant_id, alert_id):
         self._record("resolve_alert", tenant_id, alert_id)
         return alert_id == 1
@@ -176,10 +180,35 @@ class FakeReleases:
         return {"configured": payload}
 
 
+class FakeAuth:
+    def __init__(self):
+        self.calls = []
+
+    def list_tenant_users(self, tenant_id):
+        self.calls.append(("list", tenant_id))
+        return [{"username": "alice", "role": "maintainer", "active": True}]
+
+    def create_tenant_user(self, username, password, tenant_id, role):
+        self.calls.append(("create", username, password, tenant_id, role))
+        return {
+            "username": username, "tenant_id": tenant_id, "role": role,
+            "created": True,
+        }
+
+    def set_tenant_user_password(self, username, password, tenant_id):
+        self.calls.append(("password", username, password, tenant_id))
+        return username == "alice"
+
+    def set_tenant_user_active(self, username, tenant_id, active):
+        self.calls.append(("active", username, tenant_id, active))
+        return username == "alice"
+
+
 class FakeService:
     def __init__(self):
         self.store = FakeStore()
         self.queue = FakeQueue()
+        self.auth = FakeAuth()
         self.evolution = FakeEvolution()
         self.skill_evolution = FakeSkillEvolution()
         self.releases = FakeReleases()
@@ -351,6 +380,7 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, self.call("/api/failures").status)
         self.assertEqual(200, self.call("/api/audit?limit=3").status)
         self.assertEqual(200, self.call("/api/alerts").status)
+        self.assertEqual(200, self.call("/v1/users").status)
         self.assertEqual(200, self.call("/v1/repository-grants").status)
         self.assertEqual(200, self.call("/api/deployments/llm-review").status)
         self.assertEqual(200, self.call("/api/queue/dead-letters?limit=2").status)
@@ -664,6 +694,39 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertEqual(404, self.call("/api/alerts/2/resolve", "POST").status)
         self.assertTrue(any(
             event[2] == "alert.resolve" for event in self.service.store.audit_events
+        ))
+
+    def test_user_management_routes(self):
+        created = self.call("/v1/users", "POST", {
+            "username": "alice", "password": "long-enough-password",
+            "role": "maintainer",
+        })
+        self.assertEqual(201, created.status)
+        self.assertEqual("alice", created.body["username"])
+        self.assertEqual(
+            ("create", "alice", "long-enough-password", "default", "maintainer"),
+            self.service.auth.calls[-1],
+        )
+
+        self.assertEqual(200, self.call(
+            "/v1/users/alice/password", "POST",
+            {"password": "another-long-password"},
+        ).status)
+        self.assertEqual(404, self.call(
+            "/v1/users/bob/password", "POST",
+            {"password": "another-long-password"},
+        ).status)
+        self.assertEqual(200, self.call(
+            "/v1/users/alice/active", "POST", {"active": False},
+        ).status)
+        self.assertEqual(400, self.call(
+            "/v1/users/alice/active", "POST", {"active": "no"},
+        ).status)
+        self.assertEqual(400, self.call(
+            "/v1/users/local-development/active", "POST", {"active": False},
+        ).status)
+        self.assertTrue(any(
+            event[2] == "user.create" for event in self.service.store.audit_events
         ))
 
     def test_unknown_post_route_returns_404(self):

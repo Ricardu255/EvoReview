@@ -260,6 +260,9 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/tasks/{id}/resume` | 从最近 checkpoint 续跑任务 |
 | `POST` | `/v1/tasks/{id}/comment` | GitHub 故障后重新投递已保存的审查评论 |
 | `GET/POST/DELETE` | `/v1/repository-grants` | 查询、授予或撤销租户的仓库访问权限 |
+| `GET/POST` | `/v1/users` | 查询租户用户，或创建/更新租户成员关系 |
+| `POST` | `/v1/users/{username}/password` | 重置租户用户密码 |
+| `POST` | `/v1/users/{username}/active` | 启用或停用租户用户 |
 | `POST` | `/webhooks/github` | 接收 GitHub PR webhook |
 | `POST` | `/v1/skills/reload` | 动态重新加载 Skill |
 | `POST` | `/v1/evolution/auto` | 从失败案例生成并评测提示词版本 |
