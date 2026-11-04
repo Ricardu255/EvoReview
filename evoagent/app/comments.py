@@ -52,7 +52,7 @@ class ReviewCommentService:
     def deliver(
         self, issue_url: str, installation_id: Optional[int], task_id: str,
         tenant_id: str, report: Any, repository: str = "",
-        pull_request: Optional[int] = None,
+        pull_request: Optional[int] = None, head_sha: str = "",
     ) -> bool:
         value = report.to_dict() if hasattr(report, "to_dict") else report
         error = None
@@ -67,6 +67,9 @@ class ReviewCommentService:
                 self.metrics.inc("comment_delivered_total")
                 self._deliver_inline(
                     client, task_id, tenant_id, repository, pull_request, value,
+                )
+                self._deliver_check_run(
+                    client, task_id, tenant_id, repository, head_sha, value,
                 )
                 return True
             except Exception as exc:
@@ -133,6 +136,47 @@ class ReviewCommentService:
             except Exception:
                 logger.exception("failed to audit inline comment failure")
 
+    def _deliver_check_run(
+        self, client: Any, task_id: str, tenant_id: str, repository: str,
+        head_sha: str, value: Dict[str, Any],
+    ) -> None:
+        if not getattr(self.settings, "auto_post_checks", False):
+            return
+        if not repository or not head_sha:
+            return
+        findings = value.get("findings", [])
+        severities = {
+            str(item.get("severity", "")).lower() for item in findings
+        }
+        if severities.intersection({"critical", "high"}):
+            conclusion = "failure"
+        elif findings:
+            conclusion = "neutral"
+        else:
+            conclusion = "success"
+        title = "EvoReview: %d finding(s), risk %s" % (
+            len(findings), value.get("risk", "unknown"),
+        )
+        summary = str(value.get("summary", ""))[:65000]
+        try:
+            client.create_check_run(
+                repository, head_sha, conclusion, title, summary,
+            )
+            self.metrics.inc("check_runs_delivered_total")
+        except Exception as exc:
+            logger.warning(
+                "failed to deliver check run for task %s: %s", task_id, exc,
+            )
+            self.metrics.inc("check_runs_failed_total")
+            try:
+                self.store.audit(
+                    tenant_id, "service", "check_run.failed", task_id,
+                    {"repository": repository, "head_sha": head_sha,
+                     "error": str(exc)[:500]},
+                )
+            except Exception:
+                logger.exception("failed to audit check-run failure")
+
     def redeliver(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         """Re-post a stored review comment after a transient GitHub outage."""
         task = self.store.get(task_id, tenant_id)
@@ -148,5 +192,6 @@ class ReviewCommentService:
             issue_url, task_input.get("installation_id"), task_id,
             task.get("tenant_id") or tenant_id or "default", task["report"],
             task.get("repository", ""), task.get("pull_request"),
+            task_input.get("head_sha", ""),
         )
         return {"task_id": task_id, "delivered": delivered}

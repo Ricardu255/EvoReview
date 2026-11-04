@@ -356,6 +356,7 @@ class GitHubApplicationServiceTests(unittest.TestCase):
             "pull_request": {
                 "diff_url": "https://github.test/diff",
                 "issue_url": "https://github.test/issue",
+                "head": {"sha": "abc123"},
             },
         }
         values.update(overrides)
@@ -429,6 +430,7 @@ class GitHubApplicationServiceTests(unittest.TestCase):
         self.assertEqual(["model"], [call[1] for call in self.policy.calls if call[0] == "model"])
         self.assertEqual("org/repo", self.deferred[0][0])
         self.assertEqual(result["task_id"], self.queue.submits[0][1])
+        self.assertEqual("abc123", self.queue.submits[0][0]["head_sha"])
         self.assertEqual([("reviews_enqueued_total", 1.0)], self.metrics.counters)
         self.assertIn("bind", [event[0] for event in self.store.events])
 

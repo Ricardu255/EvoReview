@@ -51,6 +51,23 @@ class GitHubClient:
         )
         return body.decode("utf-8", errors="replace")
 
+    def create_check_run(
+        self, repository: str, head_sha: str, conclusion: str,
+        title: str, summary: str,
+    ) -> dict:
+        repository = self._validate_repository(repository)
+        head_sha = str(head_sha or "").strip()
+        if not head_sha:
+            raise ValueError("head_sha is required for a check run")
+        return self._json(
+            "POST", "https://api.github.com/repos/%s/check-runs" % repository,
+            {
+                "name": "EvoReview", "head_sha": head_sha,
+                "status": "completed", "conclusion": conclusion,
+                "output": {"title": title[:255], "summary": summary[:65000]},
+            },
+        )
+
     def post_review(
         self, repository: str, number: int, body: str,
         comments: list, event: str = "COMMENT",

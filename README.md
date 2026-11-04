@@ -16,7 +16,7 @@ English | [**简体中文**](docs/README.zh-CN.md) | [Documentation](docs/INDEX.
 - `agentic` mode: collaborative Lead, Security, Correctness/Reliability, and Critic agents
 - SQLite persistence for task state, execution records, and final reports
 - JSON API and Markdown reports
-- HMAC-SHA256 webhook signature verification and optional GitHub PR comment write-back, with opt-in inline review comments
+- HMAC-SHA256 webhook signature verification and optional GitHub PR comment write-back, with opt-in inline review comments and Check Runs
 - Web console, task dashboard, and Prometheus metrics
 - Normal tasks use five base LLM calls (2 Lead, 1 per worker, 1 Critic); each worker may take at most one read-only tool step, for up to seven calls when tools are used. High-risk tasks allow at most one worker rework round
 - Closed-loop auto-fix via LLM unified patch, AST/CST transforms, isolated-copy before/after test comparison, and Draft-PR-only delivery
@@ -239,6 +239,8 @@ Then open a new PR, reopen a PR, or push a commit to a PR. In GitHub **Settings 
 Results are stored only in the console by default. PR comments are written back only when `EVOAGENT_AUTO_POST_REVIEW=true`.
 
 Set `EVOAGENT_INLINE_REVIEW_COMMENTS=true` to additionally post each accepted finding as a GitHub inline review comment on its changed line. This requires `Pull requests: Read and write`; inline delivery is best-effort and a failure does not affect the summary comment or the review result.
+
+Set `EVOAGENT_AUTO_POST_CHECKS=true` to publish a completed `EvoReview` Check Run for the reviewed commit. High-risk findings produce `failure`, other findings `neutral`, and a clean review `success`. Check Runs require a GitHub App with `Checks: write`; a PAT generally cannot create them. Check delivery is also best-effort.
 
 Auto-fix only covers rules that are deterministically safe, such as debug output, `shell=True`, and hardcoded Python credentials; results are always committed to a new `evoagent/fix-pr-*` branch and never modify the source branch directly.
 

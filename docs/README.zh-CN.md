@@ -16,7 +16,7 @@
 - `agentic` 运行模式：Lead、Security、Correctness/Reliability、Critic 多 Agent 协作
 - SQLite 保存任务状态、执行记录和最终报告
 - JSON API 与 Markdown 报告
-- webhook HMAC-SHA256 签名校验，以及可选的 GitHub PR 评论回写和内联审查评论
+- webhook HMAC-SHA256 签名校验，以及可选的 GitHub PR 评论回写、内联审查评论和 Check Run
 - Web 管理台、任务 Dashboard 与 Prometheus 指标
 - 普通任务使用 5 次基础 LLM 调用（Lead 2 次、双 Worker 各 1 次、Critic 1 次）；每个 Worker 最多可额外执行一次只读工具步骤，使用工具时最多 7 次调用。高风险任务最多允许一轮 Worker 返工
 - LLM unified patch、AST/CST、隔离副本前后测试对比与仅 Draft PR 的修复闭环
@@ -239,6 +239,8 @@ Invoke-RestMethod https://<公网域名>/health
 默认只在管理台保存结果。只有 `EVOAGENT_AUTO_POST_REVIEW=true` 时才会向 PR 回写评论。
 
 设置 `EVOAGENT_INLINE_REVIEW_COMMENTS=true` 后，每条被接受的 Finding 还会以 GitHub 内联审查评论的形式挂到对应新增行。该功能需要 `Pull requests: Read and write` 权限；内联投递是尽力而为，失败不会影响总结评论或审查结果。
+
+设置 `EVOAGENT_AUTO_POST_CHECKS=true` 后，会为被审查的 commit 发布一个完成的 `EvoReview` Check Run。高风险 Finding 结果为 `failure`，其他 Finding 为 `neutral`，干净审查为 `success`。Check Run 需要 GitHub App 的 `Checks: write` 权限；PAT 通常无法创建。Check Run 投递同样是尽力而为。
 
 自动修复只覆盖可确定安全的规则，例如调试输出、`shell=True` 和硬编码 Python 凭据；结果始终提交到新的 `evoagent/fix-pr-*` 分支，不直接修改源分支。
 

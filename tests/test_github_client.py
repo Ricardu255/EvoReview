@@ -317,6 +317,27 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual("COMMENT", calls[0][2]["event"])
         self.assertEqual(comments, calls[0][2]["comments"])
 
+    def test_create_check_run_requires_head_sha_and_posts_output(self):
+        calls = []
+
+        def fake_json(method, url, payload=None):
+            calls.append((method, url, payload))
+            return {"id": 1}
+
+        with patch.object(self.client, "_json", side_effect=fake_json):
+            self.client.create_check_run(
+                "org/repo", "abc123", "failure", "title", "summary",
+            )
+        self.assertEqual(
+            "https://api.github.com/repos/org/repo/check-runs", calls[0][1],
+        )
+        self.assertEqual("abc123", calls[0][2]["head_sha"])
+        self.assertEqual("failure", calls[0][2]["conclusion"])
+        with self.assertRaisesRegex(ValueError, "head_sha"):
+            self.client.create_check_run(
+                "org/repo", "", "success", "title", "summary",
+            )
+
     def test_ensure_repository_access_checks_full_name_case_insensitively(self):
         with patch.object(self.client, "get_repository",
                           return_value={"full_name": "Org/Repo"}):

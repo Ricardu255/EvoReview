@@ -183,6 +183,7 @@ class ReviewLifecycleService:
                 "task_id": task_id, "repository": task["repository"],
                 "pull_request": task.get("pull_request"),
                 "github_issue_url": task_input.get("github_issue_url", ""),
+                "head_sha": task_input.get("head_sha", ""),
                 "installation_id": task_input.get("installation_id"),
                 "diff_url": task_input.get("diff_url", ""),
                 "tenant_id": task.get("tenant_id", "default"),
