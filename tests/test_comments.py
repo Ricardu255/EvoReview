@@ -22,9 +22,13 @@ REPORT = {
 class _Store:
     def __init__(self):
         self.events = []
+        self.updates = []
 
     def audit(self, *args):
         self.events.append(args)
+
+    def update_task_input(self, task_id, values):
+        self.updates.append((task_id, values))
 
 
 class _Metrics:
@@ -42,6 +46,7 @@ class _Client:
         self.comments = []
         self.reviews = []
         self.checks = []
+        self.updated_checks = []
 
     def upsert_comment(self, issue_url, body, marker):
         self.comments.append((issue_url, body, marker))
@@ -55,6 +60,15 @@ class _Client:
         if self.check_error:
             raise self.check_error
         self.checks.append((repository, head_sha, conclusion, title, summary))
+        return {"id": 77}
+
+    def update_check_run(self, repository, check_run_id, conclusion, title, summary):
+        if self.check_error:
+            raise self.check_error
+        self.updated_checks.append(
+            (repository, check_run_id, conclusion, title, summary),
+        )
+        return {"id": check_run_id}
 
 
 def service(inline, client, checks=False):
@@ -149,6 +163,20 @@ class InlineCommentTests(unittest.TestCase):
             event[2] == "check_run.failed" for event in store.events
         ))
         self.assertIn(("check_runs_failed_total", 1), metrics.counters)
+
+    def test_redelivery_does_not_duplicate_inline_or_check_run(self):
+        client = _Client()
+        comments, _store, _metrics = service(True, client, checks=True)
+        task_input = {}
+        for _ in range(2):
+            self.assertTrue(comments.deliver(
+                "https://github.test/issue", None, "task", "tenant", REPORT,
+                "org/repo", 5, "head-sha", task_input,
+            ))
+        self.assertEqual(1, len(client.reviews))
+        self.assertEqual(1, len(client.checks))
+        self.assertEqual(1, len(client.updated_checks))
+        self.assertEqual(77, task_input["check_run_id"])
 
     def test_check_run_is_disabled_without_head_sha(self):
         client = _Client()
