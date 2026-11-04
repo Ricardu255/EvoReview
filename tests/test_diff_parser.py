@@ -93,3 +93,24 @@ diff --git a/b.py b/b.py
             [(1, "new"), (20, "new two")],
             [(item.line, item.content) for item in parsed.added_lines],
         )
+
+    def test_exhausted_hunk_counts_do_not_swallow_the_next_file(self):
+        diff = """--- a/a.py
++++ b/a.py
+@@ -1,2 +1,2 @@
+-old
++new
++extra
++not-part-of-the-hunk
+--- a/b.py
++++ b/b.py
+@@ -1 +1 @@
+-old b
++new b
+"""
+        parsed = parse_unified_diff(diff)
+        self.assertEqual(["a.py", "b.py"], parsed.files)
+        added = [(item.path, item.content) for item in parsed.added_lines]
+        self.assertIn(("a.py", "new"), added)
+        self.assertIn(("b.py", "new b"), added)
+        self.assertNotIn("not-part-of-the-hunk", {item[1] for item in added})

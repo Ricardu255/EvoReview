@@ -48,14 +48,23 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
                 if raw.startswith("\\ No newline"):
                     continue
                 if raw.startswith("+"):
+                    if new_remaining <= 0:
+                        in_hunk = False
+                        continue
                     added.append(ChangedLine(current_path or "unknown", new_line, raw[1:]))
                     new_line += 1
                     new_remaining -= 1
                 elif raw.startswith("-"):
+                    if old_remaining <= 0:
+                        in_hunk = False
+                        continue
                     old_remaining -= 1
                 else:
                     # Context line.  A blank line in a diff may have lost its
                     # leading space in transport; treat it as context.
+                    if old_remaining <= 0 or new_remaining <= 0:
+                        in_hunk = False
+                        continue
                     new_line += 1
                     old_remaining -= 1
                     new_remaining -= 1
