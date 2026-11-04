@@ -44,6 +44,21 @@ class WebAssetTests(unittest.TestCase):
         self.assertIn("/v1/skills/llm-review/versions", source)
         self.assertIn('$("#prompt-versions").textContent', source)
 
+    def test_admin_view_is_wired(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        source = (WEB / "app.js").read_text(encoding="utf-8")
+        for element_id in (
+            "view-admin", "admin-users", "admin-grants", "admin-alerts",
+            "admin-audit", "user-form", "grant-form",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertIn('id="%s"' % element_id, html)
+        for route in (
+            "/v1/users", "/v1/repository-grants", "/api/alerts", "/api/audit",
+        ):
+            with self.subTest(route=route):
+                self.assertIn(route, source)
+
 
 if __name__ == "__main__":
     unittest.main()

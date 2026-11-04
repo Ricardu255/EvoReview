@@ -45,6 +45,7 @@
       <button class="nav-item bookmark" data-view="tasks" aria-label="03 任务中心 · Cabinet" title="任务中心 · Cabinet"><span class="bm-no">03</span><span class="bm-cn">任务中心</span><span class="bm-fr" aria-hidden="true">Cabinet</span></button>
       <button class="nav-item bookmark" data-view="skills" aria-label="04 Skills · Bibliothèque" title="Skills · Bibliothèque"><span class="bm-no">04</span><span class="bm-cn">技能</span><span class="bm-fr" aria-hidden="true">Bibliothèque</span></button>
       <button class="nav-item bookmark" data-view="evolution" aria-label="05 演进实验室 · Laboratoire" title="演进实验室 · Laboratoire"><span class="bm-no">05</span><span class="bm-cn">演进</span><span class="bm-fr" aria-hidden="true">Laboratoire</span></button>
+      <button class="nav-item bookmark" data-view="admin" aria-label="06 管理 · Administration" title="管理 · Administration"><span class="bm-no">06</span><span class="bm-cn">管理</span><span class="bm-fr" aria-hidden="true">Administration</span></button>
     </nav>
 
     <main id="main-content" tabindex="-1">
@@ -306,6 +307,54 @@
               <div class="result empty" id="evolution-result" aria-live="polite">演进结果将在这里显示</div>
             </article>
           </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-admin">
+        <div class="page-head inline">
+          <div>
+            <span class="page-kicker">06 · Administration</span>
+            <h2 class="page-title">租户管理</h2>
+            <p class="page-lede">管理当前租户的用户、仓库授权、告警与审计记录。所有操作受 Bearer Token 与 RBAC 约束。</p>
+          </div>
+          <button class="btn-text" id="reload-admin">刷新管理数据 →</button>
+        </div>
+        <div class="panels">
+          <article class="paper-card plain">
+            <div class="panel-head"><h3>租户用户</h3><span class="small">MEMBRES</span></div>
+            <div id="admin-users" class="task-list"><div class="list-loading"></div></div>
+            <form id="user-form">
+              <div class="field-row">
+                <label class="field"><span>用户名</span><input name="username" autocomplete="off" required></label>
+                <label class="field"><span>角色</span>
+                  <select name="role">
+                    <option value="maintainer">maintainer</option>
+                    <option value="auditor">auditor</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </label>
+              </div>
+              <label class="field"><span>初始密码</span><input name="password" type="password" minlength="10" autocomplete="new-password" required></label>
+              <button class="btn-primary" type="submit">创建 / 更新成员</button>
+            </form>
+          </article>
+          <article class="paper-card plain">
+            <div class="panel-head"><h3>仓库授权</h3><span class="small">DÉPÔTS</span></div>
+            <div id="admin-grants" class="task-list"><div class="list-loading"></div></div>
+            <form id="grant-form">
+              <label class="field"><span>仓库</span><input name="repository" placeholder="owner/repository" required></label>
+              <label class="check"><input name="auto_fix" type="checkbox"><span>允许自动修复</span></label>
+              <button class="btn-primary" type="submit">授予仓库权限</button>
+            </form>
+          </article>
+          <article class="paper-card plain">
+            <div class="panel-head"><h3>租户告警</h3><span class="small">ALERTES</span></div>
+            <div id="admin-alerts" class="task-list"><div class="list-loading"></div></div>
+          </article>
+          <article class="paper-card plain">
+            <div class="panel-head"><h3>审计记录</h3><span class="small">REGISTRE</span></div>
+            <pre class="status-lines" id="admin-audit">正在读取审计记录…</pre>
+          </article>
         </div>
       </section>
 

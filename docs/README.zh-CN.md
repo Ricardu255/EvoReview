@@ -9,7 +9,7 @@
 <p align="center">
   <img src="assets/ui-overview.png" alt="EvoReview 纸册风格 Web 控制台总览">
 </p>
-<p align="center"><em>纸册风格 Web 控制台：运行总览、任务报告、Skills 与演进实验室。</em></p>
+<p align="center"><em>纸册风格 Web 控制台：运行总览、任务报告、Skills、演进实验室与租户管理。</em></p>
 
 - 审查统一 diff，输出结构化问题、修复建议和测试建议
 - GitHub `pull_request` webhook（`opened`、`reopened`、`synchronize`）

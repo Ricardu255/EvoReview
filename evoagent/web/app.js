@@ -7,6 +7,7 @@ const titles = {
   tasks: "任务中心",
   skills: "Skill 注册中心",
   evolution: "演进实验室",
+  admin: "租户管理",
 };
 
 const stateLabels = {
@@ -126,6 +127,7 @@ function applyView(view) {
   if (view === "tasks") loadTasks();
   if (view === "skills") loadSkills();
   if (view === "evolution") loadFailures();
+  if (view === "admin") loadAdmin();
   window.scrollTo({ top: 0, behavior: reduceMotion.matches ? "auto" : "smooth" });
   const main = $("#main-content");
   if (main) main.focus({ preventScroll: true });
@@ -757,11 +759,184 @@ $("#task-repository-filter").addEventListener("input", () => {
   taskFilterTimer = setTimeout(loadTasks, 250);
 });
 
+async function loadAdmin() {
+  const [users, grants, alerts, audit] = await Promise.allSettled([
+    api("/v1/users"),
+    api("/v1/repository-grants"),
+    api("/api/alerts"),
+    api("/api/audit?limit=20"),
+  ]);
+  const usersRoot = $("#admin-users");
+  if (users.status === "fulfilled") {
+    const values = users.value.users || [];
+    usersRoot.innerHTML = values.length ? values.map((item) => `
+      <div class="task-row">
+        <span class="task-main"><span class="task-glyph">U</span><span class="task-copy">
+          <span class="task-name">${escapeHtml(item.username)}</span>
+          <span class="task-meta"><span>${escapeHtml(item.role)}</span><span>${item.active ? "启用" : "停用"}</span></span>
+        </span></span>
+        <button class="btn-text" data-user-action="toggle" data-username="${escapeAttr(item.username)}" data-active="${item.active ? "true" : "false"}">${item.active ? "停用" : "启用"}</button>
+      </div>`).join("") : '<div class="empty-state"><span>尚无租户用户</span></div>';
+  } else {
+    usersRoot.innerHTML = '<div class="empty-state"><span>用户列表读取失败</span></div>';
+  }
+
+  const grantsRoot = $("#admin-grants");
+  if (grants.status === "fulfilled") {
+    const values = grants.value.grants || [];
+    grantsRoot.innerHTML = values.length ? values.map((item) => `
+      <div class="task-row">
+        <span class="task-main"><span class="task-glyph">R</span><span class="task-copy">
+          <span class="task-name">${escapeHtml(item.repository)}</span>
+          <span class="task-meta"><span>${item.auto_fix ? "允许自动修复" : "仅审查"}</span></span>
+        </span></span>
+        <button class="btn-text" data-grant-revoke="${escapeAttr(item.repository)}">撤销</button>
+      </div>`).join("") : '<div class="empty-state"><span>尚未配置仓库授权；当前为单租户开放模式</span></div>';
+  } else {
+    grantsRoot.innerHTML = '<div class="empty-state"><span>仓库授权读取失败</span></div>';
+  }
+
+  const alertsRoot = $("#admin-alerts");
+  if (alerts.status === "fulfilled") {
+    const values = alerts.value.alerts || [];
+    alertsRoot.innerHTML = values.length ? values.map((item) => `
+      <div class="task-row">
+        <span class="task-main"><span class="task-glyph">!</span><span class="task-copy">
+          <span class="task-name">${escapeHtml(item.severity)} · ${escapeHtml(item.alert_key)}</span>
+          <span class="task-meta"><span>${escapeHtml(item.message)}</span><span>${escapeHtml(item.status)}</span></span>
+        </span></span>
+        ${item.status === "open" ? `<button class="btn-text" data-alert-resolve="${escapeAttr(item.id)}">解决</button>` : ""}
+      </div>`).join("") : '<div class="empty-state"><span>暂无告警</span></div>';
+  } else {
+    alertsRoot.innerHTML = '<div class="empty-state"><span>告警读取失败</span></div>';
+  }
+
+  $("#admin-audit").textContent = audit.status === "fulfilled"
+    ? (audit.value.events || []).map((item) => (
+      `${item.created_at || ""} · ${item.actor || ""} · ${item.action || ""} · ${item.resource || ""}`
+    )).join("\n") || "暂无审计记录"
+    : "审计记录读取失败";
+
+  $$("[data-user-action]").forEach((button) => {
+    button.addEventListener("click", () => toggleAdminUser(button));
+  });
+  $$("[data-grant-revoke]").forEach((button) => {
+    button.addEventListener("click", () => revokeAdminGrant(button));
+  });
+  $$("[data-alert-resolve]").forEach((button) => {
+    button.addEventListener("click", () => resolveAdminAlert(button));
+  });
+}
+
+async function toggleAdminUser(button) {
+  const username = button.dataset.username;
+  const active = button.dataset.active !== "true";
+  setButtonBusy(button, true, "保存中…");
+  try {
+    await api(`/v1/users/${encodeURIComponent(username)}/active`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    });
+    toast(active ? "用户已启用" : "用户已停用");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function revokeAdminGrant(button) {
+  const repository = button.dataset.grantRevoke;
+  setButtonBusy(button, true, "撤销中…");
+  try {
+    await api(`/v1/repository-grants?repository=${encodeURIComponent(repository)}`, {
+      method: "DELETE",
+    });
+    toast("仓库授权已撤销");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function resolveAdminAlert(button) {
+  setButtonBusy(button, true, "处理中…");
+  try {
+    await api(`/api/alerts/${encodeURIComponent(button.dataset.alertResolve)}/resolve`, {
+      method: "POST",
+    });
+    toast("告警已解决");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+$("#user-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $('button[type="submit"]', form);
+  const values = new FormData(form);
+  setButtonBusy(button, true, "创建中…");
+  try {
+    const data = await api("/v1/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: values.get("username"),
+        password: values.get("password"),
+        role: values.get("role"),
+      }),
+    });
+    toast(data.created ? "用户已创建" : "成员关系已更新");
+    form.reset();
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+$("#grant-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $('button[type="submit"]', form);
+  const values = new FormData(form);
+  setButtonBusy(button, true, "授权中…");
+  try {
+    await api("/v1/repository-grants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repository: values.get("repository"),
+        auto_fix: values.get("auto_fix") === "on",
+      }),
+    });
+    toast("仓库授权已保存");
+    form.reset();
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+$("#reload-admin").addEventListener("click", loadAdmin);
+
 $("#refresh").addEventListener("click", async () => {  const view = viewFromHash(location.hash.slice(1));
   if (view === "overview") await loadDashboard();
   else if (view === "tasks") await loadTasks();
   else if (view === "skills") await loadSkills();
   else if (view === "evolution") await loadFailures();
+  else if (view === "admin") await loadAdmin();
   else await loadDashboard();
   toast("数据已刷新");
 });
