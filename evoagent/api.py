@@ -22,6 +22,7 @@ from .adapters.metrics import metrics
 from .domain.modes import public_taxonomy, resolve_mode
 from .domain.report import to_markdown
 from .errors import AuthenticationRequired, ModelNotConfigured
+from .openapi import build_openapi
 from .service import ReviewService
 
 
@@ -255,6 +256,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             # Unauthenticated liveness probe only; deployment details live
             # behind authentication at /health/detail.
             self._send_json(200, {"status": "ok"})
+            return
+        if path == "/openapi.json":
+            self._send_json(200, build_openapi())
             return
         if path == "/github/install":
             if not self.settings.github_app_slug or not self.settings.github_setup_state:

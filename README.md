@@ -251,6 +251,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Unauthenticated liveness check (status only) |
+| `GET` | `/openapi.json` | Machine-readable OpenAPI 3.0 contract for the public API |
 | `GET` | `/health/detail` | Deployment details; requires the `read` permission |
 | `POST` | `/v1/auth/login` | Log in and obtain a short-lived tenant-bound Bearer token |
 | `POST` | `/v1/auth/token` | Issue a long-lived tenant-bound Bearer token (manage permission) |
