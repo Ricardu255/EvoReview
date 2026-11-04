@@ -39,6 +39,22 @@ class ProductionFeatureTests(unittest.TestCase):
         self.assertIsNone(self.store.get("b", principal.tenant_id))
         self.assertEqual(["a"], [item["id"] for item in self.store.list_tasks(10, "tenant-a")])
 
+    def test_api_tokens_are_tenant_bound_and_follow_user_state(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="alice",
+            bootstrap_password="correct-horse", default_tenant_id="tenant-a",
+        )
+        issued = auth.issue_token("alice", "tenant-a", ttl_seconds=120)
+        self.assertEqual(120, issued["expires_in"])
+        self.assertEqual(
+            "alice", auth.authenticate("Bearer " + issued["access_token"]).username,
+        )
+        with self.assertRaises(PermissionError):
+            auth.issue_token("alice", "tenant-b")
+        self.store.set_user_active("alice", "tenant-a", False)
+        with self.assertRaises(PermissionError):
+            auth.authenticate("Bearer " + issued["access_token"])
+
     def test_login_is_throttled_after_repeated_failures(self):
         auth = AuthManager(
             self.store, "a" * 32, bootstrap_username="alice",

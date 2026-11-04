@@ -249,6 +249,7 @@ Invoke-RestMethod https://<公网域名>/health
 | `GET` | `/health` | 未鉴权的存活检查（仅返回状态） |
 | `GET` | `/health/detail` | 部署详情；需要 `read` 权限 |
 | `POST` | `/v1/auth/login` | 登录并获取租户绑定的短期 Bearer Token |
+| `POST` | `/v1/auth/token` | 签发租户绑定的长效 Bearer Token（需要 manage 权限） |
 | `POST` | `/v1/reviews` | 创建同步审查任务 |
 | `POST` | `/v1/reviews?async=true` | 创建异步审查任务 |
 | `GET` | `/v1/tasks/{id}` | 获取状态、执行记录和报告 |

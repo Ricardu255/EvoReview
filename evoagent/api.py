@@ -580,6 +580,29 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return
                 self._send_json(200, result)
                 return
+            if path == "/v1/auth/token":
+                if not self.settings.auth_required:
+                    self._send_json(409, {"error": "authentication is disabled"})
+                    return
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                username = text_field(payload, "username").strip() or principal.username
+                tenant_id = text_field(payload, "tenant_id").strip() or principal.tenant_id
+                if tenant_id != principal.tenant_id:
+                    raise PermissionError("cannot issue tokens for another tenant")
+                ttl = payload.get("ttl_seconds")
+                if ttl is not None and (
+                    not isinstance(ttl, int) or isinstance(ttl, bool)
+                ):
+                    raise ValueError("ttl_seconds must be an integer")
+                result = self.service.auth.issue_token(username, tenant_id, ttl)
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "auth.token.issue",
+                    username, {"tenant_id": tenant_id,
+                               "expires_in": result["expires_in"]},
+                )
+                self._send_json(201, result)
+                return
             if path == "/v1/reviews":
                 principal = self._principal("review")
                 payload = self._read_json(body)
