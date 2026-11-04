@@ -440,6 +440,17 @@ class RedisWorkerTests(QueueTestCase):
         self.assertEqual(1, len(redis.deleted))
         self.assertFalse(queue.replay_dead_letter("missing", "a"))
 
+    def test_reclaim_invalid_envelope_is_dead_lettered_and_acked(self):
+        redis = _RedisDouble()
+        redis.xautoclaim = lambda *args, **kwargs: (
+            "0-0", [("9-0", {"envelope": "not-json"})], [],
+        )
+        queue = self.redis_queue(redis)
+        queue._reclaim_stale()
+        self.assertEqual(["9-0"], redis.acks)
+        self.assertEqual(1, len(redis.dlq))
+        self.assertIn("invalid replayed queue envelope", redis.dlq[0]["error"])
+
     def test_reclaim_failures_are_ignored(self):
         redis = _RedisDouble()
 
