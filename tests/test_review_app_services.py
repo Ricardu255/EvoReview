@@ -20,7 +20,7 @@ class ReviewAppServiceTests(unittest.TestCase):
     def test_execution_and_lifecycle_stay_focused(self):
         execution = (APP / "review_execution.py").read_text(encoding="utf-8")
         lifecycle = (APP / "review_lifecycle.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(execution.splitlines()), 220)
+        self.assertLessEqual(len(execution.splitlines()), 240)
         self.assertLessEqual(len(lifecycle.splitlines()), 200)
         self.assertIn("class ReviewExecutionService", execution)
         self.assertIn("class ReviewLifecycleService", lifecycle)

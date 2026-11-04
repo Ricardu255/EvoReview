@@ -30,7 +30,7 @@
 - 用户登录、RBAC、租户/仓库隔离和不可变管理审计
 - 动态 Skill manifest 校验与工具白名单（Skill 在进程内运行，不提供签名校验或进程级沙箱）
 - 自动修复后的编译/测试门禁、灰度发布与影子流量
-- OpenTelemetry Trace、Prometheus 指标和持久化告警
+- OpenTelemetry Trace、Prometheus 指标和持久化告警，可选 Webhook 投递
 
 ## 项目边界
 

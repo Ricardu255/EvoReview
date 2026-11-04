@@ -88,6 +88,7 @@ class ReviewService:
                 installation_id
             ),
             lambda: self.chat_client,
+            self.alerts.notifier,
         )
         self._github_app = GitHubApplicationService(
             self.settings, self.store, self.queue, self._policy,
@@ -236,7 +237,10 @@ class ReviewService:
             return self._reviews_app.on_dead_letter(payload, error)
         # Compatibility for callers that construct the facade with only a store.
         from .app.reviews import mark_dead_letter
-        return mark_dead_letter(self.store, metrics, payload, error)
+        return mark_dead_letter(
+            self.store, metrics, payload, error,
+            getattr(getattr(self, "alerts", None), "notifier", None),
+        )
 
     def handle_github_pull_request(
         self, payload: Dict[str, Any], delivery_id: str,

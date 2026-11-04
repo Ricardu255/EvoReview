@@ -1,9 +1,14 @@
 """Tests for the controlled benchmark corpus, metrics and observability."""
+import json
 import unittest
+import urllib.error
 from contextlib import contextmanager
+from unittest.mock import patch
 
 from evoagent.adapters.metrics import Metrics
-from evoagent.adapters.observability import AlertManager, Observability, trace_id_var
+from evoagent.adapters.observability import (
+    AlertManager, AlertNotifier, Observability, trace_id_var,
+)
 from evoagent.domain.diff_parser import parse_unified_diff
 from evoagent.evaluation.benchmark import (
     ContextRuleReviewer, _risk_scenarios, _risk_source, generate_controlled_pr_cases,
@@ -227,6 +232,53 @@ class _AlertStore:
 
 
 class AlertManagerTests(unittest.TestCase):
+    def test_webhook_notifier_posts_json_and_swallows_failures(self):
+        calls = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def fake_urlopen(request, timeout):
+            calls.append((request, timeout))
+            return Response()
+
+        notifier = AlertNotifier("https://alerts.test/hook", timeout=3)
+        with patch("evoagent.adapters.observability.urllib.request.urlopen",
+                   side_effect=fake_urlopen):
+            self.assertTrue(notifier.notify("tenant-a", "key", "critical", "boom"))
+        request, timeout = calls[0]
+        self.assertEqual("https://alerts.test/hook", request.full_url)
+        self.assertEqual(3, timeout)
+        self.assertEqual({
+            "tenant_id": "tenant-a", "alert_key": "key",
+            "severity": "critical", "message": "boom",
+        }, json.loads(request.data.decode("utf-8")))
+
+        with patch("evoagent.adapters.observability.urllib.request.urlopen",
+                   side_effect=urllib.error.URLError("down")):
+            self.assertFalse(notifier.notify("tenant-a", "key", "critical", "boom"))
+
+    def test_alert_manager_notifies_after_persisting(self):
+        class Notifier:
+            def __init__(self):
+                self.calls = []
+
+            def notify(self, *args):
+                self.calls.append(args)
+
+        store = _AlertStore(total=20, failed=7)
+        notifier = Notifier()
+        AlertManager(
+            store, failure_rate=0.2, min_samples=10, notifier=notifier,
+        ).evaluate("tenant-a")
+        self.assertEqual(1, len(store.alerts))
+        self.assertEqual(1, len(notifier.calls))
+        self.assertEqual("review-failure-rate", notifier.calls[0][1])
+
     def test_below_minimum_samples_never_alerts(self):
         store = _AlertStore(total=9, failed=9)
         AlertManager(store, failure_rate=0.2, min_samples=10).evaluate("tenant")
