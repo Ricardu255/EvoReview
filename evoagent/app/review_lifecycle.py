@@ -1,5 +1,6 @@
 """Create, enqueue, resume and cancel review tasks."""
 import hashlib
+import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -9,6 +10,9 @@ from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
 from .policies import ReviewPolicy
 from .review_execution import ReviewExecutionService
+
+
+logger = logging.getLogger("evoagent")
 
 
 class ReviewLifecycleService:
@@ -104,7 +108,10 @@ class ReviewLifecycleService:
             lane = (self.store.get(task_id, tenant_id).get("input") or {}).get(
                 "release_lane", "stable"
             )
-            self.releases.observe(tenant_id, "llm-review", False, lane)
+            try:
+                self.releases.observe(tenant_id, "llm-review", False, lane)
+            except Exception:
+                logger.exception("failed to record successful review release result")
             return {
                 "task_id": task_id, "state": "SUCCESS",
                 "report": report.to_dict(),
@@ -112,8 +119,14 @@ class ReviewLifecycleService:
         except Exception:
             task = self.store.get(task_id, tenant_id) or {}
             lane = (task.get("input") or {}).get("release_lane", "stable")
-            self.releases.observe(tenant_id, "llm-review", True, lane)
-            self.alerts.evaluate(tenant_id)
+            try:
+                self.releases.observe(tenant_id, "llm-review", True, lane)
+            except Exception:
+                logger.exception("failed to record failed review release result")
+            try:
+                self.alerts.evaluate(tenant_id)
+            except Exception:
+                logger.exception("failed to evaluate review failure alert")
             raise
 
     def enqueue_review(

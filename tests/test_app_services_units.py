@@ -268,6 +268,11 @@ class _SmallMetrics:
     def inc(self, name, value=1.0):
         self.counters.append((name, value))
 
+    @staticmethod
+    def timer(name):
+        from contextlib import nullcontext
+        return nullcontext()
+
 
 class _BrokenQueue:
     backend = "memory"
@@ -311,6 +316,33 @@ class _LifecycleExecution:
         }
 
 
+class _Report:
+    def to_dict(self):
+        return {"summary": "ok"}
+
+
+class _SyncExecution(_LifecycleExecution):
+    def run_review(self, *args, **kwargs):
+        return _Report()
+
+
+class _Observability:
+    @staticmethod
+    def span(*args, **kwargs):
+        from contextlib import nullcontext
+        return nullcontext()
+
+
+class _FailingReleases:
+    def observe(self, *args):
+        raise RuntimeError("release store unavailable")
+
+
+class _FailingAlerts:
+    def evaluate(self, *args):
+        raise RuntimeError("alert store unavailable")
+
+
 class ReviewLifecycleFailureTests(unittest.TestCase):
     def test_queue_submit_failure_marks_the_created_task_failed(self):
         store = _LifecycleStore()
@@ -325,6 +357,18 @@ class ReviewLifecycleFailureTests(unittest.TestCase):
         task = next(iter(store.tasks.values()))
         self.assertEqual("FAILED", task["state"])
         self.assertIn("queue unavailable", task["error"])
+
+    def test_release_telemetry_failure_does_not_fail_a_successful_review(self):
+        store = _LifecycleStore()
+        service = ReviewLifecycleService(
+            store, _BrokenQueue(),
+            ReviewPolicy(settings(), _PolicyStore(), {}, lambda tenant: []),
+            _Observability(), _FailingReleases(), _FailingAlerts(),
+            _SmallMetrics(), lambda: object(), _SyncExecution(),
+        )
+        result = service.create_review("org/repo", "diff", 1, tenant_id="tenant-a")
+        self.assertEqual("SUCCESS", result["state"])
+        self.assertEqual({"summary": "ok"}, result["report"])
 
 
 class GitHubApplicationServiceTests(unittest.TestCase):

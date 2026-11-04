@@ -204,12 +204,21 @@ class ReviewExecutionService:
                 )
             self.metrics.inc("reviews_total")
             lane = (task.get("input") or {}).get("release_lane", "stable")
-            self.releases.observe(tenant_id, "llm-review", False, lane)
+            try:
+                self.releases.observe(tenant_id, "llm-review", False, lane)
+            except Exception:
+                logger.exception("failed to record successful review release result")
         except Exception:
             self.metrics.inc("reviews_failed_total")
             lane = (task.get("input") or {}).get("release_lane", "stable")
-            self.releases.observe(tenant_id, "llm-review", True, lane)
-            self.alerts.evaluate(tenant_id)
+            try:
+                self.releases.observe(tenant_id, "llm-review", True, lane)
+            except Exception:
+                logger.exception("failed to record failed review release result")
+            try:
+                self.alerts.evaluate(tenant_id)
+            except Exception:
+                logger.exception("failed to evaluate review failure alert")
             raise
         # Comment delivery is a separate side effect: a GitHub outage must not
         # fail (and re-run) an otherwise successful review.
