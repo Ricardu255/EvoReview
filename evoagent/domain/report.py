@@ -68,6 +68,34 @@ def _inline(value: Any, limit: int = 200) -> str:
     )[:limit]
 
 
+def to_inline_markdown(finding: Dict[str, Any], max_chars: int = 2000) -> str:
+    """Render one accepted finding as a bounded GitHub inline-comment body."""
+    severity = _inline(finding.get("severity", "medium"), 40).upper()
+    rule_id = _inline(finding.get("rule_id", ""), 80)
+    lines = [
+        "**%s** · `%s`" % (severity, rule_id),
+        "",
+        "**%s**" % _inline(finding.get("title", "Review finding"), 200),
+        "",
+        _sanitize_text(finding.get("explanation", ""), 800),
+        "",
+        "**Evidence:** `%s`" % _inline(
+            redact_secret_evidence(
+                finding.get("rule_id", ""), finding.get("evidence", ""),
+            ),
+            300,
+        ),
+        "",
+        "**Fix:** %s" % _sanitize_text(finding.get("fix", ""), 500),
+        "",
+        "**Test:** %s" % _sanitize_text(finding.get("test", ""), 500),
+    ]
+    text = "\n".join(lines).strip()
+    if len(text) > max_chars:
+        text = text[:max_chars].rstrip() + "\n\n… (truncated)"
+    return text
+
+
 def to_markdown(
     report: Dict[str, Any], max_findings: int = MAX_RENDERED_FINDINGS,
 ) -> str:
