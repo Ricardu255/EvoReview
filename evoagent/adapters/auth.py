@@ -78,6 +78,7 @@ class AuthManager:
         bootstrap_username: str = "", bootstrap_password: str = "",
         default_tenant_id: str = "default",
         login_max_failures: int = 10, login_window_seconds: int = 300,
+        api_token_ttl_seconds: int = 30 * 24 * 3600,
     ):
         self.store = store
         self.secret = secret.encode("utf-8")
@@ -85,6 +86,9 @@ class AuthManager:
         self.default_tenant_id = default_tenant_id
         self.login_max_failures = max(1, int(login_max_failures))
         self.login_window_seconds = max(1, int(login_window_seconds))
+        self.api_token_ttl_seconds = max(
+            60, min(int(api_token_ttl_seconds), 90 * 24 * 3600),
+        )
         # Equalize the work done for unknown users so login timing does not
         # disclose whether a username exists.
         self._dummy_hash = hash_password(uuid.uuid4().hex)
@@ -196,6 +200,32 @@ class AuthManager:
 
     def list_tenant_users(self, tenant_id: str) -> list:
         return self.store.list_users(tenant_id)
+
+    def issue_token(
+        self, username: str, tenant_id: str, ttl_seconds: Optional[int] = None,
+    ) -> Dict[str, object]:
+        user = self.store.get_user(str(username))
+        if not user or not user.get("active"):
+            raise PermissionError("invalid user")
+        memberships = {
+            str(item["tenant_id"]): str(item["role"])
+            for item in user.get("memberships", [])
+        }
+        role = memberships.get(str(tenant_id))
+        if not role:
+            raise PermissionError("user is not a member of the requested tenant")
+        ttl = max(60, min(
+            int(ttl_seconds or self.api_token_ttl_seconds), 90 * 24 * 3600,
+        ))
+        now = int(time.time())
+        token = self._encode({
+            "sub": user["id"], "username": user["username"], "tenant": str(tenant_id),
+            "role": role, "iat": now, "exp": now + ttl,
+        })
+        return {
+            "access_token": token, "token_type": "Bearer",
+            "expires_in": ttl, "tenant_id": str(tenant_id), "role": role,
+        }
 
     def create_tenant_user(
         self, username: str, password: str, tenant_id: str, role: str,

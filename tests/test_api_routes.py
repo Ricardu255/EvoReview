@@ -9,6 +9,7 @@ import hmac
 import io
 import json
 import unittest
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from evoagent.adapters.auth import Principal
@@ -192,9 +193,25 @@ class FakeAuth:
     def __init__(self):
         self.calls = []
 
+    def authenticate(self, authorization):
+        return Principal("u", "admin", "default", "admin")
+
+    @staticmethod
+    def require(principal, permissions):
+        if any(not principal.can(item) for item in permissions):
+            raise PermissionError("permission denied")
+
     def list_tenant_users(self, tenant_id):
         self.calls.append(("list", tenant_id))
         return [{"username": "alice", "role": "maintainer", "active": True}]
+
+    def issue_token(self, username, tenant_id, ttl_seconds=None):
+        self.calls.append(("token", username, tenant_id, ttl_seconds))
+        return {
+            "access_token": "issued-token", "token_type": "Bearer",
+            "expires_in": ttl_seconds or 100, "tenant_id": tenant_id,
+            "role": "maintainer",
+        }
 
     def create_tenant_user(self, username, password, tenant_id, role):
         self.calls.append(("create", username, password, tenant_id, role))
@@ -718,6 +735,30 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertEqual(404, self.call("/api/alerts/2/resolve", "POST").status)
         self.assertTrue(any(
             event[2] == "alert.resolve" for event in self.service.store.audit_events
+        ))
+
+    def test_api_token_issuance(self):
+        secure = replace(self.settings, auth_required=True)
+
+        def post(payload):
+            response = Handler(
+                self.service, secure, "/v1/auth/token",
+                body=json.dumps(payload).encode("utf-8"),
+            )
+            response.do_POST()
+            return response
+
+        created = post({})
+        self.assertEqual(201, created.status)
+        self.assertEqual("issued-token", created.body["access_token"])
+        self.assertEqual("default", created.body["tenant_id"])
+        self.assertEqual(
+            ("token", "admin", "default", None), self.service.auth.calls[-1],
+        )
+        self.assertEqual(403, post({"tenant_id": "other"}).status)
+        self.assertEqual(400, post({"ttl_seconds": "x"}).status)
+        self.assertTrue(any(
+            event[2] == "auth.token.issue" for event in self.service.store.audit_events
         ))
 
     def test_user_management_routes(self):

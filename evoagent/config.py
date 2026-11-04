@@ -133,6 +133,7 @@ class Settings:
     repository_roots_json: str = "{}"
     require_repository_grants: bool = False
     session_ttl_seconds: int = 3600
+    api_token_ttl_seconds: int = 30 * 24 * 3600
     webhook_max_age_seconds: int = 600
     # Only these reverse proxies may supply X-Forwarded-For; any other peer is
     # identified by its socket address.  Empty keeps the historical behaviour.
@@ -264,6 +265,10 @@ class Settings:
             raise ValueError("alert window and minimum samples must be at least 1")
         if self.session_ttl_seconds < 1 or self.webhook_max_age_seconds < 1:
             raise ValueError("session TTL and webhook age must be at least 1 second")
+        if not 60 <= self.api_token_ttl_seconds <= 90 * 24 * 3600:
+            raise ValueError(
+                "EVOAGENT_API_TOKEN_TTL_SECONDS must be between 60 and 7776000"
+            )
         if self.memory_recall_limit < 0 or self.memory_working_ttl_seconds < 0:
             raise ValueError("memory limits cannot be negative")
         if self.agent_context_input_tokens < 1 or self.agent_token_budget < 1:
@@ -386,6 +391,9 @@ class Settings:
                 "EVOAGENT_REQUIRE_REPOSITORY_GRANTS", False
             ),
             session_ttl_seconds=_int("EVOAGENT_SESSION_TTL_SECONDS", 3600),
+            api_token_ttl_seconds=_int(
+                "EVOAGENT_API_TOKEN_TTL_SECONDS", 30 * 24 * 3600
+            ),
             webhook_max_age_seconds=_int("EVOAGENT_WEBHOOK_MAX_AGE_SECONDS", 600),
             trusted_proxies=_trusted_proxies(
                 os.getenv("EVOAGENT_TRUSTED_PROXIES", "")

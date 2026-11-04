@@ -249,6 +249,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `GET` | `/health` | Unauthenticated liveness check (status only) |
 | `GET` | `/health/detail` | Deployment details; requires the `read` permission |
 | `POST` | `/v1/auth/login` | Log in and obtain a short-lived tenant-bound Bearer token |
+| `POST` | `/v1/auth/token` | Issue a long-lived tenant-bound Bearer token (manage permission) |
 | `POST` | `/v1/reviews` | Create a synchronous review task |
 | `POST` | `/v1/reviews?async=true` | Create an asynchronous review task |
 | `GET` | `/v1/tasks/{id}` | Get status, execution record, and report |
