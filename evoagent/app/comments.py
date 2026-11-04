@@ -53,8 +53,11 @@ class ReviewCommentService:
         self, issue_url: str, installation_id: Optional[int], task_id: str,
         tenant_id: str, report: Any, repository: str = "",
         pull_request: Optional[int] = None, head_sha: str = "",
+        task_input: Optional[Dict[str, Any]] = None,
     ) -> bool:
         value = report.to_dict() if hasattr(report, "to_dict") else report
+        if task_input is None:
+            task_input = {}
         error = None
         for attempt in range(1, self.ATTEMPTS + 1):
             try:
@@ -67,9 +70,11 @@ class ReviewCommentService:
                 self.metrics.inc("comment_delivered_total")
                 self._deliver_inline(
                     client, task_id, tenant_id, repository, pull_request, value,
+                    task_input,
                 )
                 self._deliver_check_run(
                     client, task_id, tenant_id, repository, head_sha, value,
+                    task_input,
                 )
                 return True
             except Exception as exc:
@@ -95,10 +100,13 @@ class ReviewCommentService:
     def _deliver_inline(
         self, client: Any, task_id: str, tenant_id: str, repository: str,
         pull_request: Optional[int], value: Dict[str, Any],
+        task_input: Dict[str, Any],
     ) -> None:
         if not getattr(self.settings, "inline_review_comments", False):
             return
         if not repository or pull_request is None:
+            return
+        if task_input.get("inline_review_delivered"):
             return
         try:
             comments = []
@@ -120,6 +128,8 @@ class ReviewCommentService:
                 comments,
             )
             self.metrics.inc("inline_comments_delivered_total", len(comments))
+            task_input["inline_review_delivered"] = True
+            self._remember_delivery(task_id, {"inline_review_delivered": True})
         except Exception as exc:
             # The summary comment is already delivered.  Inline comments are a
             # best-effort enhancement and must not trigger a full redelivery.
@@ -139,6 +149,7 @@ class ReviewCommentService:
     def _deliver_check_run(
         self, client: Any, task_id: str, tenant_id: str, repository: str,
         head_sha: str, value: Dict[str, Any],
+        task_input: Dict[str, Any],
     ) -> None:
         if not getattr(self.settings, "auto_post_checks", False):
             return
@@ -159,9 +170,20 @@ class ReviewCommentService:
         )
         summary = str(value.get("summary", ""))[:65000]
         try:
-            client.create_check_run(
-                repository, head_sha, conclusion, title, summary,
-            )
+            check_run_id = task_input.get("check_run_id")
+            if check_run_id:
+                client.update_check_run(
+                    repository, int(check_run_id), conclusion, title, summary,
+                )
+            else:
+                result = client.create_check_run(
+                    repository, head_sha, conclusion, title, summary,
+                )
+                if isinstance(result, dict) and result.get("id"):
+                    task_input["check_run_id"] = result["id"]
+                    self._remember_delivery(
+                        task_id, {"check_run_id": result["id"]},
+                    )
             self.metrics.inc("check_runs_delivered_total")
         except Exception as exc:
             logger.warning(
@@ -176,6 +198,12 @@ class ReviewCommentService:
                 )
             except Exception:
                 logger.exception("failed to audit check-run failure")
+
+    def _remember_delivery(self, task_id: str, values: Dict[str, Any]) -> None:
+        try:
+            self.store.update_task_input(task_id, values)
+        except Exception:
+            logger.exception("failed to persist GitHub delivery state")
 
     def redeliver(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
         """Re-post a stored review comment after a transient GitHub outage."""
@@ -192,6 +220,6 @@ class ReviewCommentService:
             issue_url, task_input.get("installation_id"), task_id,
             task.get("tenant_id") or tenant_id or "default", task["report"],
             task.get("repository", ""), task.get("pull_request"),
-            task_input.get("head_sha", ""),
+            task_input.get("head_sha", ""), task_input,
         )
         return {"task_id": task_id, "delivered": delivered}

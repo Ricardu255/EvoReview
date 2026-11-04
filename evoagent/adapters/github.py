@@ -68,6 +68,20 @@ class GitHubClient:
             },
         )
 
+    def update_check_run(
+        self, repository: str, check_run_id: int, conclusion: str,
+        title: str, summary: str,
+    ) -> dict:
+        repository = self._validate_repository(repository)
+        return self._json(
+            "PATCH", "https://api.github.com/repos/%s/check-runs/%d"
+            % (repository, int(check_run_id)),
+            {
+                "status": "completed", "conclusion": conclusion,
+                "output": {"title": title[:255], "summary": summary[:65000]},
+            },
+        )
+
     def post_review(
         self, repository: str, number: int, body: str,
         comments: list, event: str = "COMMENT",
