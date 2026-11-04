@@ -163,6 +163,15 @@ class SqliteObservabilityStoreMixin:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def resolve_alert(self, tenant_id: str, alert_id: int) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE alerts SET status='resolved',updated_at=? "
+                "WHERE tenant_id=? AND id=? AND status='open'",
+                (utc_now(), tenant_id, int(alert_id)),
+            )
+        return cursor.rowcount > 0
+
     def dashboard_stats(
         self, tenant_id: Optional[str] = None,
         window_seconds: Optional[int] = None,
@@ -203,9 +212,15 @@ class SqliteObservabilityStoreMixin:
                     "SELECT COUNT(*) AS n FROM failure_cases f JOIN tasks t ON t.id=f.task_id "
                     "WHERE f.resolved=0 AND t.tenant_id=?", (tenant_id,)
                 ).fetchone()["n"]
-            active_skills = conn.execute(
-                "SELECT COUNT(*) AS n FROM skill_versions WHERE active = 1"
-            ).fetchone()["n"]
+            if tenant_id is None:
+                active_skills = conn.execute(
+                    "SELECT COUNT(*) AS n FROM skill_versions WHERE active = 1"
+                ).fetchone()["n"]
+            else:
+                active_skills = conn.execute(
+                    "SELECT COUNT(*) AS n FROM skill_versions "
+                    "WHERE active = 1 AND tenant_id=?", (tenant_id,)
+                ).fetchone()["n"]
             if tenant_id is None:
                 active_skills += conn.execute(
                     "SELECT COUNT(*) AS n FROM skill_artifact_versions WHERE active=1"

@@ -39,6 +39,9 @@ class ObservabilityStorePort(Protocol):
     def list_alerts(self, tenant_id: str, limit: int = 100) -> list:
         ...
 
+    def resolve_alert(self, tenant_id: str, alert_id: int) -> bool:
+        ...
+
     def dashboard_stats(
         self, tenant_id: Optional[str] = None,
         window_seconds: Optional[int] = None,

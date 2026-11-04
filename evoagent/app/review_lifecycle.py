@@ -143,13 +143,21 @@ class ReviewLifecycleService:
             "github_issue_url": github_issue_url,
             "installation_id": installation_id,
         })
-        self.queue.submit({
-            "task_id": task_id, "repository": repository,
-            "pull_request": pull_request,
-            "github_issue_url": github_issue_url,
-            "installation_id": installation_id,
-            "tenant_id": tenant_id,
-        }, message_id=task_id)
+        try:
+            self.queue.submit({
+                "task_id": task_id, "repository": repository,
+                "pull_request": pull_request,
+                "github_issue_url": github_issue_url,
+                "installation_id": installation_id,
+                "tenant_id": tenant_id,
+            }, message_id=task_id)
+        except Exception as exc:
+            trace = (self.store.get(task_id, tenant_id) or {}).get("trace", [])
+            step = max([int(item["step"]) for item in trace] or [0]) + 1
+            self.store.fail(task_id, str(exc), TraceEvent(
+                step, TaskState.FAILED, "Queue delivery failed: %s" % exc, utc_now(),
+            ))
+            raise
         self.metrics.inc("reviews_enqueued_total")
         return {
             "task_id": task_id, "state": "PENDING",

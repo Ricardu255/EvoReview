@@ -6,6 +6,7 @@ import urllib.request
 import urllib.parse
 import base64
 import random
+import re
 import threading
 import time
 from datetime import datetime
@@ -15,6 +16,7 @@ from .. import __version__
 
 
 USER_AGENT = "EvoReview/" + __version__
+REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 def verify_signature(secret: str, body: bytes, signature: str) -> bool:
@@ -64,6 +66,19 @@ class GitHubClient:
         """Update this service's existing review comment instead of creating duplicates."""
         comments_url = api_url.rstrip("/") + "/comments"
         comments = self._json("GET", comments_url + "?per_page=100")
+        if not isinstance(comments, list):
+            comments = []
+        page = 2
+        while len(comments) >= 100 and page <= 10:
+            batch = self._json(
+                "GET", comments_url + "?per_page=100&page=%d" % page,
+            )
+            if not isinstance(batch, list) or not batch:
+                break
+            comments.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
         body = marker + "\n" + markdown
         for comment in comments:
             if marker in str(comment.get("body", "")):
@@ -138,9 +153,11 @@ class GitHubClient:
                 time.sleep(min(2 ** (attempt - 1) + random.random(), 10))
 
     def get_pull_request(self, repository: str, number: int) -> dict:
+        repository = self._validate_repository(repository)
         return self._json("GET", "https://api.github.com/repos/%s/pulls/%d" % (repository, number))
 
     def get_file(self, repository: str, path: str, ref: str) -> dict:
+        repository = self._validate_repository(repository)
         quoted = urllib.parse.quote(path, safe="/")
         result = self._json("GET", "https://api.github.com/repos/%s/contents/%s?ref=%s" % (
             repository, quoted, urllib.parse.quote(ref, safe="")
@@ -149,7 +166,15 @@ class GitHubClient:
         return result
 
     def get_repository(self, repository: str) -> dict:
+        repository = self._validate_repository(repository)
         return self._json("GET", "https://api.github.com/repos/%s" % repository)
+
+    @staticmethod
+    def _validate_repository(repository: str) -> str:
+        value = str(repository or "")
+        if not REPOSITORY_NAME.fullmatch(value):
+            raise ValueError("repository must use the owner/name format")
+        return value
 
     def ensure_repository_access(self, repository: str) -> None:
         result = self.get_repository(repository)
@@ -157,10 +182,12 @@ class GitHubClient:
             raise PermissionError("GitHub installation is not authorized for this repository")
 
     def create_branch(self, repository: str, branch: str, sha: str) -> None:
+        repository = self._validate_repository(repository)
         self._json("POST", "https://api.github.com/repos/%s/git/refs" % repository,
                    {"ref": "refs/heads/" + branch, "sha": sha})
 
     def commit_file(self, repository: str, path: str, branch: str, content: str, sha: str, message: str) -> dict:
+        repository = self._validate_repository(repository)
         quoted = urllib.parse.quote(path, safe="/")
         return self._json("PUT", "https://api.github.com/repos/%s/contents/%s" % (repository, quoted), {
             "message": message, "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
@@ -171,6 +198,7 @@ class GitHubClient:
         self, repository: str, branch: str, parent_sha: str,
         files: Dict[str, str], message: str,
     ) -> dict:
+        repository = self._validate_repository(repository)
         parent = self._json(
             "GET", "https://api.github.com/repos/%s/git/commits/%s"
             % (repository, parent_sha)
@@ -195,12 +223,14 @@ class GitHubClient:
     def create_draft_pull_request(
         self, repository: str, title: str, head: str, base: str, body: str,
     ) -> dict:
+        repository = self._validate_repository(repository)
         return self._json(
             "POST", "https://api.github.com/repos/%s/pulls" % repository,
             {"title": title, "head": head, "base": base, "body": body, "draft": True},
         )
 
     def download_archive(self, repository: str, ref: str) -> bytes:
+        repository = self._validate_repository(repository)
         return self._request(
             "GET", "https://api.github.com/repos/%s/zipball/%s"
             % (repository, urllib.parse.quote(ref, safe="")),

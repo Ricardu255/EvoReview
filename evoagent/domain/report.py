@@ -10,6 +10,22 @@ _MENTION = re.compile(r"(?<![\w`])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])
 _HTML_TAG = re.compile(r"<(?=/?[A-Za-z][^>]*>)")
 _CODE_FENCE = re.compile(r"`{3,}")
 _TILDE_FENCE = re.compile(r"~{3,}")
+_QUOTED_LITERAL = re.compile(r"([\"'])(?:(?!\1).)*\1")
+
+
+def redact_secret_evidence(rule_id: Any, evidence: Any) -> str:
+    """Mask literal values in a hardcoded-credential finding.
+
+    The detector must quote the changed line for the evidence gate, but that
+    line may contain the credential itself.  Reports and PR comments use the
+    masked form so the review does not republish the secret.
+    """
+    text = "" if evidence is None else str(evidence)
+    if str(rule_id or "") != "SEC-HARDCODED-SECRET":
+        return text
+    return _QUOTED_LITERAL.sub(
+        lambda match: match.group(1) + "***" + match.group(1), text,
+    )
 
 
 def _sanitize_text(value: Any, limit: int = MAX_FIELD_CHARS) -> str:
@@ -149,7 +165,9 @@ def to_markdown(
                 "**Evidence**",
                 "",
                 "```text",
-                _sanitize_evidence(item.get("evidence", "")),
+                _sanitize_evidence(redact_secret_evidence(
+                    item.get("rule_id", ""), item.get("evidence", ""),
+                )),
                 "```",
                 "",
                 "**Evidence references:** %s" % (

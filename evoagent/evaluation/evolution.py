@@ -516,6 +516,9 @@ class EvolutionEngine:
                     "failure_cases_used": len(cases), "run_id": None,
                 }
             result = self._propose(skill_name, candidate, None, activation_policy="shadow")
+            if result.get("decision") == "shadow_ready":
+                result["deployment_required"] = True
+                result["next_action"] = "configure /v1/deployments/llm-review"
             result["candidate_change"] = generated
             result["failure_cases_used"] = len(cases)
             result["rollback_point"] = (

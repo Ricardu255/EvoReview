@@ -138,6 +138,23 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(("POST", "https://api.test/issues/1/comments",
                           {"body": "<!-- marker -->\nnew"}), calls[1])
 
+    def test_upsert_comment_searches_later_pages(self):
+        calls = []
+
+        def fake_json(method, url, payload=None):
+            calls.append((method, url, payload))
+            if method == "GET" and "page=2" not in url:
+                return [{"body": "unrelated", "url": str(index)} for index in range(100)]
+            if method == "GET":
+                return [{"body": "<!-- marker -->\nold", "url": "https://api.test/2"}]
+            return {}
+
+        with patch.object(self.client, "_json", side_effect=fake_json):
+            self.client.upsert_comment("https://api.test/issues/1", "new", "<!-- marker -->")
+        self.assertTrue(calls[1][1].endswith("per_page=100&page=2"))
+        self.assertEqual(("PATCH", "https://api.test/2",
+                          {"body": "<!-- marker -->\nnew"}), calls[2])
+
 
 class RetryTests(unittest.TestCase):
     def setUp(self):
@@ -269,6 +286,16 @@ class EndpointTests(unittest.TestCase):
             "https://api.github.com/repos/org/repo/pulls/12",
             "https://api.github.com/repos/org/repo",
         ], urls)
+
+    def test_repository_names_reject_path_traversal(self):
+        for repository in ("../../users", "org/repo/../../x", "", "/repo", "org/repo "):
+            with self.subTest(repository=repository):
+                with self.assertRaisesRegex(ValueError, "owner/name"):
+                    self.client.get_pull_request(repository, 1)
+                with self.assertRaisesRegex(ValueError, "owner/name"):
+                    self.client.create_draft_pull_request(
+                        repository, "title", "head", "main", "body",
+                    )
 
     def test_ensure_repository_access_checks_full_name_case_insensitively(self):
         with patch.object(self.client, "get_repository",

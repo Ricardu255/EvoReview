@@ -14,6 +14,9 @@ archify-work/
 
 # 离线评测语料（pr_diff_100 / prompt_evolution_130），仅本地保留，不入库
 evaluation_data/
+# 根目录的临时评测副本；语料统一放在 evaluation_data/ 下
+/pr_diff_100.jsonl
+/smoke_cases.jsonl
 
 # 评测实验输出，可重新生成，不入库
 output/

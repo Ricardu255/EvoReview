@@ -332,6 +332,8 @@ class TaskQueue:
         else:
             with self._lock:
                 self._memory_dlq.append(item)
+                if len(self._memory_dlq) > self.dlq_maxlen:
+                    del self._memory_dlq[:len(self._memory_dlq) - self.dlq_maxlen]
         if self.on_dead_letter:
             self.on_dead_letter(envelope.get("payload") or {}, item["error"])
 

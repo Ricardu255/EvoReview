@@ -17,6 +17,11 @@ class FindingGate:
     STRONG_EVIDENCE_TOOLS = {
         "ast_analyze", "symbol", "git_context", "run_scanners",
         "semgrep", "bandit", "eslint", "typecheck", "test", "diff-ast-analyze",
+        # Deterministic scanners create evidence from the changed line itself.
+        # Treating their output as weak rejected high-risk findings on
+        # non-Python files and on syntactic fragments that cannot be parsed
+        # as a standalone Python expression.
+        "local-rule-scanner", "declarative-scanner",
     }
 
     def __init__(self, minimum_confidence: float = 0.55):

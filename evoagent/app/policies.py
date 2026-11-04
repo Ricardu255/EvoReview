@@ -71,8 +71,7 @@ class ReviewPolicy:
             raise PermissionError("repository_root does not match the authorized checkout")
         return root
 
-    @staticmethod
-    def validate_enabled_agents(enabled_agents: Optional[list]) -> None:
+    def validate_enabled_agents(self, enabled_agents: Optional[list]) -> None:
         if enabled_agents is None:
             return
         allowed = {"lead", "security", "correctness-reliability", "critic"}
@@ -81,6 +80,18 @@ class ReviewPolicy:
             raise ValueError(
                 "unsupported enabled Agent role(s): %s" % ", ".join(sorted(unknown))
             )
+        configured = {
+            item.strip() for item in self.settings.enabled_agents.split(",")
+            if item.strip()
+        }
+        disabled = set(enabled_agents).difference(configured)
+        if disabled:
+            raise ValueError(
+                "Agent role(s) disabled by EVOAGENT_ENABLED_AGENTS: %s"
+                % ", ".join(sorted(disabled))
+            )
+        if "lead" not in enabled_agents:
+            raise ValueError("agentic mode requires the lead Agent")
 
     def validate_enabled_skills(
         self, enabled_skills: Optional[list], tenant_id: str,

@@ -1,4 +1,5 @@
 """GitHub review-comment delivery with bounded retries and manual replay."""
+import hashlib
 import logging
 import time
 from typing import Any, Callable, Optional
@@ -7,6 +8,22 @@ from ..domain.report import to_markdown
 
 
 logger = logging.getLogger("evoagent")
+
+
+def review_comment_marker(tenant_id: str, issue_url: str, task_id: str) -> str:
+    """Return a stable marker for one PR, not for one delivery.
+
+    A new delivery (for example ``synchronize``) creates a new task, but it
+    should update the same PR comment instead of adding another one.  The
+    tenant is part of the key so two tenants reviewing the same upstream PR do
+    not overwrite each other's comment.
+    """
+    if not issue_url:
+        return "<!-- evoagent-review:%s -->" % task_id
+    key = hashlib.sha256(
+        ("%s\0%s" % (tenant_id or "default", issue_url.rstrip("/"))).encode("utf-8")
+    ).hexdigest()[:24]
+    return "<!-- evoagent-review:%s -->" % key
 
 
 class ReviewCommentService:
@@ -44,7 +61,7 @@ class ReviewCommentService:
                 client.upsert_comment(
                     issue_url,
                     to_markdown(value, self.settings.report_max_findings),
-                    "<!-- evoagent-review:%s -->" % task_id,
+                    review_comment_marker(tenant_id, issue_url, task_id),
                 )
                 self.metrics.inc("comment_delivered_total")
                 return True

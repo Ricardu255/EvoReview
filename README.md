@@ -1,4 +1,4 @@
-English | [**简体中文**](docs/README.zh-CN.md)
+English | [**简体中文**](docs/README.zh-CN.md) | [Documentation](docs/INDEX.md)
 
 # EvoReview · Agentic Code Review & Self-Evolution Platform
 
@@ -104,7 +104,7 @@ python -m unittest discover -s tests -v
 
 ## Continuous Integration
 
-Every push and pull request runs the full test suite on Python 3.9 and 3.11:
+Pushes to `main` and `codex/**`, plus all pull requests, run the full test suite on Python 3.9 and 3.11:
 
 1. **pytest** — the full suite with real PostgreSQL 16 and Redis 7 services, including both store contracts and long-running queue delivery. Dataset-dependent tests skip when local corpora are absent. Pushes to `main`, `codex/**`, and pull requests run these checks.
 
@@ -275,6 +275,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/skill-evolution/{name}/versions/{version}/activate` | Activate or roll back a Skill artifact |
 | `GET` | `/metrics` | Prometheus text metrics |
 | `GET` | `/api/alerts` | Query tenant alerts |
+| `POST` | `/api/alerts/{id}/resolve` | Resolve an open tenant alert |
 | `GET` | `/api/audit` | Query tenant audit logs |
 | `GET` | `/api/queue/dead-letters` | Query dead-letter tasks |
 | `POST` | `/v1/queue/dead-letters/replay` | Replay a dead-letter task |

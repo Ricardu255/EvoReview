@@ -450,6 +450,13 @@ class StoreContract:
         self.store.create_alert("tenant-a", "error-rate", "critical", "worse")
         self.assertEqual(1, len(self.store.list_alerts("tenant-a")))
 
+        alert_id = self.store.list_alerts("tenant-a")[0]["id"]
+        self.assertTrue(self.store.resolve_alert("tenant-a", alert_id))
+        self.assertFalse(self.store.resolve_alert("tenant-a", alert_id))
+        self.assertFalse(self.store.resolve_alert("tenant-b", alert_id))
+        self.store.create_alert("tenant-a", "error-rate", "high", "new incident")
+        self.assertEqual(2, len(self.store.list_alerts("tenant-a")))
+
         self.store.save_installation(42, "demo-org", "tenant-a")
         self.assertEqual("tenant-a", self.store.installation_tenant(42))
         self.assertIsNone(self.store.installation_tenant(99))
@@ -459,6 +466,19 @@ class StoreContract:
         self.assertEqual(1, stats["tasks_success"])
         self.assertEqual(1.0, stats["success_rate"])
         self.assertIn("active_skill_versions", stats)
+
+    def test_dashboard_active_skill_count_is_tenant_scoped(self):
+        self.store.save_skill_version("llm-review", "tenant-a prompt", .5, True, "tenant-a")
+        self.store.save_skill_version("llm-review", "tenant-b prompt", .5, True, "tenant-b")
+        self.assertEqual(
+            1, self.store.dashboard_stats("tenant-a")["active_skill_versions"]
+        )
+        self.assertEqual(
+            1, self.store.dashboard_stats("tenant-b")["active_skill_versions"]
+        )
+        self.assertEqual(
+            2, self.store.dashboard_stats()["active_skill_versions"]
+        )
 
 
     def test_github_setup_state_is_single_use_and_tenant_bound(self):

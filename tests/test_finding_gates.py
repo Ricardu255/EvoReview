@@ -93,6 +93,17 @@ class FindingGateTests(unittest.TestCase):
         self.assertEqual([item], result.accepted)
         self.assertEqual(1, item.gate["strong_evidence_count"])
 
+    def test_deterministic_scanner_evidence_is_strong_for_high_severity(self):
+        for tool in ("local-rule-scanner", "declarative-scanner"):
+            with self.subTest(tool=tool):
+                item = finding(
+                    severity=Severity.HIGH, evidence="unrelated",
+                    evidence_refs=[{"evidence_id": tool + ":1", "tool": tool}],
+                )
+                result = self.gate.apply([item], self.parsed)
+                self.assertEqual([item], result.accepted)
+                self.assertEqual(1, item.gate["strong_evidence_count"])
+
     def test_call_chain_satisfies_evidence_and_high_risk_requirements(self):
         item = finding(
             severity=Severity.CRITICAL, evidence="unrelated",

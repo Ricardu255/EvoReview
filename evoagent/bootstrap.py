@@ -26,6 +26,7 @@ from .adapters.stores.postgres.store import create_store
 from .agent.reviewers import (
     OpenAICompatibleReviewer, ReliabilityRuleReviewer, SecurityRuleReviewer,
 )
+from .agent.review_rules import ContextRuleReviewer
 from .adapters.rollout import ReleaseManager
 from .evaluation.skill_evolution import AgentSkillReplayReviewer, SkillEvolutionEngine, validate_artifact
 from .evaluation.skills import AgentSkill, SkillRegistry
@@ -208,12 +209,19 @@ def build_container(settings: Settings) -> ServiceContainer:
     observability = Observability(settings.otel_service_name, settings.otel_endpoint)
     registry = SkillRegistry(settings.skills_dir)
     registry.register(
-        "security-review", SecurityRuleReviewer(),
+        "security-rules", SecurityRuleReviewer(),
         "1.0.0", "Security, injection and secret detection",
     )
     registry.register(
-        "reliability-review", ReliabilityRuleReviewer(),
+        "reliability-rules", ReliabilityRuleReviewer(),
         "1.0.0", "Reliability and observability review",
+    )
+    # Keep the production scanner set aligned with the controlled evaluation
+    # arms.  Without this registration the benchmark used 14 deterministic
+    # rules while production only exercised six.
+    registry.register(
+        "context-rules", ContextRuleReviewer(),
+        "1.0.0", "Supplemental context-sensitive security and reliability rules",
     )
     if llm_config:
         active = store.get_active_skill_version(
