@@ -356,11 +356,47 @@ class TaskQueue:
             return [item for item in reversed(self._memory_dlq)
                     if tenant_id is None or (item.get("payload") or {}).get("tenant_id", "default") == tenant_id][:limit]
 
+    def _remove_dead_letter(self, message_id: str, tenant_id: Optional[str]) -> None:
+        if self._redis:
+            cursor = "+"
+            while True:
+                rows = self._redis.xrevrange(self.DLQ, max=cursor, count=100)
+                if not rows:
+                    return
+                for redis_id, fields in rows:
+                    item = json.loads(fields["envelope"])
+                    if item.get("message_id") != message_id:
+                        continue
+                    if tenant_id is not None and (
+                        (item.get("payload") or {}).get("tenant_id", "default")
+                        != tenant_id
+                    ):
+                        continue
+                    self._redis.xdel(self.DLQ, redis_id)
+                    return
+                cursor = "(" + rows[-1][0]
+            return
+        with self._lock:
+            self._memory_dlq[:] = [
+                item for item in self._memory_dlq
+                if item.get("message_id") != message_id
+                or (tenant_id is not None and (
+                    (item.get("payload") or {}).get("tenant_id", "default")
+                    != tenant_id
+                ))
+            ]
+
     def replay_dead_letter(self, message_id: str, tenant_id: Optional[str] = None) -> bool:
         for item in self.dead_letters(500, tenant_id):
             if item.get("message_id") == message_id:
                 payload = item.get("payload") or {}
                 self.submit(payload, message_id=message_id)
+                try:
+                    self._remove_dead_letter(message_id, tenant_id)
+                except Exception:
+                    # The replay has already been enqueued; a stale DLQ entry is
+                    # preferable to reporting a failed replay.
+                    logger.exception("failed to remove replayed dead letter %s", message_id)
                 return True
         return False
 
