@@ -378,8 +378,17 @@ async function openTask(id) {
     const task = await api(`/v1/tasks/${encodeURIComponent(id)}`);
     selectedTask = id;
     selectedTaskData = task;
+    const state = String(task.state || "").toUpperCase();
     $("#task-report").innerHTML = renderTaskReport(task);
     $("#create-fix").classList.toggle("hidden", !(task.report && task.pull_request));
+    const running = ["PENDING", "PLANNING", "EXECUTING", "REVIEWING"].includes(state);
+    $("#cancel-task").classList.toggle("hidden", !running);
+    $("#resume-task").classList.toggle(
+      "hidden", !["FAILED", "CANCELLED"].includes(state),
+    );
+    $("#redeliver-comment").classList.toggle(
+      "hidden", !(state === "SUCCESS" && task.report && task.input?.github_issue_url),
+    );
     const feedbackReady = task.state === "SUCCESS" && task.report;
     $("#feedback-panel").classList.toggle("hidden", !feedbackReady);
     if (feedbackReady) {
@@ -552,6 +561,58 @@ $("#create-fix").addEventListener("click", async () => {
     });
     $("#task-report").textContent = formatJson(data);
     toast("修复分支已创建");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+$("#cancel-task").addEventListener("click", async () => {
+  if (!selectedTask) return;
+  const button = $("#cancel-task");
+  setButtonBusy(button, true, "正在取消…");
+  try {
+    const data = await api(`/v1/tasks/${encodeURIComponent(selectedTask)}/cancel`, {
+      method: "POST",
+    });
+    toast(data.cancel_requested ? "取消请求已提交" : "任务当前无法取消");
+    await openTask(selectedTask);
+    loadDashboard();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+$("#resume-task").addEventListener("click", async () => {
+  if (!selectedTask) return;
+  const button = $("#resume-task");
+  setButtonBusy(button, true, "正在恢复…");
+  try {
+    const data = await api(`/v1/tasks/${encodeURIComponent(selectedTask)}/resume`, {
+      method: "POST",
+    });
+    toast(data.resumed ? "任务已重新入队" : "任务已恢复");
+    await openTask(selectedTask);
+    loadDashboard();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
+
+$("#redeliver-comment").addEventListener("click", async () => {
+  if (!selectedTask) return;
+  const button = $("#redeliver-comment");
+  setButtonBusy(button, true, "正在发布…");
+  try {
+    const data = await api(`/v1/tasks/${encodeURIComponent(selectedTask)}/comment`, {
+      method: "POST",
+    });
+    toast(data.delivered ? "评论已重新发布" : "评论发布失败");
   } catch (error) {
     toast(error.message);
   } finally {
