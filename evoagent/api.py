@@ -21,6 +21,7 @@ from .adapters.github import verify_signature
 from .adapters.metrics import metrics
 from .domain.modes import public_taxonomy, resolve_mode
 from .domain.report import to_markdown
+from .domain.sarif import to_sarif
 from .errors import AuthenticationRequired, ModelNotConfigured
 from .openapi import build_openapi
 from .service import ReviewService
@@ -28,6 +29,7 @@ from .service import ReviewService
 
 TASK = re.compile(r"^/v1/tasks/([0-9a-f-]+)$")
 REPORT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/report$")
+SARIF = re.compile(r"^/v1/tasks/([0-9a-f-]+)/sarif$")
 FIX = re.compile(r"^/v1/tasks/([0-9a-f-]+)/fix$")
 FEEDBACK = re.compile(r"^/v1/tasks/([0-9a-f-]+)/feedback$")
 CANCEL = re.compile(r"^/v1/tasks/([0-9a-f-]+)/cancel$")
@@ -543,6 +545,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             )})
             return
         report_match = REPORT.match(path)
+        sarif_match = SARIF.match(path)
         task_match = TASK.match(path)
         feedback_match = FEEDBACK.match(path)
         if feedback_match:
@@ -556,6 +559,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"cases": self.service.store.list_task_failure_cases(
                 feedback_match.group(1), principal.tenant_id
             )})
+            return
+        if sarif_match:
+            task = self.service.store.get(sarif_match.group(1), principal.tenant_id)
+            if not task or not task.get("report"):
+                self._send_json(404, {"error": "task or report not found"})
+                return
+            self._send_json(200, to_sarif(task["report"], __version__))
             return
         if report_match:
             task = self.service.store.get(report_match.group(1), principal.tenant_id)

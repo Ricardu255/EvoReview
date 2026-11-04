@@ -259,6 +259,7 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/reviews?async=true` | 创建异步审查任务 |
 | `GET` | `/v1/tasks/{id}` | 获取状态、执行记录和报告 |
 | `GET` | `/v1/tasks/{id}/report` | 获取 Markdown 报告 |
+| `GET` | `/v1/tasks/{id}/sarif` | 以 SARIF 2.1.0 获取报告 |
 | `GET` | `/v1/tasks/{id}/feedback` | 获取该已完成任务的反馈历史 |
 | `POST` | `/v1/tasks/{id}/fix` | 创建自动修复分支和提交 |
 | `POST` | `/v1/tasks/{id}/feedback` | 回流误报、漏报或坏修复 |

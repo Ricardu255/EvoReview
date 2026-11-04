@@ -481,6 +481,24 @@ def _paths() -> Dict[str, Any]:
                 parameters=[_task_id_parameter()],
             )
         },
+        "/v1/tasks/{task_id}/sarif": {
+            "get": _operation(
+                "getTaskSarif", "Get the review report as SARIF 2.1.0", ["tasks"],
+                {
+                    "200": _json({
+                        "type": "object", "required": ["version", "runs"],
+                        "properties": {
+                            "version": {"type": "string", "example": "2.1.0"},
+                            "runs": {"type": "array", "items": {
+                                "type": "object", "additionalProperties": True,
+                            }},
+                        },
+                    }),
+                    "404": _error("Task or report not found"),
+                },
+                parameters=[_task_id_parameter()],
+            )
+        },
         "/v1/tasks/{task_id}/feedback": {
             "get": _operation(
                 "getTaskFeedback", "List feedback attached to a task", ["tasks"],

@@ -467,6 +467,7 @@ class GetRouteTests(ApiRouteTestCase):
     def test_task_feedback_report_and_not_found(self):
         self.assertEqual(404, self.call("/v1/tasks/abcdef01").status)
         self.assertEqual(404, self.call("/v1/tasks/abcdef01/report").status)
+        self.assertEqual(404, self.call("/v1/tasks/abcdef01/sarif").status)
         self.assertEqual(404, self.call("/v1/tasks/abcdef01/feedback").status)
 
         self.service.store.task = {
@@ -483,6 +484,11 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, report.status)
         self.assertIn("# EvoReview PR Review", report.text)
         self.assertIn("text/markdown", report.content_type)
+
+        sarif = self.call("/v1/tasks/abcdef01/sarif")
+        self.assertEqual(200, sarif.status)
+        self.assertEqual("2.1.0", sarif.body["version"])
+        self.assertEqual([], sarif.body["runs"][0]["results"])
 
         feedback = self.call("/v1/tasks/abcdef01/feedback")
         self.assertEqual(200, feedback.status)

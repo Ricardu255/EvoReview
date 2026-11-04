@@ -259,6 +259,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `POST` | `/v1/reviews?async=true` | Create an asynchronous review task |
 | `GET` | `/v1/tasks/{id}` | Get status, execution record, and report |
 | `GET` | `/v1/tasks/{id}/report` | Get the Markdown report |
+| `GET` | `/v1/tasks/{id}/sarif` | Get the report as SARIF 2.1.0 |
 | `GET` | `/v1/tasks/{id}/feedback` | Get feedback history for a completed task |
 | `POST` | `/v1/tasks/{id}/fix` | Create an auto-fix branch and commit |
 | `POST` | `/v1/tasks/{id}/feedback` | Feed back false positives, missed findings, or bad fixes |
