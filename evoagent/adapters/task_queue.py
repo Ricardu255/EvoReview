@@ -315,7 +315,15 @@ class TaskQueue:
             )
             entries = result[1] if len(result) > 1 else []
             for redis_id, fields in entries:
-                envelope = json.loads(fields["envelope"])
+                try:
+                    envelope = json.loads(fields["envelope"])
+                except Exception as exc:
+                    self._dead_letter({
+                        "message_id": redis_id, "attempt": self.max_attempts,
+                        "payload": {}, "submitted_at": time.time(),
+                    }, "invalid replayed queue envelope: %s" % exc)
+                    self._redis.xack(self.STREAM, self.GROUP, redis_id)
+                    continue
                 self._deliver(envelope, redis_id)
                 self._redis.xack(self.STREAM, self.GROUP, redis_id)
         except Exception:
