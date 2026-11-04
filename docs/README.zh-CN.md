@@ -292,6 +292,10 @@ Invoke-RestMethod https://<公网域名>/health
 
 Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔离。租户隔离引入前写入的旧数据会在首次以非 `default` 的 `EVOAGENT_DEFAULT_TENANT_ID` 启动时归属到该租户，`schema_meta` 标记记录迁移结果。如果目标租户已存在相同的唯一键（例如相同的仓库授权），该旧行会保留在 `default` 并输出警告，待冲突解决后的下次启动自动重试。
 
+### 数据保留
+
+将 `EVOAGENT_TASK_DATA_RETENTION_DAYS` 设为正数后，系统会定期删除超过保留窗口的成功、失败或取消任务的原始 diff、checkpoint 与协作消息；任务记录、最终报告和 trace 事件仍保留用于审计。默认值 `0` 表示关闭。
+
 ### 仓库授权
 
 仓库授权是可选的。租户没有任何授权记录时，保持原单租户行为：审查和自动修复均开放。一旦存在授权记录，只有已列出的仓库可用，且 `POST /v1/tasks/{id}/fix` 还要求该记录的 `auto_fix=true`。设置 `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` 后，在添加授权前所有仓库都会被拒绝。管理员可通过 API 管理（均按租户隔离并写入审计日志）：

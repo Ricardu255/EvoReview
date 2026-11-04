@@ -57,3 +57,6 @@ class TaskStorePort(ReviewStore, Protocol):
         self, task_id: str, message: Dict[str, Any],
     ) -> None:
         ...
+
+    def purge_expired_task_data(self, before: str, limit: int = 1000) -> Dict[str, int]:
+        ...

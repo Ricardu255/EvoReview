@@ -214,3 +214,29 @@ class PostgresTaskStoreMixin:
                 "VALUES (%s,%s,%s,%s,%s)",
                 (task_id, event.step, event.state.value, event.message, event.created_at),
             )
+
+    def purge_expired_task_data(self, before: str, limit: int = 1000) -> Dict[str, int]:
+        limit = max(1, min(int(limit), 5000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM tasks WHERE state IN (%s,%s,%s) "
+                "AND created_at<%s::timestamptz ORDER BY created_at LIMIT %s",
+                (
+                    TaskState.SUCCESS.value, TaskState.FAILED.value,
+                    TaskState.CANCELLED.value, before, limit,
+                ),
+            ).fetchall()
+            task_ids = [row["id"] for row in rows]
+            if not task_ids:
+                return {
+                    "tasks": 0, "task_payloads": 0,
+                    "checkpoints": 0, "agent_messages": 0,
+                }
+            counts = {"tasks": len(task_ids)}
+            for table in ("task_payloads", "checkpoints", "agent_messages"):
+                cursor = conn.execute(
+                    "DELETE FROM %s WHERE task_id=ANY(%%s)" % table,
+                    (task_ids,),
+                )
+                counts[table] = max(0, cursor.rowcount)
+        return counts

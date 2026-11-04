@@ -6,6 +6,7 @@ from .app.evolution import EvolutionApplicationService
 from .app.feedback import FeedbackApplicationService
 from .app.fixes import FixesApplicationService
 from .app.github import GitHubApplicationService
+from .app.maintenance import DataRetention
 from .app.policies import ReviewPolicy
 from .app.reviews import ReviewsApplicationService
 from .app.skills import SkillApplicationService
@@ -100,6 +101,15 @@ class ReviewService:
             self._github_app.github_client_for_installation, metrics,
             self._policy,
         )
+        self._retention = DataRetention(
+            self.store, self.settings.task_data_retention_days,
+        )
+        self._retention.start()
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Stop background maintenance and delivery threads."""
+        self._retention.stop()
+        self.queue.close(timeout=timeout)
 
     @property
     def repository_roots(self):

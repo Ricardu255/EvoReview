@@ -292,6 +292,10 @@ The `diff` in `POST /v1/reviews` defaults to a 1 MiB maximum; a single task defa
 
 Prompt versions, evaluation samples, evolution runs, and dead-letter operations are scoped to the authenticated tenant. Rows written before tenancy existed are adopted by `EVOAGENT_DEFAULT_TENANT_ID` on the first startup with a non-`default` value, and the `schema_meta` marker records what was moved. If the target tenant already owns the same unique key (for example the same repository grant), that legacy row is left in `default`, a warning lists it, and the next startup retries it after the collision is resolved.
 
+### Data Retention
+
+Set `EVOAGENT_TASK_DATA_RETENTION_DAYS` to a positive number to periodically remove raw diff payloads, checkpoints, and collaboration messages from successful, failed, or cancelled tasks older than that window. Task rows, final reports, and trace events remain for audit. The default of `0` disables retention.
+
 ### Repository Grants
 
 Grants are optional. While a tenant has **no** grant rows, the original single-tenant behaviour is preserved: reviews and automatic repair are open. As soon as one grant exists, only listed repositories are accepted, and `POST /v1/tasks/{id}/fix` additionally requires the grant to have `auto_fix=true`. Set `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` to deny every repository until grants are added. Managers can use the API (all calls are tenant-scoped and audited):

@@ -1014,5 +1014,5 @@ def run() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        service.queue.close(timeout=5.0)
+        service.close()
         server.server_close()

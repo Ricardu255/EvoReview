@@ -78,6 +78,37 @@ class StoreContract:
         }
         self.assertEqual({"filter-b-%s" % run}, repositories)
 
+    def test_purge_expired_task_data_keeps_the_task_and_report(self):
+        run = _uid()
+        task_id = "retention-%s" % run
+        self.store.create(task_id, "org/repo", 1, {}, "tenant-a")
+        self.store.save_task_payload(task_id, "diff")
+        self.store.save_checkpoint(task_id, "planning", {"ok": True})
+        self.store.record_agent_message(task_id, {
+            "sender": "lead", "recipient": "security", "kind": "assignment",
+            "content": {"objective": "review"},
+        })
+        self.store.succeed(task_id, _report(), _trace(1, TaskState.SUCCESS))
+
+        pending_id = "retention-pending-%s" % run
+        self.store.create(pending_id, "org/repo", 1, {}, "tenant-a")
+        self.store.save_task_payload(pending_id, "pending diff")
+
+        counts = self.store.purge_expired_task_data(
+            "2999-01-01T00:00:00+00:00", limit=10,
+        )
+        self.assertEqual(1, counts["tasks"])
+        self.assertEqual(1, counts["task_payloads"])
+        self.assertEqual(1, counts["checkpoints"])
+        self.assertEqual(1, counts["agent_messages"])
+        task = self.store.get(task_id, "tenant-a")
+        self.assertEqual("SUCCESS", task["state"])
+        self.assertIsNotNone(task["report"])
+        self.assertIsNone(self.store.get_task_payload(task_id))
+        self.assertEqual({}, self.store.load_checkpoints(task_id))
+        self.assertEqual([], task["collaboration"])
+        self.assertEqual("pending diff", self.store.get_task_payload(pending_id))
+
     def test_task_lifecycle_and_tenant_isolation(self):
         run = _uid()
         self.store.create(
