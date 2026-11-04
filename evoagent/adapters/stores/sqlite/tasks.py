@@ -83,19 +83,27 @@ class SqliteTaskStoreMixin:
             value["collaboration"].append(item)
         return value
 
-    def list_tasks(self, limit: int = 50, tenant_id: Optional[str] = None) -> list:
+    def list_tasks(
+        self, limit: int = 50, tenant_id: Optional[str] = None,
+        state: str = "", repository: str = "",
+    ) -> list:
+        clauses, params = [], []
+        if tenant_id is not None:
+            clauses.append("tenant_id=?")
+            params.append(tenant_id)
+        if state:
+            clauses.append("state=?")
+            params.append(state)
+        if repository:
+            clauses.append("repository=?")
+            params.append(repository)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(max(1, min(limit, 200)))
         with self._connect() as conn:
-            if tenant_id is None:
-                rows = conn.execute(
-                    "SELECT id,state,repository,pull_request,error,created_at,updated_at,tenant_id "
-                    "FROM tasks ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 200)),)
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT id,state,repository,pull_request,error,created_at,updated_at,tenant_id "
-                    "FROM tasks WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?",
-                    (tenant_id, max(1, min(limit, 200))),
-                ).fetchall()
+            rows = conn.execute(
+                "SELECT id,state,repository,pull_request,error,created_at,updated_at,tenant_id "
+                "FROM tasks" + where + " ORDER BY created_at DESC LIMIT ?", params
+            ).fetchall()
         return [dict(item) for item in rows]
 
     def record_agent_message(self, task_id: str, message: Dict[str, Any]) -> None:

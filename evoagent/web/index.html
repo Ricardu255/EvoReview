@@ -170,6 +170,23 @@
         <div class="task-layout">
           <article class="paper-card plain">
             <div class="panel-head"><h3>全部任务</h3><span class="small">选择任务查看详情</span></div>
+            <div class="field-row task-filters">
+              <label class="field"><span>状态</span>
+                <select id="task-state-filter">
+                  <option value="">全部状态</option>
+                  <option value="PENDING">等待中</option>
+                  <option value="PLANNING">规划中</option>
+                  <option value="EXECUTING">执行中</option>
+                  <option value="REVIEWING">汇总中</option>
+                  <option value="SUCCESS">已完成</option>
+                  <option value="FAILED">失败</option>
+                  <option value="CANCELLED">已取消</option>
+                </select>
+              </label>
+              <label class="field"><span>仓库</span>
+                <input id="task-repository-filter" placeholder="owner/repository" autocomplete="off">
+              </label>
+            </div>
             <div id="all-tasks" class="task-list"><div class="list-loading"></div></div>
           </article>
           <article class="report-paper">

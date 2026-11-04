@@ -58,6 +58,26 @@ class StoreContract:
         self.store = self.make_store()
         self.assertIsInstance(self.store, StoreProtocol)
 
+    def test_task_list_filters_by_state_and_repository(self):
+        run = _uid()
+        self.store.create("filter-a-%s" % run, "org/a", 1, {}, "tenant-a")
+        self.store.create("filter-b-%s" % run, "org/b", 1, {}, "tenant-a")
+        self.store.transition(
+            "filter-a-%s" % run, _trace(1, TaskState.EXECUTING),
+        )
+        states = {
+            item["id"]: item["state"]
+            for item in self.store.list_tasks(50, "tenant-a", state="EXECUTING")
+        }
+        self.assertEqual({"filter-a-%s" % run: "EXECUTING"}, states)
+        repositories = {
+            item["id"]
+            for item in self.store.list_tasks(
+                50, "tenant-a", repository="org/b",
+            )
+        }
+        self.assertEqual({"filter-b-%s" % run}, repositories)
+
     def test_task_lifecycle_and_tenant_isolation(self):
         run = _uid()
         self.store.create(

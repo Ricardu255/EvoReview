@@ -300,7 +300,12 @@ async function loadTasks() {
   const root = $("#all-tasks");
   root.innerHTML = '<div class="list-loading"></div><div class="list-loading"></div>';
   try {
-    const data = await api("/api/tasks");
+    const params = new URLSearchParams({ limit: "50" });
+    const state = $("#task-state-filter")?.value || "";
+    const repository = $("#task-repository-filter")?.value.trim() || "";
+    if (state) params.set("state", state);
+    if (repository) params.set("repository", repository);
+    const data = await api(`/api/tasks?${params.toString()}`);
     root.innerHTML = taskRows(data.tasks || []);
     bindTasks(root);
   } catch (error) {
@@ -733,8 +738,14 @@ $("#auto-evolve").addEventListener("click", async () => {
   }
 });
 
-$("#refresh").addEventListener("click", async () => {
-  const view = viewFromHash(location.hash.slice(1));
+let taskFilterTimer = null;
+$("#task-state-filter").addEventListener("change", loadTasks);
+$("#task-repository-filter").addEventListener("input", () => {
+  clearTimeout(taskFilterTimer);
+  taskFilterTimer = setTimeout(loadTasks, 250);
+});
+
+$("#refresh").addEventListener("click", async () => {  const view = viewFromHash(location.hash.slice(1));
   if (view === "overview") await loadDashboard();
   else if (view === "tasks") await loadTasks();
   else if (view === "skills") await loadSkills();

@@ -84,10 +84,23 @@ class PostgresTaskStoreMixin:
             item["created_at"] = item["created_at"].isoformat()
         return value
 
-    def list_tasks(self, limit: int = 50, tenant_id: Optional[str] = None) -> list:
+    def list_tasks(
+        self, limit: int = 50, tenant_id: Optional[str] = None,
+        state: str = "", repository: str = "",
+    ) -> list:
+        clauses, params = [], []
+        if tenant_id is not None:
+            clauses.append("tenant_id=%s")
+            params.append(tenant_id)
+        if state:
+            clauses.append("state=%s")
+            params.append(state)
+        if repository:
+            clauses.append("repository=%s")
+            params.append(repository)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(max(1, min(limit, 200)))
         with self._connect() as conn:
-            where = " WHERE tenant_id=%s" if tenant_id is not None else ""
-            params = ([tenant_id] if tenant_id is not None else []) + [max(1, min(limit, 200))]
             rows = conn.execute(
                 "SELECT id,state,repository,pull_request,error,created_at,updated_at,tenant_id "
                 "FROM tasks" + where + " ORDER BY created_at DESC LIMIT %s", params
