@@ -1,4 +1,4 @@
-[**English**](../README.md) | 简体中文
+[**English**](../README.md) | 简体中文 | [文档索引](INDEX.md)
 
 # EvoReview · Agent 代码审查与自进化平台
 
@@ -104,7 +104,7 @@ python -m unittest discover -s tests -v
 
 ## 持续集成
 
-每次 push 和 pull request 会在 Python 3.9 和 3.11 上运行全量测试（数据集仅保留在本地，相关测试在 CI 中自动跳过）：
+推送到 `main` 和 `codex/**` 分支，以及所有 pull request，会在 Python 3.9 和 3.11 上运行全量测试（数据集仅保留在本地，相关测试在 CI 中自动跳过）：
 
 1. **pytest**——使用真实 PostgreSQL 16 和 Redis 7 运行全量测试，覆盖双后端存储契约、长任务续租和重复投递。缺少本地语料的实验测试会跳过。`main`、`codex/**` 分支推送及 PR 都触发检查。
 
@@ -275,6 +275,7 @@ Invoke-RestMethod https://<公网域名>/health
 | `POST` | `/v1/skill-evolution/{name}/versions/{version}/activate` | 激活或回滚 Skill artifact |
 | `GET` | `/metrics` | Prometheus 文本指标 |
 | `GET` | `/api/alerts` | 查询租户告警 |
+| `POST` | `/api/alerts/{id}/resolve` | 解决一条 open 状态的租户告警 |
 | `GET` | `/api/audit` | 查询租户审计日志 |
 | `GET` | `/api/queue/dead-letters` | 查询死信任务 |
 | `POST` | `/v1/queue/dead-letters/replay` | 重放死信任务 |

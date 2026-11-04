@@ -46,6 +46,10 @@ class FakeStore:
         self._record("list_alerts", tenant_id)
         return [{"kind": "review-failure-rate"}]
 
+    def resolve_alert(self, tenant_id, alert_id):
+        self._record("resolve_alert", tenant_id, alert_id)
+        return alert_id == 1
+
     def list_repository_grants(self, tenant_id):
         self._record("list_repository_grants", tenant_id)
         return [{"repository": "org/repo", "auto_fix": False}]
@@ -652,6 +656,15 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertEqual(5, self.service.reload_count)
         missing_roll = self.call("/v1/skills/llm-review/versions/2/activate", "POST")
         self.assertEqual(404, missing_roll.status)
+
+    def test_alert_resolution_route(self):
+        response = self.call("/api/alerts/1/resolve", "POST")
+        self.assertEqual(200, response.status)
+        self.assertEqual({"resolved": True}, response.body)
+        self.assertEqual(404, self.call("/api/alerts/2/resolve", "POST").status)
+        self.assertTrue(any(
+            event[2] == "alert.resolve" for event in self.service.store.audit_events
+        ))
 
     def test_unknown_post_route_returns_404(self):
         self.assertEqual(404, self.call("/v1/unknown", "POST", {}).status)

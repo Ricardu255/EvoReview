@@ -194,6 +194,15 @@ class DeliveryOwnershipTests(QueueTestCase):
         self.assertEqual(1, len(queue.dead_letters()))
         self.assertIn("transient", queue.dead_letters()[0]["error"])
 
+    def test_memory_dead_letter_queue_honours_its_limit(self):
+        queue = self.memory_queue(dlq_maxlen=2)
+        for index in range(3):
+            queue._dead_letter(
+                envelope(message_id="m%d" % index), "error-%d" % index,
+            )
+        items = queue.dead_letters()
+        self.assertEqual(["m2", "m1"], [item["message_id"] for item in items])
+
     def test_completed_history_is_bounded(self):
         queue = self.memory_queue()
         queue._completed.update({str(index): time.time() + 100 for index in range(10001)})

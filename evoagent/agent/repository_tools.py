@@ -60,6 +60,15 @@ CONFIG_NAMES = {
     "CODEOWNERS", "Cargo.toml", "go.mod", "pom.xml", "build.gradle",
 }
 
+# Repository-controlled Git configuration must not be able to execute helper
+# programs or fetch credentials while an agent inspects history.
+GIT_SAFE_ARGS = (
+    "-c", "core.fsmonitor=false",
+    "-c", "core.hooksPath=",
+    "-c", "core.pager=cat",
+    "-c", "credential.helper=",
+)
+
 
 def _evidence(tool: str, payload: Any) -> Dict[str, Any]:
     rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
@@ -312,14 +321,14 @@ class RepositoryToolSuite:
         if not os.path.isdir(os.path.join(self.root, ".git")) or not shutil.which("git"):
             return _evidence("git_context", {"available": False, "path": path})
         commands = [
-            ["git", "log", "-n", "8", "--format=%h%x09%ad%x09%s", "--date=short", "--", str(path)],
-            ["git", "blame", "-L", "%d,%d" % (max(1, int(line) - 3), max(1, int(line) + 3)), "--", str(path)],
+            ["git", *GIT_SAFE_ARGS, "log", "-n", "8", "--format=%h%x09%ad%x09%s", "--date=short", "--", str(path)],
+            ["git", *GIT_SAFE_ARGS, "blame", "-L", "%d,%d" % (max(1, int(line) - 3), max(1, int(line) + 3)), "--", str(path)],
         ]
         outputs = []
         for command in commands:
             result = subprocess.run(
                 command, cwd=self.root, capture_output=True, text=True,
-                timeout=20, check=False,
+                timeout=20, check=False, env=self._restricted_env(),
             )
             outputs.append({
                 "command": command[1], "returncode": result.returncode,
@@ -462,6 +471,12 @@ class RepositoryToolSuite:
                     if name in ignored:
                         continue
                     path = os.path.join(directory, name)
+                    relative = os.path.relpath(path, self.root).replace("\\", "/")
+                    if _sensitive_path(relative):
+                        # Do not put secrets such as .env into the temporary
+                        # checkout: repository tests can print files they read.
+                        ignored.add(name)
+                        continue
                     if os.path.islink(path) and (
                         not os.path.exists(path) or self._escaping_symlink(path)
                     ):

@@ -215,13 +215,19 @@ class RepositoryToolSuiteTests(unittest.TestCase):
             calls.append((command, kwargs))
             return result(stdout="abc\t2024-01-01\tsubject\n")
 
-        with patch("evoagent.agent.repository_tools.shutil.which", return_value="git"), \
+        with patch.dict(os.environ, {"EVOAGENT_AUTH_SECRET": "top-secret"}), \
+                patch("evoagent.agent.repository_tools.shutil.which", return_value="git"), \
                 patch("evoagent.agent.repository_tools.subprocess.run", side_effect=fake_run):
             output = self.suite.git_context("app.py", line=5)["output"]
         self.assertTrue(output["available"])
         self.assertEqual(2, len(output["results"]))
         self.assertEqual(self.root, calls[0][1]["cwd"])
-        self.assertEqual(["git", "blame", "-L", "2,8", "--", "app.py"], calls[1][0])
+        self.assertNotIn("EVOAGENT_AUTH_SECRET", calls[0][1]["env"])
+        self.assertEqual([
+            "git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=",
+            "-c", "core.pager=cat", "-c", "credential.helper=",
+            "blame", "-L", "2,8", "--", "app.py",
+        ], calls[1][0])
 
     def test_tool_version_parses_first_major_and_handles_failures(self):
         with patch("evoagent.agent.repository_tools.subprocess.run",
@@ -339,6 +345,25 @@ class RepositoryToolSuiteTests(unittest.TestCase):
         output = suite.run_repository_checks("tests")["output"]
         self.assertTrue(output["available"])
         self.assertTrue(output["passed"])
+
+    def test_repository_checks_do_not_copy_sensitive_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            with open(os.path.join(root, "app.py"), "w", encoding="utf-8") as handle:
+                handle.write("value = 1\n")
+            with open(os.path.join(root, ".env"), "w", encoding="utf-8") as handle:
+                handle.write("SECRET=do-not-copy\n")
+            with open(os.path.join(root, ".env.example"), "w", encoding="utf-8") as handle:
+                handle.write("SECRET=\n")
+            suite = RepositoryToolSuite(
+                root, "", parse_unified_diff(""),
+                test_command=(
+                    "python -c \"import os, sys; "
+                    "sys.exit(0 if not os.path.exists('.env') "
+                    "and os.path.exists('.env.example') else 1)\""
+                ),
+            )
+            output = suite.run_repository_checks("tests")["output"]
+            self.assertTrue(output["passed"], output)
 
     # ----------------------------------------------------------------- registry
     def test_registry_exposes_only_allowed_tools(self):

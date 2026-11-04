@@ -9,9 +9,11 @@ from evoagent.agent.context_manager import ContextManager
 from evoagent.agent.findings import FindingPolicy, _collect_evidence, _parse_findings, _strict_bool
 from evoagent.agent.memory_hooks import MemoryHooks
 from evoagent.agent.runtime import AgentTool, RuntimeBudgetExceeded, ToolRegistry
+from evoagent.agent.reviewers import LocalRuleReviewer
 from evoagent.agent.scanning import ScanRunner
 from evoagent.agent.telemetry import ExecutionLedger
 from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.domain.gates import FindingGate
 from evoagent.domain.models import Finding, Severity
 
 
@@ -497,6 +499,23 @@ class ScanRunnerTests(unittest.TestCase):
             item for item in ledger.tool_calls if item.tool == "diff-ast-analyze"
         )
         self.assertFalse(scan_call.ok)
+
+    def test_deterministic_high_risk_fragment_survives_the_evidence_gate(self):
+        cases = (
+            ("app.py", "    if eval(user_input):", "SEC-EVAL"),
+            ("app.js", "    password = 'secret'", "SEC-HARDCODED-SECRET"),
+        )
+        for path, line, rule_id in cases:
+            with self.subTest(path=path, line=line):
+                diff = "--- a/%s\n+++ b/%s\n@@ -0,0 +1 @@\n+%s\n" % (
+                    path, path, line,
+                )
+                parsed = parse_unified_diff(diff)
+                findings, _stats, _components = ScanRunner(
+                    _Runtime(LocalRuleReviewer()), FindingPolicy(),
+                )._scan(diff, parsed, ExecutionLedger("r"), [])
+                gated = FindingGate().apply(findings, parsed)
+                self.assertEqual([rule_id], [item.rule_id for item in gated.accepted])
 
 
 if __name__ == "__main__":

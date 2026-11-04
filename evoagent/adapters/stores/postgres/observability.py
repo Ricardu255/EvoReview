@@ -154,6 +154,15 @@ class PostgresObservabilityStoreMixin:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def resolve_alert(self, tenant_id: str, alert_id: int) -> bool:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE alerts SET status='resolved',updated_at=%s "
+                "WHERE tenant_id=%s AND id=%s AND status='open'",
+                (utc_now(), tenant_id, int(alert_id)),
+            )
+        return cursor.rowcount > 0
+
     def dashboard_stats(
         self, tenant_id: Optional[str] = None,
         window_seconds: Optional[int] = None,
@@ -189,9 +198,15 @@ class PostgresObservabilityStoreMixin:
                     "SELECT COUNT(*) AS n FROM failure_cases f JOIN tasks t ON t.id=f.task_id "
                     "WHERE f.resolved=FALSE AND t.tenant_id=%s", (tenant_id,)
                 ).fetchone()["n"]
-            skills = conn.execute(
-                "SELECT COUNT(*) AS n FROM skill_versions WHERE active=TRUE"
-            ).fetchone()["n"]
+            if tenant_id is None:
+                skills = conn.execute(
+                    "SELECT COUNT(*) AS n FROM skill_versions WHERE active=TRUE"
+                ).fetchone()["n"]
+            else:
+                skills = conn.execute(
+                    "SELECT COUNT(*) AS n FROM skill_versions "
+                    "WHERE active=TRUE AND tenant_id=%s", (tenant_id,)
+                ).fetchone()["n"]
             if tenant_id is None:
                 skills += conn.execute(
                     "SELECT COUNT(*) AS n FROM skill_artifact_versions WHERE active=TRUE"

@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from evoagent.config import Settings
+from evoagent.domain.report import to_markdown
 from evoagent.service import ReviewService
 from agentic_fake import enable_agentic_service
 
@@ -76,6 +77,37 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("reliability-review", names)
         self.assertIs(service.harness.reviewer, service.reviewer)
         self.assertEqual("agentic-reviewer", service.reviewer.name)
+        service.queue.close()
+
+    def test_production_scan_set_and_skill_catalog_are_consistent(self):
+        service = ReviewService(self.settings)
+        scanner_names = {
+            item["name"] for item in service.registry.list()
+            if item["kind"] == "scanner"
+        }
+        self.assertIn("context-rules", scanner_names)
+        self.assertNotIn("security-review", scanner_names)
+        self.assertNotIn("reliability-review", scanner_names)
+        self.assertIn(
+            "context-security-reliability-agent",
+            {scanner.name for scanner in service.reviewer.scanners},
+        )
+
+        catalog_names = [item["name"] for item in service.list_skills("default")]
+        self.assertEqual(len(catalog_names), len(set(catalog_names)))
+        service.queue.close()
+
+    def test_hardcoded_secret_evidence_is_redacted(self):
+        diff = "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-old\n+password = \"super-secret\"\n"
+        service = enable_agentic_service(ReviewService(self.settings))
+        result = service.create_review("org/repo", diff, 1)
+        finding = next(
+            item for item in result["report"]["findings"]
+            if item["rule_id"] == "SEC-HARDCODED-SECRET"
+        )
+        self.assertNotIn("super-secret", finding["evidence"])
+        self.assertIn("***", finding["evidence"])
+        self.assertNotIn("super-secret", to_markdown(result["report"]))
         service.queue.close()
 
 

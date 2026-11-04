@@ -32,6 +32,7 @@ FEEDBACK = re.compile(r"^/v1/tasks/([0-9a-f-]+)/feedback$")
 CANCEL = re.compile(r"^/v1/tasks/([0-9a-f-]+)/cancel$")
 RESUME = re.compile(r"^/v1/tasks/([0-9a-f-]+)/resume$")
 COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
+ALERT_RESOLVE = re.compile(r"^/api/alerts/(\d+)/resolve$")
 GRANTS = "/v1/repository-grants"
 ROLLBACK = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions/(\d+)/activate$")
 SKILL_ARTIFACT_VERSIONS = re.compile(r"^/v1/skill-evolution/([a-z0-9_-]+)/versions$")
@@ -47,6 +48,7 @@ def body_optional(path: str) -> bool:
     """POST routes that act on the URL alone and need no JSON body."""
     return bool(
         COMMENT.match(path) or CANCEL.match(path) or RESUME.match(path)
+        or ALERT_RESOLVE.match(path)
         or path == "/v1/skills/reload"
     )
 
@@ -691,7 +693,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/skills/reload":
                 principal = self._principal("manage")
-                self._send_json(200, {"skills": self.service.reload_skills(),
+                skills = self.service.reload_skills()
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "skill.reload",
+                    "skills", {"count": len(skills)},
+                )
+                self._send_json(200, {"skills": skills,
                                       "note": "New tasks now use the reloaded skill set."})
                 return
             if path == "/v1/deployments/llm-review":
@@ -725,6 +732,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "validation" if split is None else str(split),
                     "api",
                 )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "evaluation.case.add",
+                    text_field(payload, "name"),
+                    {"split": "validation" if split is None else str(split)},
+                )
                 self._send_json(201, result)
                 return
             if path == "/v1/evolution/auto":
@@ -735,6 +747,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 if result["decision"] == "activated":
                     self.service.reload_skills()
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "prompt.evolution.auto",
+                    str(payload.get("skill_name", "llm-review")),
+                    {"decision": result["decision"], "run_id": result.get("run_id")},
+                )
                 self._send_json(201, result)
                 return
             if path == "/v1/evolution/propose":
@@ -746,6 +763,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 if result["decision"] == "activated":
                     self.service.reload_skills()
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "prompt.evolution.propose",
+                    str(payload.get("skill_name", "")),
+                    {"decision": result["decision"], "run_id": result.get("run_id")},
+                )
                 self._send_json(201, result)
                 return
             if path == "/v1/skill-evolution/auto":
@@ -803,10 +825,30 @@ class ApiHandler(BaseHTTPRequestHandler):
             match = ROLLBACK.match(path)
             if match:
                 principal = self._principal("manage")
-                ok = self.service.evolution_for(principal.tenant_id).rollback(match.group(1), int(match.group(2)))
+                version = int(match.group(2))
+                ok = self.service.evolution_for(principal.tenant_id).rollback(
+                    match.group(1), version,
+                )
                 if ok:
                     self.service.reload_skills()
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "prompt.evolution.activate",
+                    match.group(1), {"version": version, "activated": ok},
+                )
                 self._send_json(200 if ok else 404, {"activated": ok})
+                return
+            match = ALERT_RESOLVE.match(path)
+            if match:
+                principal = self._principal("manage")
+                alert_id = int(match.group(1))
+                ok = self.service.store.resolve_alert(
+                    principal.tenant_id, alert_id,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "alert.resolve",
+                    str(alert_id), {"resolved": ok},
+                )
+                self._send_json(200 if ok else 404, {"resolved": ok})
                 return
             self._send_json(404, {"error": "not found"})
         except ValueError as exc:

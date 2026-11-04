@@ -10,6 +10,7 @@ from ..domain.gates import FindingGate
 from ..adapters.llm import JsonChatClient
 from ..domain.models import ComponentKind, Finding
 from ..domain.modes import component, resolve_mode
+from ..domain.report import redact_secret_evidence
 from .repository_tools import RepositoryToolSuite
 from .reviewers import LocalRuleReviewer, Reviewer
 from ..ports.stores import ReviewStore
@@ -172,6 +173,10 @@ class AgenticReviewer(Reviewer):
             available_skills, requested_skills,
         )
         gated = self.gate.apply(findings, parsed)
+        for finding in gated.accepted:
+            finding.evidence = redact_secret_evidence(
+                finding.rule_id, finding.evidence,
+            )
         ledger.trace("evidence-gate", "completed", **gated.checks)
         self._persist_task_memory(
             task_id, tenant_id, repository, findings, gated,

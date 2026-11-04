@@ -152,9 +152,8 @@ class ReviewService:
     ) -> str:
         return self._policy.resolve_repository_root(repository, requested, tenant_id)
 
-    @staticmethod
-    def _validate_enabled_agents(enabled_agents: Optional[list]) -> None:
-        ReviewPolicy.validate_enabled_agents(enabled_agents)
+    def _validate_enabled_agents(self, enabled_agents: Optional[list]) -> None:
+        self._policy.validate_enabled_agents(enabled_agents)
 
     def _validate_enabled_skills(
         self, enabled_skills: Optional[list], tenant_id: str,

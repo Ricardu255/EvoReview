@@ -13,6 +13,7 @@ from unittest.mock import patch
 from agentic_fake import FakeAgenticClient, enable_agentic_service
 from evoagent.api import ApiHandler, body_optional
 from evoagent.adapters.observability import AlertManager
+from evoagent.app.comments import review_comment_marker
 from evoagent.errors import ModelNotConfigured
 from evoagent.adapters.auth import Principal
 from evoagent.config import Settings
@@ -359,7 +360,10 @@ class ReviewRegressionTests(unittest.TestCase):
         self.assertFalse(task["input"]["diff_pending"])
         self.assertEqual(["org/a"], [github.repository])
         self.assertEqual(1, len(github.comments))
-        self.assertIn("<!-- evoagent-review:%s -->" % task_id, github.comments[0][2])
+        self.assertEqual(
+            review_comment_marker("tenant-a", "https://github.com/org/a/pull/1", task_id),
+            github.comments[0][2],
+        )
 
     def test_comment_delivery_failure_does_not_fail_completed_review(self):
         service = self.service
@@ -724,8 +728,25 @@ class CommentDeliveryTests(unittest.TestCase):
         self.assertTrue(result["delivered"])
         self.assertEqual(3, len(calls))
         self.assertEqual(
-            "<!-- evoagent-review:comment-task -->", calls[-1][1]
+            review_comment_marker(
+                "tenant-a", "https://github.com/org/a/pull/1", "comment-task",
+            ),
+            calls[-1][1],
         )
+
+    def test_comment_marker_is_stable_per_pr_and_tenant(self):
+        first = review_comment_marker(
+            "tenant-a", "https://github.com/org/a/pull/1/", "task-1",
+        )
+        second = review_comment_marker(
+            "tenant-a", "https://github.com/org/a/pull/1", "task-2",
+        )
+        other_tenant = review_comment_marker(
+            "tenant-b", "https://github.com/org/a/pull/1", "task-1",
+        )
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, other_tenant)
+        self.assertNotIn("task-1", first)
 
     def test_failed_redelivery_is_recorded_without_failing_the_task(self):
         class BrokenClient:

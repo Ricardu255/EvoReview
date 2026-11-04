@@ -6,6 +6,7 @@ import unittest
 from evoagent.app.feedback import FeedbackApplicationService
 from evoagent.app.github import GitHubApplicationService
 from evoagent.app.policies import ReviewPolicy
+from evoagent.app.review_lifecycle import ReviewLifecycleService
 from evoagent.config import Settings
 from evoagent.errors import ModelNotConfigured
 
@@ -114,6 +115,14 @@ class ReviewPolicyTests(unittest.TestCase):
         policy.validate_enabled_agents(["lead", "critic"])
         with self.assertRaisesRegex(ValueError, "unsupported enabled Agent role"):
             policy.validate_enabled_agents(["lead", "intruder"])
+        with self.assertRaisesRegex(ValueError, "requires the lead Agent"):
+            policy.validate_enabled_agents(["security"])
+        restricted = ReviewPolicy(
+            settings(enabled_agents="lead,security"), _PolicyStore(), {},
+            lambda tenant: [],
+        )
+        with self.assertRaisesRegex(ValueError, "disabled by EVOAGENT_ENABLED_AGENTS"):
+            restricted.validate_enabled_agents(["lead", "critic"])
 
     def test_validate_enabled_skills(self):
         policy = self.policy()
@@ -258,6 +267,64 @@ class _SmallMetrics:
 
     def inc(self, name, value=1.0):
         self.counters.append((name, value))
+
+
+class _BrokenQueue:
+    backend = "memory"
+
+    def submit(self, payload, message_id=None):
+        raise RuntimeError("queue unavailable")
+
+
+class _LifecycleStore:
+    def __init__(self):
+        self.tasks = {}
+
+    def create(self, task_id, repository, pull_request, payload, tenant_id="default"):
+        self.tasks[task_id] = {
+            "id": task_id, "repository": repository, "pull_request": pull_request,
+            "input": dict(payload), "tenant_id": tenant_id,
+            "state": "PENDING", "trace": [], "error": "",
+        }
+
+    def save_task_payload(self, task_id, diff):
+        self.tasks[task_id]["diff"] = diff
+
+    def update_task_input(self, task_id, updates):
+        self.tasks[task_id]["input"].update(updates)
+
+    def get(self, task_id, tenant_id=None):
+        return self.tasks.get(task_id)
+
+    def fail(self, task_id, error, event):
+        task = self.tasks[task_id]
+        task["state"] = "FAILED"
+        task["error"] = error
+        task["trace"].append(event)
+
+
+class _LifecycleExecution:
+    def _execution_assignment(self, tenant_id, task_id):
+        return {
+            "release_lane": "stable", "shadow": False,
+            "prompt_version": 0, "shadow_version": None,
+        }
+
+
+class ReviewLifecycleFailureTests(unittest.TestCase):
+    def test_queue_submit_failure_marks_the_created_task_failed(self):
+        store = _LifecycleStore()
+        service = ReviewLifecycleService(
+            store, _BrokenQueue(),
+            ReviewPolicy(settings(), _PolicyStore(), {}, lambda tenant: []),
+            object(), object(), object(), _SmallMetrics(), lambda: object(),
+            _LifecycleExecution(),
+        )
+        with self.assertRaisesRegex(RuntimeError, "queue unavailable"):
+            service.enqueue_review("org/repo", "diff", 1, tenant_id="tenant-a")
+        task = next(iter(store.tasks.values()))
+        self.assertEqual("FAILED", task["state"])
+        self.assertIn("queue unavailable", task["error"])
 
 
 class GitHubApplicationServiceTests(unittest.TestCase):
