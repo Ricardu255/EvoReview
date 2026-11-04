@@ -218,6 +218,7 @@ class ReviewExecutionService:
                 payload["github_issue_url"], payload.get("installation_id"),
                 task_id, tenant_id, report,
                 payload.get("repository", ""), payload.get("pull_request"),
+                payload.get("head_sha", ""),
             )
 
     def redeliver_comment(

@@ -101,6 +101,7 @@ class Settings:
     github_token: str
     auto_post_review: bool
     inline_review_comments: bool = False
+    auto_post_checks: bool = False
     database_url: str = ""
     redis_url: str = ""
     async_workers: int = 2
@@ -350,6 +351,7 @@ class Settings:
             github_token=os.getenv("EVOAGENT_GITHUB_TOKEN", ""),
             auto_post_review=_bool("EVOAGENT_AUTO_POST_REVIEW"),
             inline_review_comments=_bool("EVOAGENT_INLINE_REVIEW_COMMENTS", False),
+            auto_post_checks=_bool("EVOAGENT_AUTO_POST_CHECKS", False),
             database_url=os.getenv("EVOAGENT_DATABASE_URL", ""),
             redis_url=os.getenv("EVOAGENT_REDIS_URL", ""),
             async_workers=_int("EVOAGENT_ASYNC_WORKERS", 2),

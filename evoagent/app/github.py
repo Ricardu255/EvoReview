@@ -90,6 +90,7 @@ class GitHubApplicationService:
             queue_payload = {
                 "task_id": task_id, "repository": repository, "pull_request": number,
                 "github_issue_url": pull.get("issue_url", ""),
+                "head_sha": (pull.get("head") or {}).get("sha", ""),
                 "installation_id": installation_id, "tenant_id": tenant_id,
                 "diff_url": diff_url,
             }
