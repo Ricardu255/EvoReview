@@ -30,7 +30,7 @@ English | [**简体中文**](docs/README.zh-CN.md) | [Documentation](docs/INDEX.
 - User login, RBAC, tenant/repository isolation, and an immutable admin audit log
 - Dynamic Skill manifest validation and tool allowlists (Skills run in-process; there is no signature check or process-level sandbox)
 - Post-fix compile/test gating, canary rollout, and shadow traffic
-- OpenTelemetry traces, Prometheus metrics, and persistent alerts
+- OpenTelemetry traces, Prometheus metrics, and persistent alerts with optional webhook delivery
 
 ## Project Boundary
 

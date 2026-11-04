@@ -4,8 +4,9 @@ from typing import Dict, Optional
 
 
 class ReleaseManager:
-    def __init__(self, store):
+    def __init__(self, store, notifier=None):
         self.store = store
+        self.notifier = notifier
 
     def configure(self, tenant_id: str, skill_name: str, config: Dict[str, object]) -> dict:
         canary = int(config.get("canary_percent", 0))
@@ -62,10 +63,17 @@ class ReleaseManager:
             return self.store.get_deployment(tenant_id, skill_name)
         result = self.store.record_deployment_result(tenant_id, skill_name, failed)
         if result and result["status"] == "rolled_back":
-            self.store.create_alert(
-                tenant_id, "rollout:%s" % skill_name, "critical",
-                "Canary %s was automatically rolled back after exceeding its error budget." % skill_name,
+            message = (
+                "Canary %s was automatically rolled back after exceeding "
+                "its error budget." % skill_name
             )
+            self.store.create_alert(
+                tenant_id, "rollout:%s" % skill_name, "critical", message,
+            )
+            if self.notifier is not None:
+                self.notifier.notify(
+                    tenant_id, "rollout:%s" % skill_name, "critical", message,
+                )
         return result
 
     def observe_shadow(
@@ -82,8 +90,15 @@ class ReleaseManager:
             disagreement, candidate_failed,
         )
         if result and result["status"] == "promoted":
-            self.store.create_alert(
-                tenant_id, "rollout-promoted:%s" % skill_name, "info",
-                "Candidate %s was automatically promoted after shadow verification." % skill_name,
+            message = (
+                "Candidate %s was automatically promoted after shadow verification."
+                % skill_name
             )
+            self.store.create_alert(
+                tenant_id, "rollout-promoted:%s" % skill_name, "info", message,
+            )
+            if self.notifier is not None:
+                self.notifier.notify(
+                    tenant_id, "rollout-promoted:%s" % skill_name, "info", message,
+                )
         return result

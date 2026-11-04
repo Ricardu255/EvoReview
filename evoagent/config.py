@@ -148,6 +148,7 @@ class Settings:
     alert_failure_rate: float = 0.20
     alert_min_samples: int = 10
     alert_window_seconds: int = 900
+    alert_webhook_url: str = ""
     agent_token_budget: int = 8000
     agent_time_budget_seconds: int = 60
     agent_context_window_tokens: int = 32768
@@ -395,6 +396,7 @@ class Settings:
             alert_failure_rate=float(os.getenv("EVOAGENT_ALERT_FAILURE_RATE", "0.20")),
             alert_min_samples=_int("EVOAGENT_ALERT_MIN_SAMPLES", 10),
             alert_window_seconds=_int("EVOAGENT_ALERT_WINDOW_SECONDS", 900),
+            alert_webhook_url=os.getenv("EVOAGENT_ALERT_WEBHOOK_URL", "").strip(),
             agent_token_budget=_int("EVOAGENT_AGENT_TOKEN_BUDGET", 8000),
             agent_time_budget_seconds=_int("EVOAGENT_AGENT_TIME_BUDGET_SECONDS", 60),
             agent_context_window_tokens=_int(

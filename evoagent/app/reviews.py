@@ -25,6 +25,7 @@ class ReviewsApplicationService:
         harness_factory: Callable[[Any], Any],
         github_client_for_installation: Callable[[Optional[int]], Any],
         chat_client_provider: Callable[[], Any],
+        alert_notifier=None,
     ):
         self.settings = settings
         self.store = store
@@ -33,6 +34,7 @@ class ReviewsApplicationService:
         self.execution = ReviewExecutionService(
             settings, store, policy, observability, releases, alerts, metrics,
             build_agentic_reviewer, harness_factory, github_client_for_installation,
+            alert_notifier,
         )
         self.lifecycle = ReviewLifecycleService(
             store, queue, policy, observability, releases, alerts, metrics,

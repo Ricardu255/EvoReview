@@ -17,7 +17,9 @@ from .policies import ReviewPolicy
 logger = logging.getLogger("evoagent")
 
 
-def mark_dead_letter(store, metrics, payload: Dict[str, Any], error: str) -> None:
+def mark_dead_letter(
+    store, metrics, payload: Dict[str, Any], error: str, notifier=None,
+) -> None:
     """Mark a pending task failed and raise an alert for a dead-letter delivery."""
     task_id = payload.get("task_id", "")
     tenant_id = payload.get("tenant_id", "default")
@@ -39,6 +41,11 @@ def mark_dead_letter(store, metrics, payload: Dict[str, Any], error: str) -> Non
         tenant_id, "dlq:%s" % (task_id or "unknown"), "critical",
         "Task %s entered the dead-letter queue: %s" % (task_id, error),
     )
+    if notifier is not None:
+        notifier.notify(
+            tenant_id, "dlq:%s" % (task_id or "unknown"), "critical",
+            "Task %s entered the dead-letter queue: %s" % (task_id, error),
+        )
     metrics.inc("dead_letters_total")
 
 
@@ -55,6 +62,7 @@ class ReviewExecutionService:
         build_agentic_reviewer: Callable[..., Any],
         harness_factory: Callable[[Any], Any],
         github_client_for_installation: Callable[[Optional[int]], Any],
+        alert_notifier=None,
     ):
         self.settings = settings
         self.store = store
@@ -66,6 +74,7 @@ class ReviewExecutionService:
         self.build_agentic_reviewer = build_agentic_reviewer
         self.harness_factory = harness_factory
         self.github_client_for_installation = github_client_for_installation
+        self.alert_notifier = alert_notifier
         self.comments = ReviewCommentService(
             settings, store, metrics, github_client_for_installation,
         )
@@ -216,4 +225,6 @@ class ReviewExecutionService:
         return self.comments.redeliver(task_id, tenant_id)
 
     def on_dead_letter(self, payload: Dict[str, Any], error: str) -> None:
-        mark_dead_letter(self.store, self.metrics, payload, error)
+        mark_dead_letter(
+            self.store, self.metrics, payload, error, self.alert_notifier,
+        )

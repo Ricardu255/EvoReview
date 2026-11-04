@@ -20,7 +20,7 @@ from .adapters.github import GitHubClient
 from .agent.harness import ReviewHarness
 from .adapters.llm import JsonChatClient
 from .agent.memory import MemoryManager
-from .adapters.observability import AlertManager, Observability
+from .adapters.observability import AlertManager, AlertNotifier, Observability
 from .adapters.patching import SuggestionOnlyFixer, VerifiedPatchFixer
 from .adapters.stores.postgres.store import create_store
 from .agent.reviewers import (
@@ -265,10 +265,11 @@ def build_container(settings: Settings) -> ServiceContainer:
         settings.bootstrap_admin_username, settings.bootstrap_admin_password,
         settings.default_tenant_id,
     )
-    releases = ReleaseManager(store)
+    alert_notifier = AlertNotifier(settings.alert_webhook_url)
+    releases = ReleaseManager(store, alert_notifier)
     alerts = AlertManager(
         store, settings.alert_failure_rate, settings.alert_min_samples,
-        settings.alert_window_seconds,
+        settings.alert_window_seconds, alert_notifier,
     )
     evolution = EvolutionEngine(
         store,
