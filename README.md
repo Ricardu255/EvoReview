@@ -270,6 +270,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `GET/POST` | `/v1/evaluation/cases` | Query or add versioned evaluation samples |
 | `GET` | `/v1/evolution/status` | Query model and evaluation-gate readiness |
 | `GET` | `/v1/evolution/runs` | Query persisted old-vs-new version evaluation runs |
+| `GET` | `/v1/skills/{name}/versions` | List prompt versions for the tenant |
 | `POST` | `/v1/skills/{name}/versions/{version}/activate` | Activate or roll back a version |
 | `POST` | `/v1/skill-evolution/auto` | Generate, replay, and gate a Skill candidate from confirmed feedback |
 | `POST` | `/v1/skill-evolution/propose` | Evaluate a given agent Skill `SKILL.md` artifact |

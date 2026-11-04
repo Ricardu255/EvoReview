@@ -270,6 +270,7 @@ Invoke-RestMethod https://<公网域名>/health
 | `GET/POST` | `/v1/evaluation/cases` | 查询或增加版本化评测样本 |
 | `GET` | `/v1/evolution/status` | 查询模型与评测门禁就绪状态 |
 | `GET` | `/v1/evolution/runs` | 查询持久化的新旧版本评测记录 |
+| `GET` | `/v1/skills/{name}/versions` | 查询租户的 Prompt 版本链 |
 | `POST` | `/v1/skills/{name}/versions/{version}/activate` | 激活或回滚版本 |
 | `POST` | `/v1/skill-evolution/auto` | 从确认反馈生成、回放并门禁 Skill 候选 |
 | `POST` | `/v1/skill-evolution/propose` | 评测指定 Agent Skill `SKILL.md` artifact |

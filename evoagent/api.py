@@ -38,6 +38,7 @@ USER_PASSWORD = re.compile(r"^/v1/users/([^/]+)/password$")
 USER_ACTIVE = re.compile(r"^/v1/users/([^/]+)/active$")
 GRANTS = "/v1/repository-grants"
 ROLLBACK = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions/(\d+)/activate$")
+PROMPT_VERSIONS = re.compile(r"^/v1/skills/([A-Za-z0-9_-]+)/versions$")
 SKILL_ARTIFACT_VERSIONS = re.compile(r"^/v1/skill-evolution/([a-z0-9_-]+)/versions$")
 SKILL_ARTIFACT_ACTIVATE = re.compile(
     r"^/v1/skill-evolution/([a-z0-9_-]+)/versions/(\d+)/activate$"
@@ -492,6 +493,26 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"runs": self.service.store.list_skill_evolution_runs(
                 self._query_int(query, "limit", 50), principal.tenant_id
             )})
+            return
+        match = PROMPT_VERSIONS.match(path)
+        if match:
+            if not principal.can("manage"):
+                self._send_json(403, {"error": "permission denied"})
+                return
+            versions = self.service.store.list_skill_versions(
+                match.group(1), principal.tenant_id,
+            )
+            self._send_json(200, {"versions": [{
+                "version": item["version"],
+                "score": item["score"],
+                "active": bool(item["active"]),
+                "parent_version": item.get("parent_version"),
+                "created_at": item.get("created_at"),
+                "prompt_sha256": hashlib.sha256(
+                    str(item.get("prompt", "")).encode("utf-8")
+                ).hexdigest(),
+                "prompt_preview": str(item.get("prompt", ""))[:200],
+            } for item in versions]})
             return
         match = SKILL_ARTIFACT_VERSIONS.match(path)
         if match:

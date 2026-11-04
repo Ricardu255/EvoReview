@@ -37,6 +37,13 @@ class WebAssetTests(unittest.TestCase):
         self.assertIn('params.set("state", state)', source)
         self.assertIn('params.set("repository", repository)', source)
 
+    def test_prompt_versions_are_rendered(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        source = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="prompt-versions"', html)
+        self.assertIn("/v1/skills/llm-review/versions", source)
+        self.assertIn('$("#prompt-versions").textContent', source)
+
 
 if __name__ == "__main__":
     unittest.main()

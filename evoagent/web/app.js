@@ -481,10 +481,11 @@ async function loadSkills() {
 }
 
 async function loadFailures() {
-  const [failuresResult, statusResult, runsResult] = await Promise.allSettled([
+  const [failuresResult, statusResult, runsResult, versionsResult] = await Promise.allSettled([
     api("/api/failures"),
     api("/v1/evolution/status"),
     api("/v1/evolution/runs?limit=5"),
+    api("/v1/skills/llm-review/versions"),
   ]);
   const failuresData = failuresResult.status === "fulfilled" ? failuresResult.value : {};
   const runsData = runsResult.status === "fulfilled" ? runsResult.value : {};
@@ -493,7 +494,18 @@ async function loadFailures() {
   } else {
     $("#evolution-status").textContent = "暂时无法读取评测状态。";
   }
-  const rejected = [failuresResult, statusResult, runsResult]
+  if (versionsResult.status === "fulfilled") {
+    const versions = versionsResult.value.versions || [];
+    $("#prompt-versions").textContent = versions.length
+      ? versions.map((item) => (
+        `v${item.version} · score ${Number(item.score).toFixed(3)}` +
+        `${item.active ? " · ACTIVE" : ""} · ${item.prompt_sha256.slice(0, 12)}`
+      )).join("\n")
+      : "尚无 Prompt 版本。";
+  } else {
+    $("#prompt-versions").textContent = "暂时无法读取版本链。";
+  }
+  const rejected = [failuresResult, statusResult, runsResult, versionsResult]
     .find((result) => result.status === "rejected");
   if (rejected) toast(rejected.reason?.message || "部分反馈数据读取失败");
   const cases = failuresData.cases || [];
