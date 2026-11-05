@@ -192,7 +192,7 @@ class Settings:
                 "provider": "deepseek",
                 "base_url": self.llm_base_url or "https://api.deepseek.com",
                 "api_key": api_key,
-                "model": self.llm_model or "deepseek-v4-flash",
+                "model": self.llm_model or "deepseek-flash",
                 "headers": {},
             }
 
