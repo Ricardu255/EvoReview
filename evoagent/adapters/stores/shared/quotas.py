@@ -97,8 +97,8 @@ class QuotaStoreMixin:
             conn.execute(self._sql(
                 "INSERT INTO tenant_usage(tenant_id,day,reviews,tokens,cost_usd) "
                 "VALUES (?,?,?,?,?) ON CONFLICT(tenant_id,day) DO UPDATE SET "
-                "reviews=reviews+excluded.reviews,"
-                "tokens=tokens+excluded.tokens,"
-                "cost_usd=cost_usd+excluded.cost_usd"
+                "reviews=tenant_usage.reviews+excluded.reviews,"
+                "tokens=tenant_usage.tokens+excluded.tokens,"
+                "cost_usd=tenant_usage.cost_usd+excluded.cost_usd"
             ), (tenant_id, day, reviews, tokens, cost_usd))
         return True
