@@ -66,7 +66,7 @@ class StorePortCompositionTests(unittest.TestCase):
         # states (save/consume), alert resolution, tenant user management,
         # expired task-data retention, and tenant/platform administration.
         names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
-        self.assertEqual(77, len(names))
+        self.assertEqual(78, len(names))
 
 
 if __name__ == "__main__":

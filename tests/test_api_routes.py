@@ -8,13 +8,17 @@ import hashlib
 import hmac
 import io
 import json
+import signal
+import time
 import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
 from unittest.mock import patch
 
 from evoagent.adapters.auth import Principal
-from evoagent.api import ApiHandler, body_optional, text_field
+from evoagent.api import (
+    ApiHandler, body_optional, install_shutdown_handlers, text_field,
+)
 from evoagent.config import Settings
 
 
@@ -23,6 +27,10 @@ class FakeStore:
         self.calls = []
         self.audit_events = []
         self.task = None
+        self.healthy = True
+
+    def health_check(self):
+        return self.healthy
 
     def _record(self, name, *args, **kwargs):
         self.calls.append((name, args, kwargs))
@@ -142,6 +150,10 @@ class FakeQueue:
 
     def __init__(self):
         self.replayed = []
+        self.healthy = True
+
+    def health_check(self):
+        return self.healthy
 
     def dead_letters(self, limit, tenant_id):
         return {"limit": limit, "tenant": tenant_id, "messages": []}
@@ -406,6 +418,31 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, metrics.status)
         self.assertIn("text/plain; version=0.0.4", metrics.content_type)
         self.assertIn("\n", metrics.text)
+
+        self.service.store.healthy = False
+        degraded = self.call("/health/detail")
+        self.assertEqual(503, degraded.status)
+        self.assertEqual("degraded", degraded.body["status"])
+        self.assertFalse(degraded.body["dependencies"]["store"])
+        self.service.store.healthy = True
+
+    def test_sigterm_shutdown_delegates_to_the_server(self):
+        class Server:
+            def __init__(self):
+                self.called = False
+
+            def shutdown(self):
+                self.called = True
+
+        server = Server()
+        with patch("evoagent.api.signal.signal") as register:
+            install_shutdown_handlers(server)
+        handler = register.call_args[0][1]
+        handler(signal.SIGTERM, None)
+        deadline = time.monotonic() + 1
+        while not server.called and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(server.called)
 
     def test_dashboard_and_list_routes(self):
         dashboard = self.call("/api/dashboard")

@@ -36,6 +36,15 @@ class SqlStoreMixin:
             with self._connect() as conn:
                 yield conn
 
+    def health_check(self) -> bool:
+        """Cheap dependency check used by the readiness endpoint."""
+        try:
+            with self._connect() as conn:
+                conn.execute(self._sql("SELECT 1")).fetchone()
+            return True
+        except Exception:
+            return False
+
     @contextmanager
     def _transaction(self, write=False, key=""):
         lock = getattr(self, "_lock", None) if write else None

@@ -7,7 +7,9 @@ import mimetypes
 import os
 import re
 import secrets
+import signal
 import socket
+import threading
 import time
 import urllib.parse
 from datetime import datetime, timezone
@@ -364,8 +366,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if path == "/health/detail":
             mode = resolve_mode(None, bool(self.service.llm_config))
-            self._send_json(200, {
-                "status": "ok", "reviewer": self.service.reviewer.name,
+            store_ok = bool(self.service.store.health_check())
+            queue_ok = bool(self.service.queue.health_check())
+            healthy = store_ok and queue_ok
+            self._send_json(200 if healthy else 503, {
+                "status": "ok" if healthy else "degraded",
+                "dependencies": {"store": store_ok, "queue": queue_ok},
+                "reviewer": self.service.reviewer.name,
                 "runtime": self.service.harness.name,
                 "queue": self.service.queue.backend,
                 "llm_provider": self.service.llm_config.get("provider", "local"),
@@ -1091,12 +1098,35 @@ def server_class(host: str):
     return ThreadingHTTPServer
 
 
+def install_shutdown_handlers(server: Any) -> None:
+    """Turn SIGTERM into a graceful server shutdown.
+
+    ``serve_forever`` must be stopped from another thread, so the signal
+    handler delegates ``shutdown()`` instead of calling it inline.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return
+
+    def request_shutdown(signum, frame):
+        threading.Thread(
+            target=server.shutdown, name="evoagent-http-shutdown", daemon=True,
+        ).start()
+
+    try:
+        signal.signal(signal.SIGTERM, request_shutdown)
+    except (AttributeError, OSError, ValueError):
+        # Some embedders and non-main runtimes cannot install signal handlers.
+        pass
+
+
 def run() -> None:
     settings = Settings.from_env()
     service = ReviewService(settings)
     handler = type("ConfiguredApiHandler", (ApiHandler,), {"service": service, "settings": settings})
     handler.timeout = 30  # bound slow client reads
     server = server_class(settings.host)((settings.host, settings.port), handler)
+    server.daemon_threads = True
+    install_shutdown_handlers(server)
     display_host = "[%s]" % settings.host if ":" in settings.host else settings.host
     print("EvoReview dashboard: http://%s:%d" % (display_host, settings.port))
     print("Persistence: %s | Queue: %s | Orchestrator: %s" % (
