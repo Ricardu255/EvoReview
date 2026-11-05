@@ -245,6 +245,10 @@ class _RedisDouble:
         self.stream_entries = []
         self.acks = []
         self.deleted = []
+        self.trimmed = []
+        self.length = 0
+        self.pending = {"pending": 0, "min": None}
+        self.last_delivered = "0-0"
         self.complete_result = 1
         self.renewed = threading.Event()
 
@@ -291,6 +295,20 @@ class _RedisDouble:
 
     def xdel(self, stream, *ids):
         self.deleted.extend(ids)
+
+    def xlen(self, stream):
+        return self.length
+
+    def xpending(self, stream, group):
+        return dict(self.pending)
+
+    def xinfo_groups(self, stream):
+        return [{
+            "name": TaskQueue.GROUP, "last-delivered-id": self.last_delivered,
+        }]
+
+    def xtrim(self, stream, minid=None, approximate=False, **kwargs):
+        self.trimmed.append((stream, minid))
 
     def xrevrange(self, stream, max="+", count=100, **kwargs):
         rows = [
@@ -439,6 +457,33 @@ class RedisWorkerTests(QueueTestCase):
         self.assertEqual([({"task_id": "ma", "tenant_id": "a"}, "ma")], submitted)
         self.assertEqual(1, len(redis.deleted))
         self.assertFalse(queue.replay_dead_letter("missing", "a"))
+
+    def test_trim_uses_oldest_pending_id(self):
+        redis = _RedisDouble()
+        queue = self.redis_queue(redis)
+        queue.stream_maxlen = 100
+        redis.length = 101
+        redis.pending = {"pending": 1, "min": "50-0"}
+        queue._maybe_trim()
+        self.assertEqual([(TaskQueue.STREAM, "50-0")], redis.trimmed)
+
+    def test_trim_uses_last_delivered_id_when_no_pending(self):
+        redis = _RedisDouble()
+        queue = self.redis_queue(redis)
+        queue.stream_maxlen = 100
+        redis.length = 101
+        redis.pending = {"pending": 0, "min": None}
+        redis.last_delivered = "75-0"
+        queue._maybe_trim()
+        self.assertEqual([(TaskQueue.STREAM, "75-0")], redis.trimmed)
+
+    def test_trim_is_skipped_below_the_limit(self):
+        redis = _RedisDouble()
+        queue = self.redis_queue(redis)
+        queue.stream_maxlen = 100
+        redis.length = 100
+        queue._maybe_trim()
+        self.assertEqual([], redis.trimmed)
 
     def test_reclaim_invalid_envelope_is_dead_lettered_and_acked(self):
         redis = _RedisDouble()

@@ -90,9 +90,11 @@ class TaskQueue:
             "submitted_at": time.time(),
         }
         if self._redis:
+            # Do not use MAXLEN here: Redis can trim entries that are still in
+            # the consumer group's pending list.  _maybe_trim() removes only
+            # entries older than the oldest pending entry.
             self._redis.xadd(
                 self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)},
-                maxlen=self.stream_maxlen, approximate=True,
             )
         else:
             self._submit_delivery(envelope)
@@ -246,7 +248,6 @@ class TaskQueue:
                 envelope["retry_after"] = time.time() + self._retry_delay(envelope)
                 self._redis.xadd(
                     self.STREAM, {"envelope": json.dumps(envelope, ensure_ascii=False)},
-                    maxlen=self.stream_maxlen, approximate=True,
                 )
             else:
                 timer = threading.Timer(
@@ -303,9 +304,31 @@ class TaskQueue:
                         self._deliver(envelope, redis_id)
                         # ACK only after work completed or was safely requeued/DLQed.
                         self._redis.xack(self.STREAM, self.GROUP, redis_id)
+                        self._maybe_trim()
                     except Exception:
                         # Infrastructure failure: leave pending for lease recovery.
                         continue
+
+    def _maybe_trim(self) -> None:
+        """Trim only entries older than the oldest pending delivery."""
+        if not self._redis:
+            return
+        try:
+            if int(self._redis.xlen(self.STREAM)) <= self.stream_maxlen:
+                return
+            pending = self._redis.xpending(self.STREAM, self.GROUP)
+            threshold = ""
+            if isinstance(pending, dict) and int(pending.get("pending") or 0) > 0:
+                threshold = str(pending.get("min") or "")
+            else:
+                for group in self._redis.xinfo_groups(self.STREAM):
+                    if str(group.get("name")) == self.GROUP:
+                        threshold = str(group.get("last-delivered-id") or "")
+                        break
+            if threshold and threshold not in {"0-0", "0"}:
+                self._redis.xtrim(self.STREAM, minid=threshold, approximate=True)
+        except Exception:
+            logger.debug("stream trim skipped", exc_info=True)
 
     def _reclaim_stale(self) -> None:
         try:
@@ -326,6 +349,7 @@ class TaskQueue:
                     continue
                 self._deliver(envelope, redis_id)
                 self._redis.xack(self.STREAM, self.GROUP, redis_id)
+                self._maybe_trim()
         except Exception:
             # Redis versions without XAUTOCLAIM still process new entries.
             return
