@@ -119,6 +119,7 @@ class Settings:
     llm_max_retries: int = 2
     llm_retry_backoff_seconds: float = 1.0
     deepseek_api_key: str = ""
+    anthropic_api_key: str = ""
     openrouter_api_key: str = ""
     openrouter_site_url: str = ""
     openrouter_app_name: str = "EvoReview"
@@ -184,7 +185,7 @@ class Settings:
     tenant_daily_cost_limit_usd: float = 0.0
 
     def resolved_llm(self) -> Dict[str, object]:
-        """Resolve a named provider to the existing OpenAI-compatible transport."""
+        """Resolve a named provider to a transport configuration."""
         provider = self.llm_provider.strip().lower()
         if provider in {"", "local", "none"}:
             if self.llm_base_url or self.llm_api_key or self.llm_model:
@@ -201,6 +202,19 @@ class Settings:
                 "base_url": self.llm_base_url or "https://api.deepseek.com",
                 "api_key": api_key,
                 "model": self.llm_model or "deepseek-flash",
+                "headers": {},
+            }
+
+        if provider == "anthropic":
+            api_key = self.anthropic_api_key or self.llm_api_key
+            if not api_key:
+                raise ValueError("Anthropic requires EVOAGENT_ANTHROPIC_API_KEY")
+            return {
+                "provider": "anthropic",
+                "api_style": "anthropic",
+                "base_url": self.llm_base_url or "https://api.anthropic.com/v1",
+                "api_key": api_key,
+                "model": self.llm_model or "claude-sonnet-5-5",
                 "headers": {},
             }
 
@@ -395,6 +409,7 @@ class Settings:
                 0.0, float(os.getenv("EVOAGENT_LLM_RETRY_BACKOFF_SECONDS", "1"))
             ),
             deepseek_api_key=os.getenv("EVOAGENT_DEEPSEEK_API_KEY", ""),
+            anthropic_api_key=os.getenv("EVOAGENT_ANTHROPIC_API_KEY", ""),
             openrouter_api_key=os.getenv("EVOAGENT_OPENROUTER_API_KEY", ""),
             openrouter_site_url=os.getenv("EVOAGENT_OPENROUTER_SITE_URL", ""),
             openrouter_app_name=os.getenv("EVOAGENT_OPENROUTER_APP_NAME", "EvoReview"),

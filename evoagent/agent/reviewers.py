@@ -198,10 +198,11 @@ class OpenAICompatibleReviewer(Reviewer):
         self, base_url: str, api_key: str, model: str, timeout: int = 60,
         system_prompt: str = "", provider: str = "openai-compatible",
         extra_headers: Optional[Dict[str, str]] = None,
+        api_style: str = "openai",
     ):
         self.client = JsonChatClient(
             base_url, api_key, model, provider=provider, timeout=timeout,
-            extra_headers=extra_headers,
+            extra_headers=extra_headers, api_style=api_style,
         )
         self.system_prompt = system_prompt
         self.provider = provider

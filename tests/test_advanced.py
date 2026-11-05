@@ -62,6 +62,19 @@ class AdvancedFeatureTests(unittest.TestCase):
         )
         self.assertTrue(str(free.resolved_llm()["model"]).endswith(":free"))
 
+        anthropic = settings(self.path)
+        anthropic = anthropic.__class__(
+            **{
+                **anthropic.__dict__,
+                "llm_provider": "anthropic",
+                "anthropic_api_key": "test-key",
+            }
+        )
+        config = anthropic.resolved_llm()
+        self.assertEqual("anthropic", config["api_style"])
+        self.assertEqual("https://api.anthropic.com/v1", config["base_url"])
+        self.assertEqual("claude-sonnet-5-5", config["model"])
+
     def test_feedback_candidate_is_deferred_without_a_model(self):
         store = TaskStore(self.path)
         store.create("task", "org/repo", 1, {"source": "test"})
