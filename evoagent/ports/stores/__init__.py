@@ -4,6 +4,7 @@ from .evolution import EvolutionStorePort
 from .failures import FailureStorePort
 from .memory import MemoryStorePort
 from .observability import ObservabilityStorePort
+from .quotas import QuotaStorePort
 from .review import ReviewStore
 from .setup import SetupStateStorePort
 from .skills import SkillStorePort
@@ -17,6 +18,7 @@ __all__ = [
     "FailureStorePort",
     "MemoryStorePort",
     "ObservabilityStorePort",
+    "QuotaStorePort",
     "ReviewStore",
     "SetupStateStorePort",
     "SkillStorePort",

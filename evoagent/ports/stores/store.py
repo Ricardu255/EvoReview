@@ -6,6 +6,7 @@ from .evolution import EvolutionStorePort
 from .failures import FailureStorePort
 from .memory import MemoryStorePort
 from .observability import ObservabilityStorePort
+from .quotas import QuotaStorePort
 from .setup import SetupStateStorePort
 from .skills import SkillStorePort
 from .tasks import TaskStorePort
@@ -22,6 +23,7 @@ class StoreProtocol(
     WebhookStorePort,
     AuthStorePort,
     ObservabilityStorePort,
+    QuotaStorePort,
     SetupStateStorePort,
     Protocol,
 ):

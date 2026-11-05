@@ -27,6 +27,7 @@ class ReviewLifecycleService:
         metrics: Any,
         chat_client_provider: Callable[[], Any],
         execution: ReviewExecutionService,
+        quota=None,
     ):
         self.store = store
         self.queue = queue
@@ -37,6 +38,7 @@ class ReviewLifecycleService:
         self.metrics = metrics
         self.chat_client_provider = chat_client_provider
         self.execution = execution
+        self.quota = quota
 
     def create_task(
         self, repository: str, diff: str, pull_request: Optional[int], source: str,
@@ -45,6 +47,8 @@ class ReviewLifecycleService:
         enabled_skills: Optional[list] = None,
         mode: str = RunMode.AGENTIC.value,
     ) -> str:
+        if self.quota is not None:
+            self.quota.reserve_review(tenant_id)
         task_id = str(uuid.uuid4())
         encoded = diff.encode("utf-8")
         assignment = self.execution._execution_assignment(tenant_id, task_id)
@@ -64,6 +68,8 @@ class ReviewLifecycleService:
         self, repository: str, pull_request: Optional[int], source: str,
         tenant_id: str, payload: Dict[str, Any], task_id: Optional[str] = None,
     ) -> str:
+        if self.quota is not None:
+            self.quota.reserve_review(tenant_id)
         task_id = task_id or str(uuid.uuid4())
         assignment = self.execution._execution_assignment(tenant_id, task_id)
         self.store.create(task_id, repository, pull_request, {
@@ -188,6 +194,8 @@ class ReviewLifecycleService:
         diff = self.store.get_task_payload(task_id)
         if diff is None:
             raise ValueError("task payload is no longer available")
+        if self.quota is not None:
+            self.quota.reserve_review(task.get("tenant_id", "default"))
         if not self.store.prepare_resume(task_id, task.get("tenant_id", "default")):
             raise ValueError("task state changed; resume was not applied")
         try:

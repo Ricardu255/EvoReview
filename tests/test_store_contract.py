@@ -109,6 +109,32 @@ class StoreContract:
         self.assertEqual([], task["collaboration"])
         self.assertEqual("pending diff", self.store.get_task_payload(pending_id))
 
+    def test_tenant_quota_reservation_and_usage(self):
+        day = "2026-01-01"
+        self.store.set_tenant_quota("quota-tenant", 2, 100, 1.0)
+        quota = self.store.get_tenant_quota("quota-tenant")
+        self.assertEqual(2, quota["daily_reviews"])
+        self.assertTrue(self.store.consume_tenant_quota(
+            "quota-tenant", day, reviews=1, defaults={}, enforce=True,
+        ))
+        self.assertTrue(self.store.consume_tenant_quota(
+            "quota-tenant", day, reviews=1, defaults={}, enforce=True,
+        ))
+        self.assertFalse(self.store.consume_tenant_quota(
+            "quota-tenant", day, reviews=1, defaults={}, enforce=True,
+        ))
+        self.assertTrue(self.store.consume_tenant_quota(
+            "quota-tenant", day, tokens=120, cost_usd=2.0,
+            defaults={}, enforce=False,
+        ))
+        usage = self.store.get_tenant_usage("quota-tenant", day)
+        self.assertEqual(2, usage["reviews"])
+        self.assertEqual(120, usage["tokens"])
+        self.assertEqual(2.0, usage["cost_usd"])
+        self.assertFalse(self.store.consume_tenant_quota(
+            "quota-tenant", day, tokens=1, defaults={}, enforce=True,
+        ))
+
     def test_task_lifecycle_and_tenant_isolation(self):
         run = _uid()
         self.store.create(

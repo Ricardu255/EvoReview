@@ -207,6 +207,25 @@ class SqliteSchemaMixin:
                 )"""
             )
             conn.execute(
+                """CREATE TABLE IF NOT EXISTS tenant_quotas (
+                    tenant_id TEXT PRIMARY KEY,
+                    daily_reviews INTEGER NOT NULL DEFAULT 0,
+                    daily_tokens INTEGER NOT NULL DEFAULT 0,
+                    daily_cost_usd REAL NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS tenant_usage (
+                    tenant_id TEXT NOT NULL,
+                    day TEXT NOT NULL,
+                    reviews INTEGER NOT NULL DEFAULT 0,
+                    tokens INTEGER NOT NULL DEFAULT 0,
+                    cost_usd REAL NOT NULL DEFAULT 0,
+                    PRIMARY KEY(tenant_id, day)
+                )"""
+            )
+            conn.execute(
                 """CREATE TABLE IF NOT EXISTS memberships (
                     user_id TEXT NOT NULL,
                     tenant_id TEXT NOT NULL,

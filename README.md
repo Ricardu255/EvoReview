@@ -269,6 +269,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `GET/POST/DELETE` | `/v1/repository-grants` | List, grant, or revoke tenant repository access |
 | `GET/POST` | `/v1/users` | List tenant users or create/update a tenant membership |
 | `GET/POST` | `/v1/tenants` | List or create tenants (platform scope) |
+| `GET/POST` | `/v1/tenant-quota` | Query or configure daily review, token and cost limits |
 | `POST` | `/v1/platform/users/{username}/platform-admin` | Grant or revoke platform scope (platform scope) |
 | `POST` | `/v1/users/{username}/password` | Reset a tenant user's password |
 | `POST` | `/v1/users/{username}/active` | Enable or disable a tenant user |
@@ -308,6 +309,10 @@ Set `EVOAGENT_TASK_DATA_RETENTION_DAYS` to a positive number to periodically rem
 ### Tenant Lifecycle
 
 Platform scope is separate from a tenant administrator's `manage` permission. Set `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true` for the initial operator, create tenants through `POST /v1/tenants`, and create memberships in another tenant with `POST /v1/users` plus `tenant_id`. Platform scope can be granted or revoked through `/v1/platform/users/{username}/platform-admin`.
+
+### Tenant Quotas
+
+Daily review, token and cost limits default to `0` (unlimited) and can be overridden per tenant through `GET/POST /v1/tenant-quota`. Review creation returns HTTP `429` when a limit is exhausted; actual token and cost usage is recorded after each completed review.
 
 ### Repository Grants
 

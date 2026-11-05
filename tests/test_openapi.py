@@ -98,7 +98,7 @@ class OpenApiSpecTests(unittest.TestCase):
             "/v1/tasks/{task_id}/feedback",
             "/v1/tasks/{task_id}/fix", "/v1/tasks/{task_id}/cancel",
             "/v1/tasks/{task_id}/resume", "/v1/tasks/{task_id}/comment",
-            "/v1/repository-grants", "/v1/users", "/v1/tenants",
+            "/v1/repository-grants", "/v1/users", "/v1/tenant-quota", "/v1/tenants",
             "/v1/users/{username}/password", "/v1/users/{username}/active",
             "/v1/platform/users/{username}/platform-admin",
             "/v1/skills/reload", "/v1/skills/{name}/versions",

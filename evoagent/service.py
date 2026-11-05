@@ -8,6 +8,7 @@ from .app.fixes import FixesApplicationService
 from .app.github import GitHubApplicationService
 from .app.maintenance import DataRetention
 from .app.policies import ReviewPolicy
+from .app.quotas import TenantQuotaService
 from .app.reviews import ReviewsApplicationService
 from .app.skills import SkillApplicationService
 from .bootstrap import (
@@ -50,6 +51,7 @@ class ReviewService:
             self.settings, self.store, self.repository_roots,
             self._active_agent_skills,
         )
+        self.quota = TenantQuotaService(self.store, self.settings)
         self._feedback_app = FeedbackApplicationService(
             self.store, self.memory, metrics,
         )
@@ -90,6 +92,7 @@ class ReviewService:
             ),
             lambda: self.chat_client,
             self.alerts.notifier,
+            self.quota,
         )
         self._github_app = GitHubApplicationService(
             self.settings, self.store, self.queue, self._policy,

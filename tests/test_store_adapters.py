@@ -62,7 +62,7 @@ class StoreAdapterStructureTests(unittest.TestCase):
         expected = {
             "__init__.py", "store.py", "schema.py", "tasks.py", "memory.py",
             "failures.py", "skills.py", "installations.py", "auth.py",
-            "observability.py",
+            "observability.py", "quotas.py",
         }
         for backend in ("sqlite", "postgres"):
             self.assertEqual(
@@ -74,8 +74,8 @@ class StoreAdapterStructureTests(unittest.TestCase):
     def test_shared_contains_dialect_neutral_helpers(self):
         expected = {
             "__init__.py", "auth.py", "failures.py", "installations.py",
-            "memory.py", "migrations.py", "prompt.py", "rows.py",
-            "setup_state.py", "skills.py", "sql.py", "webhook.py",
+            "memory.py", "migrations.py", "prompt.py", "quotas.py",
+            "rows.py", "setup_state.py", "skills.py", "sql.py", "webhook.py",
         }
         self.assertEqual(
             expected,

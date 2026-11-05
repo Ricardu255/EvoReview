@@ -329,6 +329,18 @@
             </form>
           </article>
           <article class="paper-card plain">
+            <div class="panel-head"><h3>租户配额</h3><span class="small">QUOTAS</span></div>
+            <pre class="status-lines" id="admin-quota">正在读取配额…</pre>
+            <form id="quota-form">
+              <div class="field-row">
+                <label class="field"><span>每日审查数</span><input name="daily_reviews" type="number" min="0" value="0"></label>
+                <label class="field"><span>每日 Token</span><input name="daily_tokens" type="number" min="0" value="0"></label>
+              </div>
+              <label class="field"><span>每日成本上限（USD）</span><input name="daily_cost_usd" type="number" min="0" step="0.01" value="0"></label>
+              <button class="btn-primary" type="submit">保存配额（0 = 不限制）</button>
+            </form>
+          </article>
+          <article class="paper-card plain">
             <div class="panel-head"><h3>租户用户</h3><span class="small">MEMBRES</span></div>
             <div id="admin-users" class="task-list"><div class="list-loading"></div></div>
             <form id="user-form">

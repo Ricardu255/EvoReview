@@ -610,6 +610,25 @@ def _paths() -> Dict[str, Any]:
                              "schema": {"type": "string"}}],
             )
         },
+        "/v1/tenant-quota": {
+            "get": _operation(
+                "getTenantQuota", "Get this tenant's daily quota and usage", ["admin"],
+                {"200": _json({"type": "object", "additionalProperties": True})},
+            ),
+            "post": _operation(
+                "setTenantQuota", "Configure daily review, token and cost limits", ["admin"],
+                {"201": _json({"type": "object", "additionalProperties": True}),
+                 "400": _error("Invalid quota")},
+                request={"type": "object", "required": [
+                    "daily_reviews", "daily_tokens", "daily_cost_usd",
+                ], "properties": {
+                    "daily_reviews": {"type": "integer", "minimum": 0},
+                    "daily_tokens": {"type": "integer", "minimum": 0},
+                    "daily_cost_usd": {"type": "number", "minimum": 0},
+                    "tenant_id": {"type": "string"},
+                }},
+            ),
+        },
         "/v1/tenants": {
             "get": _operation(
                 "listTenants", "List tenants (platform scope)", ["admin"],
