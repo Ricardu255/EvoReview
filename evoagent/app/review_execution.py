@@ -37,11 +37,11 @@ def mark_dead_letter(
                 "Task entered the dead-letter queue: %s" % error, utc_now(),
             ),
         )
-    store.create_alert(
+    created = store.create_alert(
         tenant_id, "dlq:%s" % (task_id or "unknown"), "critical",
         "Task %s entered the dead-letter queue: %s" % (task_id, error),
     )
-    if notifier is not None:
+    if created and notifier is not None:
         notifier.notify(
             tenant_id, "dlq:%s" % (task_id or "unknown"), "critical",
             "Task %s entered the dead-letter queue: %s" % (task_id, error),
