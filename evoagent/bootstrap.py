@@ -108,6 +108,7 @@ def build_llm_reviewer(
         system_prompt=prompt,
         provider=str(llm_config["provider"]),
         extra_headers=dict(llm_config.get("headers") or {}),
+        api_style=str(llm_config.get("api_style") or "openai"),
     )
 
 
@@ -242,6 +243,7 @@ def build_container(settings: Settings) -> ServiceContainer:
             settings.timeout_seconds, dict(llm_config.get("headers") or {}),
             retries=settings.llm_max_retries,
             backoff_seconds=settings.llm_retry_backoff_seconds,
+            api_style=str(llm_config.get("api_style") or "openai"),
         ) if llm_config else None
     )
     active_skills = lambda tenant_id: active_agent_skills(store, registry, tenant_id)

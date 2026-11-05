@@ -131,6 +131,16 @@ python -m evoagent
 
 如果指定的免费 DeepSeek 版本下线，可将 `EVOAGENT_LLM_MODEL` 改为 OpenRouter 当前提供的其他 `:free` 模型，或把 Provider 改为 `openrouter-free` 让免费路由自动选择可用模型。
 
+原生 Anthropic Messages API（不经过 OpenAI 兼容层）：
+
+```powershell
+$env:EVOAGENT_LLM_PROVIDER = 'anthropic'
+$env:EVOAGENT_ANTHROPIC_API_KEY = '<anthropic-api-key>'
+# 可选：覆盖默认模型（claude-sonnet-5-5）
+# $env:EVOAGENT_LLM_MODEL = '<claude-model-id>'
+python -m evoagent
+```
+
 任意其他 OpenAI Chat Completions 兼容端点使用 `custom`：
 
 ```powershell

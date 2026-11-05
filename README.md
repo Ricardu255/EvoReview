@@ -131,6 +131,16 @@ python -m evoagent
 
 If the designated free DeepSeek model is retired, either change `EVOAGENT_LLM_MODEL` to another current `:free` model on OpenRouter, or set the provider to `openrouter-free` to let free routing pick an available model automatically.
 
+Native Anthropic Messages API (no OpenAI compatibility layer):
+
+```powershell
+$env:EVOAGENT_LLM_PROVIDER = 'anthropic'
+$env:EVOAGENT_ANTHROPIC_API_KEY = '<anthropic-api-key>'
+# Optional: override the default model (claude-sonnet-5-5)
+# $env:EVOAGENT_LLM_MODEL = '<claude-model-id>'
+python -m evoagent
+```
+
 For any other OpenAI Chat Completions-compatible endpoint, use `custom`:
 
 ```powershell

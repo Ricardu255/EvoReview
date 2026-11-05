@@ -28,6 +28,17 @@ def chat_response(content, finish_reason="stop"):
     return response
 
 
+def anthropic_response(content, stop_reason="end_turn"):
+    payload = {
+        "content": [{"type": "text", "text": content}],
+        "stop_reason": stop_reason,
+        "usage": {"input_tokens": 11, "output_tokens": 4},
+    }
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps(payload).encode("utf-8")
+    return response
+
+
 class JsonChatClientTests(unittest.TestCase):
     def make_client(self, retries=2):
         return JsonChatClient(
@@ -174,6 +185,73 @@ class TrailingCommaRepairTests(unittest.TestCase):
     def test_trailing_comma_in_nested_string_content_survives(self):
         content = '{"evidence": "keep, this comma"}'
         self.assertEqual({"evidence": "keep, this comma"}, self._parse(content))
+
+
+class AnthropicTransportTests(unittest.TestCase):
+    def make_client(self, **kwargs):
+        return JsonChatClient(
+            "https://api.anthropic.test/v1", "key", "claude-test", "anthropic",
+            retries=1, backoff_seconds=0.0, api_style="anthropic", **kwargs,
+        )
+
+    def test_native_messages_request_and_token_usage(self):
+        client = self.make_client()
+        ledger = ExecutionLedger("test")
+        requests = []
+
+        def fake_urlopen(request, timeout):
+            requests.append(request)
+            return anthropic_response('{"ok": true}')
+
+        with patch(
+            "evoagent.adapters.llm.urllib.request.urlopen",
+            side_effect=fake_urlopen,
+        ):
+            result = client.complete_json("role", "system", "user", ledger)
+        self.assertEqual({"ok": True}, result)
+        self.assertEqual("https://api.anthropic.test/v1/messages", requests[0].full_url)
+        headers = {key.lower(): value for key, value in requests[0].header_items()}
+        self.assertEqual("key", headers["x-api-key"])
+        self.assertEqual("2023-06-01", headers["anthropic-version"])
+        self.assertNotIn("authorization", headers)
+        payload = json.loads(requests[0].data.decode("utf-8"))
+        self.assertEqual(4096, payload["max_tokens"])
+        self.assertNotIn("response_format", payload)
+        self.assertEqual("user", payload["messages"][0]["role"])
+        self.assertIn("JSON", payload["system"])
+        self.assertEqual(
+            (11, 4),
+            (
+                ledger.model_calls[0].input_tokens,
+                ledger.model_calls[0].output_tokens,
+            ),
+        )
+
+    def test_length_stop_reason_escalates_output_budget(self):
+        client = self.make_client()
+        requests = []
+
+        def fake_urlopen(request, timeout):
+            requests.append(json.loads(request.data.decode("utf-8")))
+            if len(requests) == 1:
+                return anthropic_response("", stop_reason="max_tokens")
+            return anthropic_response('{"ok": 1}')
+
+        with patch(
+            "evoagent.adapters.llm.urllib.request.urlopen",
+            side_effect=fake_urlopen,
+        ):
+            result = client.complete_json(
+                "role", "system", "user", max_tokens=100,
+            )
+        self.assertEqual({"ok": 1}, result)
+        self.assertEqual([100, 200], [item["max_tokens"] for item in requests])
+
+    def test_unknown_api_style_is_rejected(self):
+        with self.assertRaises(ValueError):
+            JsonChatClient(
+                "https://api.test", "key", "model", api_style="grpc",
+            )
 
 
 class WhitespaceResponseRetryTests(unittest.TestCase):

@@ -1,4 +1,8 @@
-"""Small OpenAI-compatible JSON client with auditable usage accounting."""
+"""JSON model client with auditable usage accounting.
+
+Supports OpenAI-compatible Chat Completions and the native Anthropic Messages
+API. Both transports return the same parsed JSON object and ledger records.
+"""
 import json
 import re
 import socket
@@ -92,7 +96,11 @@ class JsonChatClient:
         extra_headers: Optional[Dict[str, str]] = None,
         retries: int = 2, backoff_seconds: float = 1.0,
         extra_payload: Optional[Dict[str, Any]] = None,
+        api_style: str = "openai",
     ):
+        self.api_style = str(api_style or "openai").strip().lower()
+        if self.api_style not in {"openai", "anthropic"}:
+            raise ValueError("unsupported LLM API style: %s" % api_style)
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
@@ -108,36 +116,23 @@ class JsonChatClient:
         ledger: Optional[ExecutionLedger] = None,
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "temperature": 0,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "response_format": {"type": "json_object"},
-        }
-        if max_tokens:
-            payload["max_tokens"] = int(max_tokens)
-        payload.update(self.extra_payload)
-        headers = {
-            "Authorization": "Bearer " + self.api_key,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        headers.update(self.extra_headers)
+        payload = self._build_payload(system, user, max_tokens)
+        headers = self._build_headers()
         last_message = ""
         current_max_tokens = max_tokens
+        if self.api_style == "anthropic":
+            current_max_tokens = int(payload["max_tokens"])
+        initial_max_tokens = current_max_tokens
         for attempt in range(self.retries + 1):
             started = time.monotonic()
             delay = 0.0
             retryable = False
             request_payload = dict(payload)
-            if current_max_tokens and current_max_tokens != max_tokens:
+            if current_max_tokens and current_max_tokens != initial_max_tokens:
                 request_payload["max_tokens"] = int(current_max_tokens)
             data = json.dumps(request_payload, ensure_ascii=False).encode("utf-8")
             request = urllib.request.Request(
-                self.base_url + "/chat/completions", data=data,
+                self.base_url + self._endpoint(), data=data,
                 headers=headers, method="POST",
             )
             try:
@@ -194,8 +189,66 @@ class JsonChatClient:
             time.sleep(delay)
         raise RuntimeError(last_message)
 
-    @staticmethod
-    def _extract_content(body: Dict[str, Any]) -> Tuple[Optional[str], str]:
+    def _build_payload(
+        self, system: str, user: str, max_tokens: Optional[int],
+    ) -> Dict[str, Any]:
+        if self.api_style == "anthropic":
+            instruction = "Return only a single valid JSON object."
+            payload: Dict[str, Any] = {
+                "model": self.model,
+                "temperature": 0,
+                "max_tokens": int(max_tokens or 4096),
+                "system": (
+                    system.rstrip() + "\n\n" + instruction if system else instruction
+                ),
+                "messages": [{"role": "user", "content": user}],
+            }
+        else:
+            payload = {
+                "model": self.model,
+                "temperature": 0,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            if max_tokens:
+                payload["max_tokens"] = int(max_tokens)
+        payload.update(self.extra_payload)
+        return payload
+
+    def _build_headers(self) -> Dict[str, str]:
+        if self.api_style == "anthropic":
+            headers = {
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        else:
+            headers = {
+                "Authorization": "Bearer " + self.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        headers.update(self.extra_headers)
+        return headers
+
+    def _endpoint(self) -> str:
+        return "/messages" if self.api_style == "anthropic" else "/chat/completions"
+
+    def _extract_content(self, body: Dict[str, Any]) -> Tuple[Optional[str], str]:
+        if self.api_style == "anthropic":
+            blocks = body.get("content") or []
+            if not isinstance(blocks, list):
+                raise ValueError("Anthropic content is not a list")
+            content = "".join(
+                str(block.get("text", "")) for block in blocks
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+            stop = str(body.get("stop_reason") or "")
+            return content, {"max_tokens": "length"}.get(stop, stop)
         choice = (body.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         return message.get("content"), str(choice.get("finish_reason") or "")
