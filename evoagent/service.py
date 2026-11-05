@@ -106,6 +106,9 @@ class ReviewService:
         )
         self._retention = DataRetention(
             self.store, self.settings.task_data_retention_days,
+            failure_case_days=self.settings.failure_case_retention_days,
+            audit_days=self.settings.audit_retention_days,
+            alert_days=self.settings.alert_retention_days,
         )
         self._retention.start()
 

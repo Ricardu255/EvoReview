@@ -304,7 +304,15 @@ Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔�
 
 ### 数据保留
 
-将 `EVOAGENT_TASK_DATA_RETENTION_DAYS` 设为正数后，系统会定期删除超过保留窗口的成功、失败或取消任务的原始 diff、checkpoint 与协作消息；任务记录、最终报告和 trace 事件仍保留用于审计。默认值 `0` 表示关闭。
+将 `EVOAGENT_TASK_DATA_RETENTION_DAYS` 设为正数后，系统会定期删除超过保留窗口的成功、失败或取消任务的原始 diff、checkpoint 与协作消息；任务记录、最终报告和 trace 事件仍保留用于审计。
+
+另外三个独立窗口用于其余元数据：
+
+- `EVOAGENT_FAILURE_CASE_RETENTION_DAYS`：只删除已解决的失败案例，未解决的用户反馈保留。
+- `EVOAGENT_AUDIT_RETENTION_DAYS`：删除超过窗口的审计记录。
+- `EVOAGENT_ALERT_RETENTION_DAYS`：只删除已解决的告警，未解决告警保留。
+
+四项配置默认均为 `0`，表示关闭对应清理。审计记录按设计是追加写入的，只有合规策略要求限制存储时再开启审计保留。
 
 ### 租户生命周期
 

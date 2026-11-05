@@ -304,7 +304,15 @@ Prompt versions, evaluation samples, evolution runs, and dead-letter operations 
 
 ### Data Retention
 
-Set `EVOAGENT_TASK_DATA_RETENTION_DAYS` to a positive number to periodically remove raw diff payloads, checkpoints, and collaboration messages from successful, failed, or cancelled tasks older than that window. Task rows, final reports, and trace events remain for audit. The default of `0` disables retention.
+Set `EVOAGENT_TASK_DATA_RETENTION_DAYS` to a positive number to periodically remove raw diff payloads, checkpoints, and collaboration messages from successful, failed, or cancelled tasks older than that window. Task rows, final reports, and trace events remain for audit.
+
+Three independent opt-in windows cover the remaining metadata:
+
+- `EVOAGENT_FAILURE_CASE_RETENTION_DAYS` removes resolved failure cases only; unresolved feedback is kept.
+- `EVOAGENT_AUDIT_RETENTION_DAYS` removes audit rows older than the window.
+- `EVOAGENT_ALERT_RETENTION_DAYS` removes resolved alerts only; open alerts are kept.
+
+All four settings default to `0`, which disables that cleanup. Because audit rows are append-only by design, enable audit retention only when your compliance policy requires bounded storage.
 
 ### Tenant Lifecycle
 
