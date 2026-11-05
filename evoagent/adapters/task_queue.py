@@ -82,6 +82,15 @@ class TaskQueue:
     def backend(self) -> str:
         return "redis-streams" if self._redis else "memory-acked"
 
+    def health_check(self) -> bool:
+        """Readiness check for the queue backend."""
+        if not self._redis:
+            return True
+        try:
+            return bool(self._redis.ping())
+        except Exception:
+            return False
+
     def submit(self, payload: Dict[str, Any], message_id: str = "") -> str:
         envelope = {
             "message_id": message_id or str(payload.get("task_id") or uuid.uuid4()),

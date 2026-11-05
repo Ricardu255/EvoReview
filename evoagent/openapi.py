@@ -84,6 +84,7 @@ def _schemas() -> Dict[str, Any]:
             "required": ["status"],
             "properties": {
                 "status": {"type": "string"},
+                "dependencies": {"type": "object", "additionalProperties": True},
                 "reviewer": {"type": "string"},
                 "runtime": {"type": "string"},
                 "queue": {"type": "string"},

@@ -29,3 +29,6 @@ class StoreProtocol(
 
     def migrate_legacy_tenant(self, default_tenant_id: str) -> bool:
         ...
+
+    def health_check(self) -> bool:
+        ...
