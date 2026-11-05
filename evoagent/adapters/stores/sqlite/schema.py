@@ -216,6 +216,18 @@ class SqliteSchemaMixin:
                 )"""
             )
             conn.execute(
+                """CREATE TABLE IF NOT EXISTS github_delivery_state (
+                    tenant_id TEXT NOT NULL,
+                    repository TEXT NOT NULL,
+                    pull_request INTEGER NOT NULL,
+                    head_sha TEXT NOT NULL,
+                    inline_delivered INTEGER NOT NULL DEFAULT 0,
+                    check_run_id INTEGER,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY(tenant_id, repository, pull_request, head_sha)
+                )"""
+            )
+            conn.execute(
                 """CREATE TABLE IF NOT EXISTS tenant_usage (
                     tenant_id TEXT NOT NULL,
                     day TEXT NOT NULL,

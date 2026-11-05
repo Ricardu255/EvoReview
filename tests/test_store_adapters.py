@@ -56,13 +56,13 @@ class StoreAdapterStructureTests(unittest.TestCase):
         # an anchor connection keep ":memory:" databases alive.
         for backend in ("sqlite", "postgres"):
             source = (STORES / backend / "store.py").read_text(encoding="utf-8")
-            self.assertLessEqual(len(source.splitlines()), 70, backend)
+            self.assertLessEqual(len(source.splitlines()), 75, backend)
 
     def test_each_backend_has_the_same_capability_modules(self):
         expected = {
             "__init__.py", "store.py", "schema.py", "tasks.py", "memory.py",
             "failures.py", "skills.py", "installations.py", "auth.py",
-            "observability.py", "quotas.py",
+            "observability.py", "quotas.py", "github_delivery.py",
         }
         for backend in ("sqlite", "postgres"):
             self.assertEqual(
@@ -74,8 +74,9 @@ class StoreAdapterStructureTests(unittest.TestCase):
     def test_shared_contains_dialect_neutral_helpers(self):
         expected = {
             "__init__.py", "auth.py", "failures.py", "installations.py",
-            "memory.py", "migrations.py", "prompt.py", "quotas.py",
-            "rows.py", "setup_state.py", "skills.py", "sql.py", "webhook.py",
+            "github_delivery.py", "memory.py", "migrations.py", "prompt.py",
+            "quotas.py", "rows.py", "setup_state.py", "skills.py", "sql.py",
+            "webhook.py",
         }
         self.assertEqual(
             expected,

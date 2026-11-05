@@ -23,12 +23,26 @@ class _Store:
     def __init__(self):
         self.events = []
         self.updates = []
+        self.deliveries = {}
 
     def audit(self, *args):
         self.events.append(args)
 
     def update_task_input(self, task_id, values):
         self.updates.append((task_id, values))
+
+    def get_github_delivery_state(self, tenant, repository, pull_request, head):
+        return self.deliveries.get((tenant, repository, pull_request, head))
+
+    def mark_github_inline_delivered(self, tenant, repository, pull_request, head):
+        key = (tenant, repository, pull_request, head)
+        self.deliveries[key] = {**self.deliveries.get(key, {}),
+                                "inline_delivered": True}
+
+    def set_github_check_run(self, tenant, repository, pull_request, head, check_id):
+        key = (tenant, repository, pull_request, head)
+        self.deliveries[key] = {**self.deliveries.get(key, {}),
+                                "check_run_id": check_id}
 
 
 class _Metrics:
@@ -177,6 +191,21 @@ class InlineCommentTests(unittest.TestCase):
         self.assertEqual(1, len(client.checks))
         self.assertEqual(1, len(client.updated_checks))
         self.assertEqual(77, task_input["check_run_id"])
+
+    def test_new_task_for_same_pr_and_head_reuses_delivery_state(self):
+        client = _Client()
+        comments, _store, _metrics = service(True, client, checks=True)
+        comments.deliver(
+            "https://github.test/issue", None, "task-1", "tenant", REPORT,
+            "org/repo", 5, "head-sha", {},
+        )
+        comments.deliver(
+            "https://github.test/issue", None, "task-2", "tenant", REPORT,
+            "org/repo", 5, "head-sha", {},
+        )
+        self.assertEqual(1, len(client.reviews))
+        self.assertEqual(1, len(client.checks))
+        self.assertEqual(1, len(client.updated_checks))
 
     def test_check_run_is_disabled_without_head_sha(self):
         client = _Client()
