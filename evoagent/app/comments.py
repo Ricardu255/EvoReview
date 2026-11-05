@@ -70,11 +70,11 @@ class ReviewCommentService:
                 self.metrics.inc("comment_delivered_total")
                 self._deliver_inline(
                     client, task_id, tenant_id, repository, pull_request, value,
-                    task_input,
+                    task_input, head_sha,
                 )
                 self._deliver_check_run(
-                    client, task_id, tenant_id, repository, head_sha, value,
-                    task_input,
+                    client, task_id, tenant_id, repository, pull_request,
+                    head_sha, value, task_input,
                 )
                 return True
             except Exception as exc:
@@ -100,13 +100,19 @@ class ReviewCommentService:
     def _deliver_inline(
         self, client: Any, task_id: str, tenant_id: str, repository: str,
         pull_request: Optional[int], value: Dict[str, Any],
-        task_input: Dict[str, Any],
+        task_input: Dict[str, Any], head_sha: str,
     ) -> None:
         if not getattr(self.settings, "inline_review_comments", False):
             return
         if not repository or pull_request is None:
             return
-        if task_input.get("inline_review_delivered"):
+        state = self._delivery_state(
+            tenant_id, repository, pull_request, head_sha,
+        )
+        if (
+            (state and state.get("inline_delivered"))
+            or task_input.get("inline_review_delivered")
+        ):
             return
         try:
             comments = []
@@ -130,6 +136,9 @@ class ReviewCommentService:
             self.metrics.inc("inline_comments_delivered_total", len(comments))
             task_input["inline_review_delivered"] = True
             self._remember_delivery(task_id, {"inline_review_delivered": True})
+            marker = getattr(self.store, "mark_github_inline_delivered", None)
+            if callable(marker):
+                marker(tenant_id, repository, pull_request, head_sha)
         except Exception as exc:
             # The summary comment is already delivered.  Inline comments are a
             # best-effort enhancement and must not trigger a full redelivery.
@@ -148,7 +157,7 @@ class ReviewCommentService:
 
     def _deliver_check_run(
         self, client: Any, task_id: str, tenant_id: str, repository: str,
-        head_sha: str, value: Dict[str, Any],
+        pull_request: Optional[int], head_sha: str, value: Dict[str, Any],
         task_input: Dict[str, Any],
     ) -> None:
         if not getattr(self.settings, "auto_post_checks", False):
@@ -169,6 +178,11 @@ class ReviewCommentService:
             len(findings), value.get("risk", "unknown"),
         )
         summary = str(value.get("summary", ""))[:65000]
+        state = self._delivery_state(
+            tenant_id, repository, pull_request, head_sha,
+        )
+        if state and state.get("check_run_id"):
+            task_input["check_run_id"] = state["check_run_id"]
         try:
             check_run_id = task_input.get("check_run_id")
             if check_run_id:
@@ -184,6 +198,12 @@ class ReviewCommentService:
                     self._remember_delivery(
                         task_id, {"check_run_id": result["id"]},
                     )
+                    setter = getattr(self.store, "set_github_check_run", None)
+                    if callable(setter):
+                        setter(
+                            tenant_id, repository, pull_request,
+                            head_sha, result["id"],
+                        )
             self.metrics.inc("check_runs_delivered_total")
         except Exception as exc:
             logger.warning(
@@ -198,6 +218,21 @@ class ReviewCommentService:
                 )
             except Exception:
                 logger.exception("failed to audit check-run failure")
+
+    def _delivery_state(
+        self, tenant_id: str, repository: str, pull_request: Optional[int],
+        head_sha: str,
+    ) -> Optional[Dict[str, Any]]:
+        if not repository or pull_request is None or not head_sha:
+            return None
+        getter = getattr(self.store, "get_github_delivery_state", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(tenant_id, repository, int(pull_request), head_sha)
+        except Exception:
+            logger.exception("failed to read GitHub delivery state")
+            return None
 
     def _remember_delivery(self, task_id: str, values: Dict[str, Any]) -> None:
         try:

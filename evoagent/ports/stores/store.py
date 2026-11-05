@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 from .auth import AuthStorePort
 from .evolution import EvolutionStorePort
 from .failures import FailureStorePort
+from .github_delivery import GitHubDeliveryStorePort
 from .memory import MemoryStorePort
 from .observability import ObservabilityStorePort
 from .quotas import QuotaStorePort
@@ -18,6 +19,7 @@ class StoreProtocol(
     TaskStorePort,
     MemoryStorePort,
     FailureStorePort,
+    GitHubDeliveryStorePort,
     EvolutionStorePort,
     SkillStorePort,
     WebhookStorePort,

@@ -6,6 +6,7 @@ from ..shared.setup_state import SetupStateStoreMixin
 from ..shared.webhook import WebhookStoreMixin
 from .auth import PostgresAuthStoreMixin
 from .failures import PostgresFailureStoreMixin
+from .github_delivery import PostgresGitHubDeliveryStoreMixin
 from .installations import PostgresInstallationStoreMixin
 from .memory import PostgresMemoryStoreMixin
 from .observability import PostgresObservabilityStoreMixin
@@ -17,7 +18,8 @@ from .tasks import PostgresTaskStoreMixin
 
 class PostgresTaskStore(
     PostgresSchemaMixin, PostgresTaskStoreMixin, PostgresMemoryStoreMixin,
-    PostgresFailureStoreMixin, PostgresSkillStoreMixin,
+    PostgresFailureStoreMixin, PostgresGitHubDeliveryStoreMixin,
+    PostgresSkillStoreMixin,
     PostgresInstallationStoreMixin, PostgresAuthStoreMixin,
     PostgresObservabilityStoreMixin, PostgresQuotaStoreMixin,
     PromptStoreMixin, WebhookStoreMixin,

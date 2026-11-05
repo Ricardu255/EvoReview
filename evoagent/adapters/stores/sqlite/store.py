@@ -12,6 +12,7 @@ from ..shared.setup_state import SetupStateStoreMixin
 from ..shared.webhook import WebhookStoreMixin
 from .auth import SqliteAuthStoreMixin
 from .failures import SqliteFailureStoreMixin
+from .github_delivery import SqliteGitHubDeliveryStoreMixin
 from .installations import SqliteInstallationStoreMixin
 from .memory import SqliteMemoryStoreMixin
 from .observability import SqliteObservabilityStoreMixin
@@ -25,7 +26,8 @@ __all__ = ["TaskStore"]
 
 class TaskStore(
     SqliteSchemaMixin, SqliteTaskStoreMixin, SqliteMemoryStoreMixin,
-    SqliteFailureStoreMixin, SqliteSkillStoreMixin,
+    SqliteFailureStoreMixin, SqliteGitHubDeliveryStoreMixin,
+    SqliteSkillStoreMixin,
     SqliteInstallationStoreMixin, SqliteAuthStoreMixin,
     SqliteObservabilityStoreMixin, SqliteQuotaStoreMixin,
     PromptStoreMixin, WebhookStoreMixin,

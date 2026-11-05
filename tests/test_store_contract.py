@@ -109,6 +109,25 @@ class StoreContract:
         self.assertEqual([], task["collaboration"])
         self.assertEqual("pending diff", self.store.get_task_payload(pending_id))
 
+    def test_github_delivery_state_is_scoped_by_head_sha(self):
+        self.assertIsNone(self.store.get_github_delivery_state(
+            "tenant-a", "org/repo", 1, "sha-1",
+        ))
+        self.store.mark_github_inline_delivered(
+            "tenant-a", "org/repo", 1, "sha-1",
+        )
+        self.store.set_github_check_run(
+            "tenant-a", "org/repo", 1, "sha-1", 99,
+        )
+        state = self.store.get_github_delivery_state(
+            "tenant-a", "org/repo", 1, "sha-1",
+        )
+        self.assertTrue(state["inline_delivered"])
+        self.assertEqual(99, state["check_run_id"])
+        self.assertIsNone(self.store.get_github_delivery_state(
+            "tenant-a", "org/repo", 1, "sha-2",
+        ))
+
     def test_tenant_quota_reservation_and_usage(self):
         day = "2026-01-01"
         self.store.set_tenant_quota("quota-tenant", 2, 100, 1.0)
