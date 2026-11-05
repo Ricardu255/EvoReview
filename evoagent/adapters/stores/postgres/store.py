@@ -9,6 +9,7 @@ from .failures import PostgresFailureStoreMixin
 from .installations import PostgresInstallationStoreMixin
 from .memory import PostgresMemoryStoreMixin
 from .observability import PostgresObservabilityStoreMixin
+from .quotas import PostgresQuotaStoreMixin
 from .schema import PostgresSchemaMixin
 from .skills import PostgresSkillStoreMixin
 from .tasks import PostgresTaskStoreMixin
@@ -18,7 +19,8 @@ class PostgresTaskStore(
     PostgresSchemaMixin, PostgresTaskStoreMixin, PostgresMemoryStoreMixin,
     PostgresFailureStoreMixin, PostgresSkillStoreMixin,
     PostgresInstallationStoreMixin, PostgresAuthStoreMixin,
-    PostgresObservabilityStoreMixin, PromptStoreMixin, WebhookStoreMixin,
+    PostgresObservabilityStoreMixin, PostgresQuotaStoreMixin,
+    PromptStoreMixin, WebhookStoreMixin,
     SetupStateStoreMixin,
     MigrationStoreMixin,
     StoreProtocol,

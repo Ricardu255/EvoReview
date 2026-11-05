@@ -63,6 +63,7 @@ class ReviewExecutionService:
         harness_factory: Callable[[Any], Any],
         github_client_for_installation: Callable[[Optional[int]], Any],
         alert_notifier=None,
+        quota=None,
     ):
         self.settings = settings
         self.store = store
@@ -75,6 +76,7 @@ class ReviewExecutionService:
         self.harness_factory = harness_factory
         self.github_client_for_installation = github_client_for_installation
         self.alert_notifier = alert_notifier
+        self.quota = quota
         self.comments = ReviewCommentService(
             settings, store, metrics, github_client_for_installation,
         )
@@ -154,6 +156,12 @@ class ReviewExecutionService:
         )
         harness = self.harness_factory(reviewer)
         report = harness.run(task_id, repository, pull_request, diff, tenant_id)
+        if self.quota is not None:
+            execution = report.execution or {}
+            self.quota.record_usage(
+                tenant_id, int(execution.get("total_tokens", 0) or 0),
+                float(execution.get("cost_usd", 0) or 0.0),
+            )
         if task_input.get("shadow"):
             try:
                 self._run_shadow(

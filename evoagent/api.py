@@ -24,7 +24,7 @@ from .adapters.metrics import metrics
 from .domain.modes import public_taxonomy, resolve_mode
 from .domain.report import to_markdown
 from .domain.sarif import to_sarif
-from .errors import AuthenticationRequired, ModelNotConfigured
+from .errors import AuthenticationRequired, ModelNotConfigured, QuotaExceeded
 from .openapi import build_openapi
 from .service import ReviewService
 
@@ -40,6 +40,7 @@ COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
 ALERT_RESOLVE = re.compile(r"^/api/alerts/(\d+)/resolve$")
 USERS = "/v1/users"
 TENANTS = "/v1/tenants"
+TENANT_QUOTA = "/v1/tenant-quota"
 USER_PASSWORD = re.compile(r"^/v1/users/([^/]+)/password$")
 USER_ACTIVE = re.compile(r"^/v1/users/([^/]+)/active$")
 PLATFORM_ADMIN = re.compile(r"^/v1/platform/users/([^/]+)/platform-admin$")
@@ -470,6 +471,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(200, {"tenants": self.service.store.list_tenants()})
             return
+        if path == TENANT_QUOTA:
+            self._send_json(200, self.service.quota.status(principal.tenant_id))
+            return
         if path == "/api/deployments/llm-review":
             self._send_json(200, {"deployment": self.service.store.get_deployment(
                 principal.tenant_id, "llm-review"
@@ -867,6 +871,32 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 self._send_json(200 if ok else 404, {"updated": ok})
                 return
+            if path == TENANT_QUOTA:
+                principal = self._principal("manage")
+                payload = self._read_json(body)
+                tenant_id = (
+                    text_field(payload, "tenant_id").strip() or principal.tenant_id
+                )
+                if tenant_id != principal.tenant_id:
+                    self.service.auth.require(principal, ("platform",))
+                values = []
+                for name in ("daily_reviews", "daily_tokens"):
+                    value = payload.get(name, 0)
+                    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                        raise ValueError("%s must be a non-negative integer" % name)
+                    values.append(value)
+                cost = payload.get("daily_cost_usd", 0.0)
+                if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0:
+                    raise ValueError("daily_cost_usd must be a non-negative number")
+                result = self.service.quota.set_limits(
+                    tenant_id, values[0], values[1], float(cost),
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "tenant.quota.update",
+                    tenant_id, {"limits": result["limits"]},
+                )
+                self._send_json(201, result)
+                return
             match = PLATFORM_ADMIN.match(path)
             if match:
                 principal = self._principal("platform")
@@ -1052,6 +1082,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": str(exc)})
         except ModelNotConfigured as exc:
             self._send_json(503, {"error": str(exc)})
+        except QuotaExceeded as exc:
+            self._send_json(429, {"error": str(exc)})
         except Exception:
             metrics.inc("http_errors_total")
             logger.exception("unhandled POST failure for %s", self.path)

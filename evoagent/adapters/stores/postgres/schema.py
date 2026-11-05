@@ -83,6 +83,18 @@ class PostgresSchemaMixin:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS platform_admin BOOLEAN NOT NULL DEFAULT FALSE",
             """CREATE TABLE IF NOT EXISTS tenants (
                 tenant_id TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL)""",
+            """CREATE TABLE IF NOT EXISTS tenant_quotas (
+                tenant_id TEXT PRIMARY KEY,
+                daily_reviews INTEGER NOT NULL DEFAULT 0,
+                daily_tokens INTEGER NOT NULL DEFAULT 0,
+                daily_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+                updated_at TIMESTAMPTZ NOT NULL)""",
+            """CREATE TABLE IF NOT EXISTS tenant_usage (
+                tenant_id TEXT NOT NULL, day TEXT NOT NULL,
+                reviews INTEGER NOT NULL DEFAULT 0,
+                tokens INTEGER NOT NULL DEFAULT 0,
+                cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+                PRIMARY KEY(tenant_id, day))""",
             """CREATE TABLE IF NOT EXISTS memberships (
                 user_id TEXT NOT NULL REFERENCES users(id), tenant_id TEXT NOT NULL, role TEXT NOT NULL,
                 PRIMARY KEY(user_id,tenant_id))""",

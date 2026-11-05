@@ -258,11 +258,31 @@ class FakeAuth:
         return username == "alice"
 
 
+class FakeQuota:
+    def __init__(self):
+        self.calls = []
+
+    def status(self, tenant_id):
+        return {
+            "tenant_id": tenant_id, "day": "2026-01-01",
+            "limits": {"daily_reviews": 10, "daily_tokens": 1000,
+                       "daily_cost_usd": 1.0},
+            "usage": {"reviews": 1, "tokens": 10, "cost_usd": 0.1},
+            "remaining": {"daily_reviews": 9, "daily_tokens": 990,
+                          "daily_cost_usd": 0.9},
+        }
+
+    def set_limits(self, tenant_id, reviews, tokens, cost):
+        self.calls.append((tenant_id, reviews, tokens, cost))
+        return self.status(tenant_id)
+
+
 class FakeService:
     def __init__(self):
         self.store = FakeStore()
         self.queue = FakeQueue()
         self.auth = FakeAuth()
+        self.quota = FakeQuota()
         self.evolution = FakeEvolution()
         self.skill_evolution = FakeSkillEvolution()
         self.releases = FakeReleases()
@@ -470,6 +490,7 @@ class GetRouteTests(ApiRouteTestCase):
         self.assertEqual(200, self.call("/api/audit?limit=3").status)
         self.assertEqual(200, self.call("/api/alerts").status)
         self.assertEqual(200, self.call("/v1/users").status)
+        self.assertEqual(200, self.call("/v1/tenant-quota").status)
         self.assertEqual(200, self.call("/v1/tenants").status)
         self.assertEqual(200, self.call("/v1/repository-grants").status)
         self.assertEqual(200, self.call("/api/deployments/llm-review").status)
@@ -808,6 +829,37 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertTrue(any(
             event[2] == "alert.resolve" for event in self.service.store.audit_events
         ))
+
+    def test_tenant_quota_routes(self):
+        status = self.call("/v1/tenant-quota")
+        self.assertEqual(200, status.status)
+        self.assertEqual(10, status.body["limits"]["daily_reviews"])
+
+        created = self.call("/v1/tenant-quota", "POST", {
+            "daily_reviews": 20, "daily_tokens": 5000,
+            "daily_cost_usd": 2.5,
+        })
+        self.assertEqual(201, created.status)
+        self.assertEqual(
+            ("default", 20, 5000, 2.5), self.service.quota.calls[-1],
+        )
+        self.assertEqual(400, self.call("/v1/tenant-quota", "POST", {
+            "daily_reviews": -1, "daily_tokens": 0, "daily_cost_usd": 0,
+        }).status)
+        self.assertEqual(400, self.call("/v1/tenant-quota", "POST", {
+            "daily_reviews": 0, "daily_tokens": 0, "daily_cost_usd": "x",
+        }).status)
+
+    def test_quota_exceeded_maps_to_429(self):
+        def exceeded(*args, **kwargs):
+            from evoagent.errors import QuotaExceeded
+            raise QuotaExceeded("quota exhausted")
+
+        self.service.create_review = exceeded
+        response = self.call("/v1/reviews", "POST", {
+            "repository": "org/repo", "diff": "x",
+        })
+        self.assertEqual(429, response.status)
 
     def test_tenant_and_platform_administration_routes(self):
         created = self.call("/v1/tenants", "POST", {"tenant_id": "new-tenant"})

@@ -174,6 +174,11 @@ class Settings:
     # Purge bulky task data (payloads, checkpoints, collaboration messages)
     # for terminal tasks older than this many days. 0 disables retention.
     task_data_retention_days: int = 0
+    # Per-tenant daily limits. 0 disables the corresponding limit; individual
+    # tenants can override these through the quota API.
+    tenant_daily_review_limit: int = 0
+    tenant_daily_token_limit: int = 0
+    tenant_daily_cost_limit_usd: float = 0.0
 
     def resolved_llm(self) -> Dict[str, object]:
         """Resolve a named provider to the existing OpenAI-compatible transport."""
@@ -333,6 +338,12 @@ class Settings:
             raise ValueError("EVOAGENT_EVALUATION_MIN_PUBLIC_PRS must be at least 300")
         if self.task_data_retention_days < 0:
             raise ValueError("EVOAGENT_TASK_DATA_RETENTION_DAYS cannot be negative")
+        if (
+            self.tenant_daily_review_limit < 0
+            or self.tenant_daily_token_limit < 0
+            or self.tenant_daily_cost_limit_usd < 0
+        ):
+            raise ValueError("tenant quota limits cannot be negative")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -463,5 +474,14 @@ class Settings:
             report_max_findings=_int("EVOAGENT_REPORT_MAX_FINDINGS", 50),
             task_data_retention_days=_non_negative_int(
                 "EVOAGENT_TASK_DATA_RETENTION_DAYS", 0
+            ),
+            tenant_daily_review_limit=_non_negative_int(
+                "EVOAGENT_TENANT_DAILY_REVIEW_LIMIT", 0
+            ),
+            tenant_daily_token_limit=_non_negative_int(
+                "EVOAGENT_TENANT_DAILY_TOKEN_LIMIT", 0
+            ),
+            tenant_daily_cost_limit_usd=max(
+                0.0, float(os.getenv("EVOAGENT_TENANT_DAILY_COST_LIMIT_USD", "0"))
             ),
         )

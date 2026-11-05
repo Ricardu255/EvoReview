@@ -26,6 +26,7 @@ class ReviewsApplicationService:
         github_client_for_installation: Callable[[Optional[int]], Any],
         chat_client_provider: Callable[[], Any],
         alert_notifier=None,
+        quota=None,
     ):
         self.settings = settings
         self.store = store
@@ -34,11 +35,11 @@ class ReviewsApplicationService:
         self.execution = ReviewExecutionService(
             settings, store, policy, observability, releases, alerts, metrics,
             build_agentic_reviewer, harness_factory, github_client_for_installation,
-            alert_notifier,
+            alert_notifier, quota,
         )
         self.lifecycle = ReviewLifecycleService(
             store, queue, policy, observability, releases, alerts, metrics,
-            chat_client_provider, self.execution,
+            chat_client_provider, self.execution, quota,
         )
 
     def _execution_assignment(self, tenant_id: str, task_id: str) -> dict:

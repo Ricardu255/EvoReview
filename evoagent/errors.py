@@ -13,6 +13,10 @@ class ModelNotConfigured(RuntimeError):
     """The requested review path needs a model, but none is configured."""
 
 
+class QuotaExceeded(RuntimeError):
+    """A tenant exhausted one of its configured daily limits."""
+
+
 class AuthenticationRequired(PermissionError):
     """The caller did not present a usable credential (HTTP 401).
 

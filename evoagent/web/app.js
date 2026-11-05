@@ -760,14 +760,28 @@ $("#task-repository-filter").addEventListener("input", () => {
 });
 
 async function loadAdmin() {
-  const [tenants, users, grants, alerts, audit, deadLetters] = await Promise.allSettled([
+  const [tenants, quota, users, grants, alerts, audit, deadLetters] = await Promise.allSettled([
     api("/v1/tenants"),
+    api("/v1/tenant-quota"),
     api("/v1/users"),
     api("/v1/repository-grants"),
     api("/api/alerts"),
     api("/api/audit?limit=20"),
     api("/api/queue/dead-letters?limit=20"),
   ]);
+  if (quota.status === "fulfilled") {
+    const value = quota.value;
+    const limits = value.limits || {};
+    const usage = value.usage || {};
+    $("#admin-quota").textContent = [
+      `审查：${usage.reviews ?? 0} / ${limits.daily_reviews || "不限制"}`,
+      `Token：${usage.tokens ?? 0} / ${limits.daily_tokens || "不限制"}`,
+      `成本：$${Number(usage.cost_usd || 0).toFixed(4)} / ${limits.daily_cost_usd ? "$" + Number(limits.daily_cost_usd).toFixed(4) : "不限制"}`,
+      `日期：${value.day || "-"}`,
+    ].join("\n");
+  } else {
+    $("#admin-quota").textContent = "配额读取失败";
+  }
   const tenantsRoot = $("#admin-tenants");
   if (tenants.status === "fulfilled") {
     const values = tenants.value.tenants || [];
@@ -950,6 +964,31 @@ async function togglePlatformAdmin(button) {
     setButtonBusy(button, false);
   }
 }
+
+$("#quota-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $('button[type="submit"]', form);
+  const values = new FormData(form);
+  setButtonBusy(button, true, "保存中…");
+  try {
+    await api("/v1/tenant-quota", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        daily_reviews: Number(values.get("daily_reviews") || 0),
+        daily_tokens: Number(values.get("daily_tokens") || 0),
+        daily_cost_usd: Number(values.get("daily_cost_usd") || 0),
+      }),
+    });
+    toast("租户配额已保存");
+    loadAdmin();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setButtonBusy(button, false);
+  }
+});
 
 $("#tenant-form").addEventListener("submit", async (event) => {
   event.preventDefault();
