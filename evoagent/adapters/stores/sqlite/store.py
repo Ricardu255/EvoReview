@@ -17,6 +17,7 @@ from .installations import SqliteInstallationStoreMixin
 from .memory import SqliteMemoryStoreMixin
 from .observability import SqliteObservabilityStoreMixin
 from .quotas import SqliteQuotaStoreMixin
+from .retention import SqliteRetentionStoreMixin
 from .schema import SqliteSchemaMixin
 from .skills import SqliteSkillStoreMixin
 from .tasks import SqliteTaskStoreMixin
@@ -30,7 +31,7 @@ class TaskStore(
     SqliteSkillStoreMixin,
     SqliteInstallationStoreMixin, SqliteAuthStoreMixin,
     SqliteObservabilityStoreMixin, SqliteQuotaStoreMixin,
-    PromptStoreMixin, WebhookStoreMixin,
+    SqliteRetentionStoreMixin, PromptStoreMixin, WebhookStoreMixin,
     SetupStateStoreMixin,
     MigrationStoreMixin,
     StoreProtocol,

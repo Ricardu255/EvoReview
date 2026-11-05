@@ -109,6 +109,51 @@ class StoreContract:
         self.assertEqual([], task["collaboration"])
         self.assertEqual("pending diff", self.store.get_task_payload(pending_id))
 
+    def test_purge_expired_metadata_keeps_unresolved_rows(self):
+        run = _uid()
+        tenant = "retention-%s" % run
+        resolved_task = "resolved-%s" % run
+        open_task = "open-%s" % run
+        self.store.create(resolved_task, "org/repo", 1, {}, tenant)
+        self.store.record_failure_case(
+            resolved_task, "execution_error", {"error": "boom"},
+        )
+        resolved = self.store.list_task_failure_cases(resolved_task, tenant)
+        self.store.resolve_failure_cases([resolved[0]["id"]])
+
+        self.store.create(open_task, "org/repo", 1, {}, tenant)
+        self.store.record_failure_case(
+            open_task, "execution_error", {"error": "open"},
+        )
+
+        self.store.audit(tenant, "actor", "review", "org/repo")
+        self.store.create_alert(tenant, "error-rate", "high", "too many")
+        open_alert = self.store.list_alerts(tenant)[0]
+        self.store.create_alert(tenant, "latency", "high", "slow")
+        slow_alert = [
+            item for item in self.store.list_alerts(tenant)
+            if item["alert_key"] == "latency"
+        ][0]
+        self.assertTrue(self.store.resolve_alert(tenant, slow_alert["id"]))
+
+        counts = self.store.purge_expired_metadata(
+            "2999-01-01T00:00:00+00:00",
+        )
+        self.assertGreaterEqual(counts["failure_cases"], 1)
+        self.assertGreaterEqual(counts["audit"], 1)
+        self.assertGreaterEqual(counts["alerts"], 1)
+        self.assertEqual(
+            [], self.store.list_task_failure_cases(resolved_task, tenant),
+        )
+        self.assertEqual(
+            1, len(self.store.list_task_failure_cases(open_task, tenant)),
+        )
+        self.assertEqual([], self.store.list_audit(tenant))
+        remaining_alerts = self.store.list_alerts(tenant)
+        self.assertEqual(
+            [open_alert["id"]], [item["id"] for item in remaining_alerts],
+        )
+
     def test_github_delivery_state_is_scoped_by_head_sha(self):
         self.assertIsNone(self.store.get_github_delivery_state(
             "tenant-a", "org/repo", 1, "sha-1",

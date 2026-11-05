@@ -80,7 +80,7 @@ evoagent/
 ## SQLite / PostgreSQL stores
 
 - 两个后端按能力拆到 `evoagent/adapters/stores/{sqlite,postgres}/`：`tasks.py`、`memory.py`、`failures.py`、`skills.py`、`installations.py`、`auth.py`、`observability.py`、`schema.py`。
-- 每个后端新增 `store.py`，只保留连接、建表和兼容类名；两个文件都 ≤70 行（SQLite 需要额外的 `:memory:` 共享缓存与锚连接）。
+- 每个后端新增 `store.py`，只保留连接、建表和兼容类名；两个文件都 ≤75 行（SQLite 需要额外的 `:memory:` 共享缓存与锚连接）。
 - `evoagent/adapters/stores/sqlite/store.py` 组合 SQLite mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`。
 - `evoagent/adapters/stores/postgres/store.py` 组合 PostgreSQL mixin、共享 Prompt/Webhook mixin 和 `StoreProtocol`；`create_store()` 按 URL 选择后端。
 - 持久化协议只位于 `evoagent/ports/stores/`，按任务、记忆、失败案例、进化、Skill、Webhook、认证、可观测性、一次性 setup state 拆分。

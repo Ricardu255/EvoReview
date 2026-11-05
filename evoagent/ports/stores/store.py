@@ -36,3 +36,9 @@ class StoreProtocol(
 
     def health_check(self) -> bool:
         ...
+
+    def purge_expired_metadata(
+        self, before: str, failure_cases: bool = True,
+        audit: bool = True, alerts: bool = True,
+    ) -> dict:
+        ...
