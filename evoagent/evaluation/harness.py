@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..domain.diff_parser import parse_unified_diff
-from ..domain.finding_identity import RULE_TO_CWE, canonical_identity
+from ..domain.finding_identity import (
+    RULE_TO_CWE, canonical_identity, normalized_identity,
+)
 from ..domain.models import Finding, Severity
 from ..agent.reviewers import Reviewer
 from ..adapters.verifier import RepairVerifier
@@ -92,20 +94,21 @@ def _normalized_path(path: str) -> str:
 
 def _candidate_edges(
     expected: List[dict], predicted: List[Finding], line_tolerance: int,
+    normalizer=canonical_identity,
 ) -> Dict[int, List[Tuple[int, int]]]:
     edges: Dict[int, List[Tuple[int, int]]] = {}
     for expected_index, truth in enumerate(expected):
         start = int(truth["start_line"])
         end = int(truth["end_line"])
         truth_path = _normalized_path(str(truth["path"]))
-        truth_identity = canonical_identity(
+        truth_identity = normalizer(
             truth.get("rule_id", ""), truth.get("cwe", "")
         )
         options = []
         for predicted_index, finding in enumerate(predicted):
             if _normalized_path(finding.path) != truth_path:
                 continue
-            if truth_identity and canonical_identity(
+            if truth_identity and normalizer(
                 finding.rule_id, finding.cwe or ""
             ) != truth_identity:
                 continue
@@ -121,9 +124,10 @@ def _candidate_edges(
 
 def one_to_one_match(
     expected: List[dict], predicted: List[Finding], line_tolerance: int = 2,
+    normalizer=canonical_identity,
 ) -> List[Match]:
     """Maximum-cardinality bipartite matching with deterministic edge ordering."""
-    edges = _candidate_edges(expected, predicted, line_tolerance)
+    edges = _candidate_edges(expected, predicted, line_tolerance, normalizer)
     prediction_owner: Dict[int, int] = {}
 
     def assign(expected_index: int, visited: set) -> bool:
@@ -304,6 +308,11 @@ class EndToEndEvaluationHarness:
             "repair_passed": 0,
             "e2e_success": False,
             "matches": [],
+            "tp_normalized": 0,
+            "fp_normalized": 0,
+            "fn_normalized": len(expected),
+            "clean_hit_normalized": False,
+            "matches_normalized": [],
             "repair": [],
             "error": None,
         }
@@ -311,11 +320,31 @@ class EndToEndEvaluationHarness:
             parsed = parse_unified_diff(case["diff"])
             findings = reviewer.review_case(case, parsed)
             matches = one_to_one_match(expected, findings, self.line_tolerance)
+            normalized_matches = one_to_one_match(
+                expected, findings, self.line_tolerance, normalized_identity,
+            )
             result["predicted"] = len(findings)
             result["tp"] = len(matches)
             result["fp"] = len(findings) - len(matches)
             result["fn"] = len(expected) - len(matches)
             result["clean_hit"] = not expected and not findings
+            result["tp_normalized"] = len(normalized_matches)
+            result["fp_normalized"] = len(findings) - len(normalized_matches)
+            result["fn_normalized"] = len(expected) - len(normalized_matches)
+            result["clean_hit_normalized"] = not expected and not findings
+            result["matches_normalized"] = [
+                {
+                    "expected_index": match.expected_index,
+                    "predicted_index": match.predicted_index,
+                    "cwe": canonical_identity(
+                        findings[match.predicted_index].rule_id,
+                        findings[match.predicted_index].cwe or "",
+                    ),
+                    "rule_id": findings[match.predicted_index].rule_id,
+                    "line": findings[match.predicted_index].line,
+                }
+                for match in normalized_matches
+            ]
             result["execution_success"] = True
             matched_expected = set()
             for match in matches:
@@ -366,6 +395,8 @@ class EndToEndEvaluationHarness:
             "fn": 0, "severity_hits": 0, "high_total": 0, "high_hits": 0,
             "clean_hits": 0, "execution_successes": 0, "repair_attempted": 0,
             "repair_passed": 0, "e2e_successes": 0,
+            "tp_normalized": 0, "fp_normalized": 0, "fn_normalized": 0,
+            "clean_hits_normalized": 0,
         }
 
     @staticmethod
@@ -379,6 +410,11 @@ class EndToEndEvaluationHarness:
         ):
             totals[field] += int(result[field])
         totals["clean_hits"] += int(result["clean_hit"])
+        for field in ("tp_normalized", "fp_normalized", "fn_normalized"):
+            totals[field] += int(result.get(field, 0))
+        totals["clean_hits_normalized"] += int(
+            result.get("clean_hit_normalized", False)
+        )
         totals["execution_successes"] += int(result["execution_success"])
         totals["e2e_successes"] += int(result["e2e_success"])
 
@@ -392,14 +428,32 @@ class EndToEndEvaluationHarness:
         f1 = round(
             2 * precision * recall / (precision + recall), 4
         ) if precision + recall else 0.0
+        precision_normalized = ratio(
+            totals["tp_normalized"],
+            totals["tp_normalized"] + totals["fp_normalized"], 0.0,
+        )
+        recall_normalized = ratio(
+            totals["tp_normalized"],
+            totals["tp_normalized"] + totals["fn_normalized"], 1.0,
+        )
+        f1_normalized = round(
+            2 * precision_normalized * recall_normalized
+            / (precision_normalized + recall_normalized), 4
+        ) if precision_normalized + recall_normalized else 0.0
         return {
             **totals,
             "precision": precision,
             "recall": recall,
             "f1": f1,
+            "precision_normalized": precision_normalized,
+            "recall_normalized": recall_normalized,
+            "f1_normalized": f1_normalized,
             "severity_accuracy": ratio(totals["severity_hits"], totals["tp"]),
             "high_risk_recall": ratio(totals["high_hits"], totals["high_total"]),
             "clean_accuracy": ratio(totals["clean_hits"], totals["clean_cases"]),
+            "clean_accuracy_normalized": ratio(
+                totals["clean_hits_normalized"], totals["clean_cases"]
+            ),
             "execution_success_rate": ratio(
                 totals["execution_successes"], totals["cases"], 0.0
             ),

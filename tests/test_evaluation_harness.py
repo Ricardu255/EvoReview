@@ -8,10 +8,14 @@ from evoagent.evaluation.experiments import (
 )
 from evoagent.evaluation.evolution import RegressionEvaluator
 from evoagent.evaluation.harness import (
+    EndToEndEvaluationHarness,
     dataset_fingerprint,
     load_jsonl,
     one_to_one_match,
 )
+from evoagent.agent.reviewers import Reviewer
+from evoagent.domain.diff_parser import parse_unified_diff
+from evoagent.domain.finding_identity import canonical_identity, normalized_identity
 from evoagent.domain.models import Finding, Severity
 
 
@@ -43,6 +47,44 @@ class EndToEndEvaluationTests(unittest.TestCase):
             {"offline-fixture"},
             {item["source"]["kind"] for item in cases},
         )
+
+    def test_normalized_identity_keeps_strict_identity_separate(self):
+        self.assertEqual("CWE-396", canonical_identity("", "CWE-396"))
+        self.assertEqual("CWE-703", normalized_identity("", "CWE-396"))
+        self.assertEqual("CWE-330", normalized_identity("", "CWE-338"))
+        self.assertEqual("CWE-798", normalized_identity("", "CWE-259"))
+        self.assertEqual("CWE-328", normalized_identity("", "CWE-327"))
+
+    def test_normalized_metrics_can_recover_a_sibling_cwe(self):
+        class AliasReviewer(Reviewer):
+            name = "alias-reviewer"
+
+            def review(self, diff, parsed):
+                line = parsed.added_lines[0]
+                return [Finding(
+                    "broad-exception-caught", Severity.MEDIUM, "Broad catch",
+                    "Generic exception handling.", line.path, line.line,
+                    line.content, "Use a narrow exception.", "Add a test.",
+                    0.9, cwe="CWE-396",
+                )]
+
+        diff = (
+            "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n"
+            "-old\n+except Exception: pass\n"
+        )
+        case = {
+            "id": "alias-case", "repository": "org/repo", "pull_request": 1,
+            "split": "validation", "diff": diff,
+            "expected_findings": [{
+                "path": "app.py", "start_line": 1, "end_line": 1,
+                "cwe": "CWE-703", "rule_id": "REL-EMPTY-EXCEPT",
+                "severity": "medium", "should_comment": True,
+            }],
+        }
+        report = EndToEndEvaluationHarness().run(AliasReviewer(), [case])
+        self.assertEqual(0.0, report["metrics"]["f1"])
+        self.assertEqual(1.0, report["metrics"]["f1_normalized"])
+        self.assertEqual(1.0, report["metrics"]["clean_accuracy_normalized"])
 
     def test_one_to_one_matching_counts_duplicate_prediction_once(self):
         expected = [{
