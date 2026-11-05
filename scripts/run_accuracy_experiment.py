@@ -28,6 +28,10 @@ def main() -> None:
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--token-budget", type=int, default=12000)
     parser.add_argument("--time-budget", type=int, default=240)
+    parser.add_argument(
+        "--effort", default="",
+        help="Optional reasoning-effort level for providers that support it (e.g. low).",
+    )
     parser.add_argument("--allow-non-production-data", action="store_true")
     parser.add_argument(
         "--output", default=os.path.join(
@@ -45,6 +49,7 @@ def main() -> None:
         client = JsonChatClient(
             args.base_url, args.api_key, args.model,
             provider=args.provider, timeout=args.timeout,
+            extra_payload=({"effort": args.effort} if args.effort else None),
         )
         real_reviewer = ProductArmReviewer(
             "full-agentic", client, args.token_budget, args.time_budget,
