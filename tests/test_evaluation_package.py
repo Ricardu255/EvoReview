@@ -7,7 +7,7 @@ import unittest
 EVALUATION_MODULES = {
     "__init__.py", "arms.py", "benchmark.py", "experiments.py", "harness.py",
     "v2.py", "evolution.py", "evolution_v2.py", "evolution_proof.py",
-    "skill_evolution.py", "skills.py",
+    "skill_evolution.py", "skills.py", "mutation_corpus.py",
 }
 
 
