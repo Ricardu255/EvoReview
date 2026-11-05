@@ -95,12 +95,14 @@ def main() -> None:
         print(
             "PROGRESS %d/%d id=%s exec=%s tp=%d fp=%d fn=%d "
             "calls=%d tokens=%d latency_ms=%d cum_p=%.4f cum_r=%.4f cum_f1=%.4f"
+            " error=%s"
             % (
                 index, len(cases), case["id"], result.get("execution_success"),
                 result.get("tp", 0), result.get("fp", 0), result.get("fn", 0),
                 result.get("llm_calls", 0), result.get("total_tokens", 0),
                 result.get("latency_ms", 0), cumulative["precision"],
                 cumulative["recall"], cumulative["f1"],
+                str(result.get("error") or "")[:300],
             ),
             flush=True,
         )
@@ -132,6 +134,8 @@ def main() -> None:
     print("SUMMARY %s" % json.dumps({
         key: metrics.get(key) for key in (
             "precision", "recall", "f1", "high_risk_recall", "clean_accuracy",
+            "precision_normalized", "recall_normalized", "f1_normalized",
+            "clean_accuracy_normalized",
             "exact_line_accuracy", "evidence_accuracy", "failure_rate",
             "average_llm_calls_per_pr", "average_total_tokens_per_pr",
             "average_latency_ms_per_pr",

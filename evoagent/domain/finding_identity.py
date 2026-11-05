@@ -31,6 +31,18 @@ RULE_TO_CWE = {
 
 _CWE_RE = re.compile(r"^CWE-[0-9]+$", re.IGNORECASE)
 
+# Optional, explicitly documented equivalence classes for model-produced
+# labels.  Strict scoring keeps the original IDs; normalized scoring uses
+# these families so a semantically correct finding is not lost only because
+# the model chose a sibling CWE identifier.
+CWE_ALIASES = {
+    "CWE-396": "CWE-703",  # generic catch / improper exception handling
+    "CWE-338": "CWE-330",  # weak PRNG / insufficient randomness
+    "CWE-259": "CWE-798",  # hard-coded password / hard-coded credentials
+    "CWE-321": "CWE-798",  # hard-coded key / hard-coded credentials
+    "CWE-327": "CWE-328",  # broken crypto / weak hash
+}
+
 
 def canonical_cwe(rule_id: Any = "", cwe: Any = "") -> str:
     """Return a canonical CWE, preferring an explicit valid CWE field."""
@@ -45,6 +57,21 @@ def canonical_cwe(rule_id: Any = "", cwe: Any = "") -> str:
 def is_valid_cwe(value: Any) -> bool:
     """Validate the transport format for an explicit CWE value."""
     return bool(_CWE_RE.fullmatch(str(value or "").strip()))
+
+
+def normalized_cwe(rule_id: Any = "", cwe: Any = "") -> str:
+    """Return a documented equivalence-class CWE for normalized scoring."""
+    value = canonical_cwe(rule_id, cwe)
+    return CWE_ALIASES.get(value, value)
+
+
+def normalized_identity(rule_id: Any = "", cwe: Any = "") -> str:
+    """Return the normalized scoring identity; strict identity is unchanged."""
+    value = normalized_cwe(rule_id, cwe)
+    if value:
+        return value
+    rule = str(rule_id or "").strip().upper()
+    return "RULE:" + rule if rule else ""
 
 
 def canonical_identity(rule_id: Any = "", cwe: Any = "") -> str:
