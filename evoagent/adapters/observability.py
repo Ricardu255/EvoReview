@@ -109,9 +109,12 @@ class AlertManager:
                     "in the last %d seconds."
                     % (rate * 100, self.failure_rate * 100, self.window_seconds)
                 )
-                self.store.create_alert(
+                created = self.store.create_alert(
                     tenant_id, "review-failure-rate", "critical", message,
                 )
-                self.notifier.notify(
-                    tenant_id, "review-failure-rate", "critical", message,
-                )
+                # Notify only when the incident opens. Re-evaluating an
+                # already-open alert must not page again on every review.
+                if created:
+                    self.notifier.notify(
+                        tenant_id, "review-failure-rate", "critical", message,
+                    )

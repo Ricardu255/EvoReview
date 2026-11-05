@@ -148,12 +148,13 @@ class SqliteObservabilityStoreMixin:
     ) -> None:
         now = utc_now()
         with self._lock, self._connect() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT OR IGNORE INTO alerts"
                 "(tenant_id,alert_key,severity,message,status,created_at,updated_at) "
                 "VALUES (?,?,?,?, 'open',?,?)",
                 (tenant_id, alert_key, severity, message[:1000], now, now),
             )
+        return cursor.rowcount > 0
 
     def list_alerts(self, tenant_id: str, limit: int = 100) -> list:
         with self._connect() as conn:

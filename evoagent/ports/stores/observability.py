@@ -33,7 +33,8 @@ class ObservabilityStorePort(Protocol):
 
     def create_alert(
         self, tenant_id: str, alert_key: str, severity: str, message: str,
-    ) -> None:
+    ) -> bool:
+        """Open an alert, returning False when one is already open."""
         ...
 
     def list_alerts(self, tenant_id: str, limit: int = 100) -> list:

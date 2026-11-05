@@ -217,9 +217,10 @@ class ObservabilityTests(unittest.TestCase):
 
 
 class _AlertStore:
-    def __init__(self, total, failed):
+    def __init__(self, total, failed, created=True):
         self.total = total
         self.failed = failed
+        self.created = created
         self.calls = []
         self.alerts = []
 
@@ -229,6 +230,7 @@ class _AlertStore:
 
     def create_alert(self, *args):
         self.alerts.append(args)
+        return self.created
 
 
 class AlertManagerTests(unittest.TestCase):
@@ -278,6 +280,20 @@ class AlertManagerTests(unittest.TestCase):
         self.assertEqual(1, len(store.alerts))
         self.assertEqual(1, len(notifier.calls))
         self.assertEqual("review-failure-rate", notifier.calls[0][1])
+
+    def test_already_open_alert_does_not_notify_again(self):
+        class Notifier:
+            def __init__(self):
+                self.calls = []
+
+            def notify(self, *args):
+                self.calls.append(args)
+
+        notifier = Notifier()
+        store = _AlertStore(total=20, failed=7, created=False)
+        AlertManager(store, notifier=notifier).evaluate("tenant-a")
+        self.assertEqual(1, len(store.alerts))
+        self.assertEqual([], notifier.calls)
 
     def test_below_minimum_samples_never_alerts(self):
         store = _AlertStore(total=9, failed=9)

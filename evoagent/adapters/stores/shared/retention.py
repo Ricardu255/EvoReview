@@ -19,8 +19,10 @@ class RetentionStoreMixin:
                 ), (before,))
                 counts["audit"] = max(0, cursor.rowcount)
             if alerts:
+                # Measure from resolution, not creation: an alert resolved
+                # today should survive the full retention window.
                 cursor = conn.execute(self._sql(
-                    "DELETE FROM alerts WHERE status='resolved' AND created_at<?"
+                    "DELETE FROM alerts WHERE status='resolved' AND updated_at<?"
                 ), (before,))
                 counts["alerts"] = max(0, cursor.rowcount)
         return counts

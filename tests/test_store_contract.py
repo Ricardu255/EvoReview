@@ -621,11 +621,17 @@ class StoreContract:
         self.store.succeed(
             "t1-%s" % run, _report(), _trace(1, TaskState.SUCCESS)
         )
-        self.store.create_alert("tenant-a", "error-rate", "high", "too many failures")
-        self.store.create_alert("tenant-a", "error-rate", "high", "too many failures")
+        self.assertTrue(self.store.create_alert(
+            "tenant-a", "error-rate", "high", "too many failures",
+        ))
+        self.assertFalse(self.store.create_alert(
+            "tenant-a", "error-rate", "high", "too many failures",
+        ))
         self.assertEqual(1, len(self.store.list_alerts("tenant-a")))
         # One open alert per key: severity alone does not duplicate it.
-        self.store.create_alert("tenant-a", "error-rate", "critical", "worse")
+        self.assertFalse(self.store.create_alert(
+            "tenant-a", "error-rate", "critical", "worse",
+        ))
         self.assertEqual(1, len(self.store.list_alerts("tenant-a")))
 
         alert_id = self.store.list_alerts("tenant-a")[0]["id"]
