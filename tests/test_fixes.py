@@ -73,7 +73,19 @@ class FixesApplicationServiceTests(unittest.TestCase):
             self.service.create_fix(task_id, tenant_id="tenant-a")
         self.assertEqual([], self.fixer.calls)
 
-    def test_create_fix_works_without_grants_by_default(self):
+    def test_create_fix_denied_without_an_explicit_grant(self):
+        task_id = self._completed_task()
+
+        with self.assertRaisesRegex(PermissionError, "explicit auto_fix grant"):
+            self.service.create_fix(task_id, tenant_id="tenant-a")
+        self.assertEqual([], self.fixer.calls)
+
+    def test_legacy_open_repair_can_be_explicitly_opted_into(self):
+        policy = ReviewPolicy(
+            replace(self.settings, require_auto_fix_grant=False),
+            self.service.store, {}, lambda tenant_id: [],
+        )
+        self.service._fixes_app.policy = policy
         task_id = self._completed_task()
 
         result = self.service.create_fix(task_id, tenant_id="tenant-a")

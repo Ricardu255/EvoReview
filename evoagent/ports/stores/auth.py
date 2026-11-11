@@ -7,7 +7,8 @@ class AuthStorePort(Protocol):
     def create_user(
         self, user_id: str, username: str, password_hash: str,
         tenant_id: str, role: str, platform_admin: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Return False without side effects when the username is taken."""
         ...
 
     def set_platform_admin(self, username: str, enabled: bool) -> bool:

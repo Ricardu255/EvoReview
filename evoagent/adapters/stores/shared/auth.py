@@ -10,19 +10,27 @@ class AuthStoreMixin:
     def create_user(
         self, user_id: str, username: str, password_hash: str,
         tenant_id: str, role: str, platform_admin: bool = False,
-    ) -> None:
+    ) -> bool:
+        """Create a brand-new global user together with its first membership.
+
+        Returns False when the username is already taken.  A conflicting
+        username must never gain a new membership: usernames are global, so
+        silently attaching somebody else's account to this tenant would let a
+        tenant administrator reset its password and impersonate it in every
+        other tenant the account belongs to.
+        """
         with self._write() as conn:
-            conn.execute(self._sql(
+            cursor = conn.execute(self._sql(
                 "INSERT INTO users(id,username,password_hash,created_at,platform_admin) "
                 "VALUES (?,?,?,?,?) ON CONFLICT(username) DO NOTHING"
             ), (user_id, username, password_hash, utc_now(), bool(platform_admin)))
-            row = conn.execute(
-                self._sql("SELECT id FROM users WHERE username=?"), (username,),
-            ).fetchone()
+            if cursor.rowcount == 0:
+                return False
             conn.execute(self._sql(
                 "INSERT INTO memberships(user_id,tenant_id,role) VALUES (?,?,?) "
                 "ON CONFLICT(user_id,tenant_id) DO UPDATE SET role=excluded.role"
-            ), (row["id"], tenant_id, role))
+            ), (user_id, tenant_id, role))
+        return True
 
     def set_platform_admin(self, username: str, enabled: bool) -> bool:
         with self._write() as conn:

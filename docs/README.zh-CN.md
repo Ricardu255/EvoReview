@@ -220,7 +220,7 @@ ngrok http 8080
 
 上述快捷转发会把 8080 端口上的管理台和 API 一并暴露到公网，因此必须保持 `EVOAGENT_AUTH_REQUIRED=true`，并使用强管理员密码和随机 `EVOAGENT_AUTH_SECRET`。长期部署建议通过反向代理只公开 `/webhooks/github`（以及按需公开 `/health`），不要向公网暴露整个管理台。
 
-部署在隧道或反向代理之后时，请把代理地址配置到 `EVOAGENT_TRUSTED_PROXIES`（逗号分隔的 IP/CIDR，例如本地 cloudflared 或 ngrok 用 `127.0.0.1`）。只有可信代理提供的 `X-Forwarded-For` 才会用于登录限流，否则所有请求共享代理地址，单个攻击者即可耗尽共享限额。
+部署在隧道或反向代理之后时，请把代理地址配置到 `EVOAGENT_TRUSTED_PROXIES`（逗号分隔的 IP/CIDR，例如本地 cloudflared 或 ngrok 用 `127.0.0.1`）。只有可信代理提供的 `X-Forwarded-For` 才会用于登录限流，否则所有请求共享代理地址，单个攻击者即可耗尽共享限额。代理后的管理台可从回环地址之外访问，因此启动校验会在 `EVOAGENT_TRUSTED_PROXIES` 非空但 `EVOAGENT_AUTH_REQUIRED` 未开启时直接拒绝启动。
 
 ### 3. 在 GitHub 仓库中添加 Webhook
 
@@ -252,7 +252,7 @@ Invoke-RestMethod https://<公网域名>/health
 
 设置 `EVOAGENT_AUTO_POST_CHECKS=true` 后，会为被审查的 commit 发布一个完成的 `EvoReview` Check Run。高风险 Finding 结果为 `failure`，其他 Finding 为 `neutral`，干净审查为 `success`。Check Run 需要 GitHub App 的 `Checks: write` 权限；PAT 通常无法创建。Check Run 投递同样是尽力而为。
 
-自动修复只覆盖可确定安全的规则，例如调试输出、`shell=True` 和硬编码 Python 凭据；结果始终提交到新的 `evoagent/fix-pr-*` 分支，不直接修改源分支。
+自动修复只覆盖可确定安全的规则，例如调试输出、`shell=True` 和硬编码 Python 凭据；结果始终提交到新的 `evoagent/fix-pr-*` 分支，不直接修改源分支。未配置 `EVOAGENT_REPAIR_TEST_COMMAND` 时，修复链在静态检查后即停止，只返回建议——不提交任何 commit，也不会宣称"测试已通过"。
 
 `EVOAGENT_REPAIR_TEST_COMMAND` 会在 PR 源仓库（可能是攻击者控制的 fork）的解压副本中执行；环境变量受限，但没有网络或容器隔离。仅对可信仓库启用，或把 EvoReview 放在一次性环境中运行。
 
@@ -264,7 +264,7 @@ Invoke-RestMethod https://<公网域名>/health
 | `GET` | `/openapi.json` | 面向公开 API 的 OpenAPI 3.0 机器可读契约 |
 | `GET` | `/health/detail` | 部署详情；需要 `read` 权限 |
 | `POST` | `/v1/auth/login` | 登录并获取租户绑定的短期 Bearer Token |
-| `POST` | `/v1/auth/token` | 签发租户绑定的长效 Bearer Token（需要 manage 权限） |
+| `POST` | `/v1/auth/token` | 为自己签发租户绑定的长效 Bearer Token；平台管理员可为其他用户签发 |
 | `POST` | `/v1/reviews` | 创建同步审查任务 |
 | `POST` | `/v1/reviews?async=true` | 创建异步审查任务 |
 | `GET` | `/v1/tasks/{id}` | 获取状态、执行记录和报告 |
@@ -326,7 +326,9 @@ Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔�
 
 ### 租户生命周期
 
-平台权限与租户管理员的 `manage` 权限分离。为初始运维账号设置 `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true`，通过 `POST /v1/tenants` 创建租户，并使用带 `tenant_id` 的 `POST /v1/users` 在其他租户中创建成员关系。平台权限可通过 `/v1/platform/users/{username}/platform-admin` 授予或撤销。
+平台权限与租户管理员的 `manage` 权限分离。为初始运维账号设置 `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true`，通过 `POST /v1/tenants` 创建租户，并使用带 `tenant_id` 的 `POST /v1/users` 在其他租户中创建账号。平台权限可通过 `/v1/platform/users/{username}/platform-admin` 授予或撤销。
+
+用户名全局唯一。`POST /v1/users` 遇到已存在的用户名会直接拒绝，而不是把新的成员关系挂到该账号上，因此租户管理员无法"认领"其他租户的账号并重置其全局密码。由于密码、启用状态和平台权限都存储在全球用户行上，租户管理员只能重置或禁用"仅属于本租户"的账号；跨租户共享的账号和平台管理员账号都需要平台权限，且只有平台管理员可以为其他用户签发令牌。
 
 ### 租户配额
 
@@ -334,7 +336,7 @@ Prompt 版本、评测样本、演化记录和死信操作均按登录租户隔�
 
 ### 仓库授权
 
-仓库授权是可选的。租户没有任何授权记录时，保持原单租户行为：审查和自动修复均开放。一旦存在授权记录，只有已列出的仓库可用，且 `POST /v1/tasks/{id}/fix` 还要求该记录的 `auto_fix=true`。设置 `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` 后，在添加授权前所有仓库都会被拒绝。管理员可通过 API 管理（均按租户隔离并写入审计日志）：
+仓库授权对审查是可选的。租户没有任何授权记录时，审查保持原单租户行为（开放）；一旦存在授权记录，只有已列出的仓库可用。自动修复更严格：它会用服务端 GitHub 凭据推送分支和 Draft PR，因此 `POST /v1/tasks/{id}/fix` 始终要求一条显式的 `auto_fix=true` 授权记录，即使该租户没有其他授权。设置 `EVOAGENT_REQUIRE_AUTO_FIX_GRANT=false` 可恢复旧的开放行为；设置 `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` 则在添加授权前拒绝所有仓库。管理员可通过 API 管理（均按租户隔离并写入审计日志）：
 
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/repository-grants \

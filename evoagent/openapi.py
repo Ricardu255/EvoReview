@@ -421,7 +421,9 @@ def _paths() -> Dict[str, Any]:
         },
         "/v1/auth/token": {
             "post": _operation(
-                "issueToken", "Issue a long-lived tenant-bound Bearer token", ["auth"],
+                "issueToken",
+                "Issue a long-lived tenant-bound Bearer token for the caller "
+                "(platform administrators may issue one for another user)", ["auth"],
                 {
                     "201": _json(_ref("TokenResponse")),
                     "400": _error("Invalid request"),

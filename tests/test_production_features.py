@@ -58,6 +58,54 @@ class ProductionFeatureTests(unittest.TestCase):
         self.assertFalse(principal.platform_admin)
         self.assertFalse(principal.can("platform"))
 
+    def test_bootstrap_refuses_a_username_owned_by_another_tenant(self):
+        self.store.create_user("u-elsewhere", "admin", "hash", "tenant-a", "admin")
+
+        with self.assertRaisesRegex(ValueError, "another tenant"):
+            AuthManager(
+                self.store, "a" * 32, bootstrap_username="admin",
+                bootstrap_password="original-password",
+            )
+
+    def test_bootstrap_is_idempotent_for_its_own_tenant(self):
+        for _ in range(2):
+            auth = AuthManager(
+                self.store, "a" * 32, bootstrap_username="admin",
+                bootstrap_password="original-password",
+            )
+
+        self.assertEqual(
+            "default", auth.login("admin", "original-password", "default")["tenant_id"],
+        )
+
+    def test_an_existing_username_cannot_be_adopted_by_another_tenant(self):
+        auth = AuthManager(
+            self.store, "a" * 32, bootstrap_username="victim",
+            bootstrap_password="original-password", default_tenant_id="default",
+            bootstrap_platform_admin=True,
+        )
+        self.store.create_tenant("tenant-a")
+        self.store.create_user("u-attacker", "attacker", "hash", "tenant-a", "admin")
+        original_hash = self.store.get_user("victim")["password_hash"]
+
+        # A tenant admin tries to "create" the platform admin in its own tenant.
+        with self.assertRaisesRegex(ValueError, "username already exists"):
+            auth.create_tenant_user(
+                "victim", "hijacked-password", "tenant-a", "admin",
+            )
+
+        victim = self.store.get_user("victim")
+        self.assertEqual(
+            ["default"], [item["tenant_id"] for item in victim["memberships"]],
+        )
+        self.assertEqual(original_hash, victim["password_hash"])
+        self.assertEqual(
+            "default",
+            auth.login("victim", "original-password", "default")["tenant_id"],
+        )
+        with self.assertRaises(PermissionError):
+            auth.login("victim", "hijacked-password", "default")
+
     def test_api_tokens_are_tenant_bound_and_follow_user_state(self):
         auth = AuthManager(
             self.store, "a" * 32, bootstrap_username="alice",

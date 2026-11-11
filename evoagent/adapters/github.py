@@ -18,6 +18,29 @@ from .. import __version__
 USER_AGENT = "EvoReview/" + __version__
 REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
+# Webhook payloads carry URLs (diff_url, issue_url, archive_url, ...) that are
+# attacker-influenced once the webhook secret is known.  The client holds a
+# privileged GitHub token, so it must never become a generic HTTPS client.
+GITHUB_HOSTS = frozenset({
+    "api.github.com", "github.com", "codeload.github.com",
+    "uploads.github.com", "raw.githubusercontent.com",
+    "patch-diff.githubusercontent.com", "objects.githubusercontent.com",
+})
+
+
+def is_github_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(url))
+        port = parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme == "https"
+        and not parsed.username and not parsed.password
+        and port in (None, 443)
+        and (parsed.hostname or "").lower() in GITHUB_HOSTS
+    )
+
 
 def verify_signature(secret: str, body: bytes, signature: str) -> bool:
     if not secret or not signature.startswith("sha256="):
@@ -39,11 +62,21 @@ class GitHubClient:
         self.max_attempts = max_attempts
         self.max_response_bytes = max(1, int(max_response_bytes))
 
-    def _headers(self, accept: str = "application/vnd.github+json") -> Dict[str, str]:
+    def _headers(
+        self, accept: str = "application/vnd.github+json", url: str = None,
+    ) -> Dict[str, str]:
         headers = {"Accept": accept, "User-Agent": USER_AGENT, "X-GitHub-Api-Version": "2022-11-28"}
-        if self.token:
+        # Never send credentials to a host outside the GitHub allowlist.  A
+        # None url keeps the historical behaviour for callers that only need
+        # the header set (and is covered by the header unit tests).
+        if self.token and (url is None or is_github_url(url)):
             headers["Authorization"] = "Bearer " + self.token
         return headers
+
+    @staticmethod
+    def _validate_url(url: str) -> None:
+        if not is_github_url(url):
+            raise ValueError("refusing a request to a non-GitHub URL")
 
     def fetch_diff(self, url: str) -> str:
         body = self._request(
@@ -95,13 +128,19 @@ class GitHubClient:
 
     def post_comment(self, api_url: str, markdown: str) -> None:
         url = api_url.rstrip("/") + "/comments"
+        self._validate_url(url)
         request = urllib.request.Request(
             url,
             data=json.dumps({"body": markdown}).encode("utf-8"),
-            headers=dict(self._headers(), **{"Content-Type": "application/json"}),
+            headers=dict(self._headers(url=url), **{"Content-Type": "application/json"}),
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=self.timeout):
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            final_url = getattr(response, "geturl", None)
+            if callable(final_url):
+                final_url = final_url()
+                if final_url and not is_github_url(final_url):
+                    raise RuntimeError("GitHub API redirected to a non-GitHub host")
             return None
 
     def upsert_comment(self, api_url: str, markdown: str, marker: str) -> None:
@@ -135,15 +174,25 @@ class GitHubClient:
         self, method: str, url: str, payload=None,
         accept: str = "application/vnd.github+json", raw: bool = False,
     ):
+        self._validate_url(url)
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         for attempt in range(1, self.max_attempts + 1):
             request = urllib.request.Request(
                 url, data=data,
-                headers=dict(self._headers(accept), **{"Content-Type": "application/json"}),
+                headers=dict(self._headers(accept, url), **{"Content-Type": "application/json"}),
                 method=method,
             )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    # A 30x to another host would otherwise bypass the check
+                    # above while urllib still forwards our credentials.
+                    final_url = getattr(response, "geturl", None)
+                    if callable(final_url):
+                        final_url = final_url()
+                        if final_url and not is_github_url(final_url):
+                            raise RuntimeError(
+                                "GitHub API redirected to a non-GitHub host"
+                            )
                     declared = response.headers.get("Content-Length")
                     try:
                         too_large = bool(declared) and int(declared) > self.max_response_bytes

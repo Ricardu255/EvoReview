@@ -94,6 +94,18 @@ class StartupValidationTests(unittest.TestCase):
                 agent_token_budget=5000,
             ).validate_evolution()
 
+    def test_proxied_deployment_must_enable_authentication(self):
+        # A loopback-bound console can still be exposed by a tunnel/reverse
+        # proxy, which the non-loopback host check cannot detect.
+        with self.assertRaisesRegex(ValueError, "EVOAGENT_AUTH_REQUIRED"):
+            replace(
+                self.settings(), trusted_proxies=("127.0.0.1",)
+            ).validate_evolution()
+        replace(
+            self.settings(), trusted_proxies=("127.0.0.1",),
+            auth_required=True, auth_secret="a" * 32,
+        ).validate_evolution()
+
     def test_invalid_trusted_proxy_is_rejected(self):
         with self.assertRaises(ValueError):
             replace(self.settings(), trusted_proxies=("not-a-cidr",)).validate_evolution()

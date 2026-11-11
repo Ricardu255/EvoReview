@@ -45,8 +45,20 @@ class ReviewPolicy:
             raise PermissionError("repository is not authorized for this tenant")
 
     def authorize_auto_fix(self, tenant_id: str, repository: str) -> None:
-        """Automatic repair additionally requires the per-repository opt-in."""
+        """Automatic repair requires an explicit per-repository ``auto_fix`` grant.
+
+        The store keeps its legacy "no grants means open" answer for ordinary
+        reviews, but a repair pushes branches and draft PRs with the server's
+        GitHub credentials.  Do not rely on that legacy answer here: without
+        at least one grant row, ``require_auto_fix`` is silently ignored.
+        """
         self.authorize_repository(tenant_id, repository)
+        if not self.settings.require_auto_fix_grant:
+            return
+        if not self.store.has_repository_grants(tenant_id):
+            raise PermissionError(
+                "automatic repair requires an explicit auto_fix grant for this repository"
+            )
         if not self.store.repository_allowed(
             tenant_id, repository, require_auto_fix=True,
         ):

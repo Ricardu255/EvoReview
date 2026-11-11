@@ -12,7 +12,7 @@ import urllib.error
 from unittest.mock import patch
 
 from evoagent.adapters.github import (
-    GitHubAppAuthenticator, GitHubClient, verify_signature,
+    GitHubAppAuthenticator, GitHubClient, is_github_url, verify_signature,
 )
 
 
@@ -35,7 +35,7 @@ class FakeResponse:
 
 def http_error(code, detail=b"failure", headers=None):
     return urllib.error.HTTPError(
-        "https://api.github.test/x", code, "error", headers or {}, io.BytesIO(detail),
+        "https://api.github.com/x", code, "error", headers or {}, io.BytesIO(detail),
     )
 
 
@@ -60,6 +60,56 @@ class HeaderAndSignatureTests(unittest.TestCase):
         self.assertFalse(verify_signature("", body, "sha256=" + digest))
 
 
+class UrlAllowlistTests(unittest.TestCase):
+    def test_only_https_github_hosts_are_accepted(self):
+        for url in (
+            "https://api.github.com/repos/o/r",
+            "https://github.com/o/r/pull/1.diff",
+            "https://patch-diff.githubusercontent.com/raw/o/r/pull/1.diff",
+        ):
+            self.assertTrue(is_github_url(url), url)
+        for url in (
+            "http://api.github.com/repos/o/r",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://api.github.com.evil.test/x",
+            "https://user:pw@api.github.com/x",
+            "https://api.github.com:8443/x",
+            "https://localhost/x",
+            "file:///etc/passwd",
+        ):
+            self.assertFalse(is_github_url(url), url)
+
+    def test_credentials_are_not_sent_to_other_hosts(self):
+        client = GitHubClient("secret-token")
+        self.assertNotIn(
+            "Authorization", client._headers(url="https://evil.test/x")
+        )
+        self.assertEqual(
+            "Bearer secret-token",
+            client._headers(url="https://api.github.com/x")["Authorization"],
+        )
+
+    def test_non_github_request_is_refused_before_any_network_call(self):
+        client = GitHubClient("secret-token")
+        with patch("evoagent.adapters.github.urllib.request.urlopen") as urlopen:
+            with self.assertRaises(ValueError):
+                client._json("GET", "https://169.254.169.254/latest/meta-data/")
+            with self.assertRaises(ValueError):
+                client.post_comment("https://github.test/issues/1", "hello")
+        urlopen.assert_not_called()
+
+    def test_redirect_outside_the_allowlist_is_rejected(self):
+        class RedirectResponse(FakeResponse):
+            def geturl(self):
+                return "https://169.254.169.254/latest/meta-data/"
+
+        client = GitHubClient("secret-token")
+        with patch("evoagent.adapters.github.urllib.request.urlopen",
+                   return_value=RedirectResponse()):
+            with self.assertRaisesRegex(RuntimeError, "non-GitHub host"):
+                client._json("GET", "https://api.github.com/x")
+
+
 class RequestTests(unittest.TestCase):
     def setUp(self):
         self.client = GitHubClient("token", timeout=3, max_attempts=3)
@@ -76,7 +126,7 @@ class RequestTests(unittest.TestCase):
     def test_json_request_construction(self):
         requests, fake = self._capture()
         with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
-            result = self.client._json("POST", "https://api.github.test/x", {"a": 1})
+            result = self.client._json("POST", "https://api.github.com/x", {"a": 1})
         self.assertEqual({"ok": True}, result)
         request, timeout = requests[0]
         self.assertEqual("POST", request.get_method())
@@ -88,24 +138,24 @@ class RequestTests(unittest.TestCase):
     def test_empty_response_body_becomes_an_empty_object(self):
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    return_value=FakeResponse(b"")):
-            self.assertEqual({}, self.client._json("GET", "https://api.github.test/x"))
+            self.assertEqual({}, self.client._json("GET", "https://api.github.com/x"))
 
     def test_fetch_diff_decodes_with_replacement(self):
         _, fake = self._capture()
         with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
-            body = self.client._request("GET", "https://api.github.test/d", raw=True)
+            body = self.client._request("GET", "https://api.github.com/d", raw=True)
         self.assertEqual(b'{"ok": true}', body)
 
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    return_value=FakeResponse(b"diff \xff")):
-            self.assertEqual("diff �", self.client.fetch_diff("https://api.github.test/d"))
+            self.assertEqual("diff �", self.client.fetch_diff("https://api.github.com/d"))
 
     def test_post_comment_sends_markdown(self):
         requests, fake = self._capture()
         with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
-            self.client.post_comment("https://api.github.test/repos/o/r/issues/1/", "hello")
+            self.client.post_comment("https://api.github.com/repos/o/r/issues/1/", "hello")
         request = requests[0][0]
-        self.assertEqual("https://api.github.test/repos/o/r/issues/1/comments", request.full_url)
+        self.assertEqual("https://api.github.com/repos/o/r/issues/1/comments", request.full_url)
         self.assertEqual({"body": "hello"}, json.loads(request.data.decode("utf-8")))
 
     def test_upsert_comment_updates_by_marker_or_posts_once(self):
@@ -115,16 +165,16 @@ class RequestTests(unittest.TestCase):
             calls.append((method, url, payload))
             if method == "GET":
                 return [
-                    {"body": "unrelated", "url": "https://api.test/1"},
-                    {"body": "<!-- marker -->\nold", "url": "https://api.test/2"},
+                    {"body": "unrelated", "url": "https://api.github.com/1"},
+                    {"body": "<!-- marker -->\nold", "url": "https://api.github.com/2"},
                 ]
             return {}
 
         with patch.object(self.client, "_json", side_effect=fake_json):
-            self.client.upsert_comment("https://api.test/issues/1", "new", "<!-- marker -->")
+            self.client.upsert_comment("https://api.github.com/issues/1", "new", "<!-- marker -->")
         self.assertEqual("GET", calls[0][0])
-        self.assertEqual("https://api.test/issues/1/comments?per_page=100", calls[0][1])
-        self.assertEqual(("PATCH", "https://api.test/2",
+        self.assertEqual("https://api.github.com/issues/1/comments?per_page=100", calls[0][1])
+        self.assertEqual(("PATCH", "https://api.github.com/2",
                           {"body": "<!-- marker -->\nnew"}), calls[1])
 
         calls.clear()
@@ -134,8 +184,8 @@ class RequestTests(unittest.TestCase):
             return [] if method == "GET" else {}
 
         with patch.object(self.client, "_json", side_effect=fake_post):
-            self.client.upsert_comment("https://api.test/issues/1", "new", "<!-- marker -->")
-        self.assertEqual(("POST", "https://api.test/issues/1/comments",
+            self.client.upsert_comment("https://api.github.com/issues/1", "new", "<!-- marker -->")
+        self.assertEqual(("POST", "https://api.github.com/issues/1/comments",
                           {"body": "<!-- marker -->\nnew"}), calls[1])
 
     def test_upsert_comment_searches_later_pages(self):
@@ -146,13 +196,13 @@ class RequestTests(unittest.TestCase):
             if method == "GET" and "page=2" not in url:
                 return [{"body": "unrelated", "url": str(index)} for index in range(100)]
             if method == "GET":
-                return [{"body": "<!-- marker -->\nold", "url": "https://api.test/2"}]
+                return [{"body": "<!-- marker -->\nold", "url": "https://api.github.com/2"}]
             return {}
 
         with patch.object(self.client, "_json", side_effect=fake_json):
-            self.client.upsert_comment("https://api.test/issues/1", "new", "<!-- marker -->")
+            self.client.upsert_comment("https://api.github.com/issues/1", "new", "<!-- marker -->")
         self.assertTrue(calls[1][1].endswith("per_page=100&page=2"))
-        self.assertEqual(("PATCH", "https://api.test/2",
+        self.assertEqual(("PATCH", "https://api.github.com/2",
                           {"body": "<!-- marker -->\nnew"}), calls[2])
 
 
@@ -170,7 +220,7 @@ class RetryTests(unittest.TestCase):
                    side_effect=responses), \
                 patch("evoagent.adapters.github.time.sleep") as sleep, \
                 patch("evoagent.adapters.github.random.random", return_value=0.0):
-            self.assertEqual({"ok": True}, self.client._json("GET", "https://api.test/x"))
+            self.assertEqual({"ok": True}, self.client._json("GET", "https://api.github.com/x"))
         self.assertEqual([1, 2], [call.args[0] for call in sleep.call_args_list])
 
     def test_retry_after_and_rate_limit_reset_control_the_delay(self):
@@ -178,7 +228,7 @@ class RetryTests(unittest.TestCase):
                    side_effect=[http_error(429, headers={"Retry-After": "7"}),
                                 FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep") as sleep:
-            self.client._json("GET", "https://api.test/x")
+            self.client._json("GET", "https://api.github.com/x")
         self.assertEqual(7.0, sleep.call_args_list[0].args[0])
 
         with patch("evoagent.adapters.github.urllib.request.urlopen",
@@ -187,7 +237,7 @@ class RetryTests(unittest.TestCase):
                    }), FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep") as sleep, \
                 patch("evoagent.adapters.github.time.time", return_value=1000.0):
-            self.client._json("GET", "https://api.test/x")
+            self.client._json("GET", "https://api.github.com/x")
         self.assertEqual(30.0, sleep.call_args_list[0].args[0])  # capped at 30s
 
     def test_invalid_retry_headers_fall_back_to_exponential_backoff(self):
@@ -197,7 +247,7 @@ class RetryTests(unittest.TestCase):
                    }), FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep") as sleep, \
                 patch("evoagent.adapters.github.random.random", return_value=0.0):
-            self.client._json("GET", "https://api.test/x")
+            self.client._json("GET", "https://api.github.com/x")
         self.assertEqual(1.0, sleep.call_args_list[0].args[0])
 
     def test_non_retryable_status_raises_immediately(self):
@@ -207,7 +257,7 @@ class RetryTests(unittest.TestCase):
                 side_effect=http_error(code, detail=b"bad request"),
             ), patch("evoagent.adapters.github.time.sleep") as sleep:
                 with self.assertRaisesRegex(RuntimeError, "HTTP %d" % code):
-                    self.client._json("GET", "https://api.test/x")
+                    self.client._json("GET", "https://api.github.com/x")
             sleep.assert_not_called()
 
     def test_exhausted_retries_raise_with_the_last_error(self):
@@ -215,7 +265,7 @@ class RetryTests(unittest.TestCase):
                    side_effect=[http_error(500) for _ in range(4)]), \
                 patch("evoagent.adapters.github.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "HTTP 500"):
-                self.client._json("GET", "https://api.test/x")
+                self.client._json("GET", "https://api.github.com/x")
 
     def test_url_errors_and_timeouts_are_retried_then_raised(self):
         with patch("evoagent.adapters.github.urllib.request.urlopen",
@@ -223,13 +273,13 @@ class RetryTests(unittest.TestCase):
                                 TimeoutError("slow"),
                                 FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep"):
-            self.assertEqual({}, self.client._json("GET", "https://api.test/x"))
+            self.assertEqual({}, self.client._json("GET", "https://api.github.com/x"))
 
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    side_effect=urllib.error.URLError("down")), \
                 patch("evoagent.adapters.github.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "request failed"):
-                self.client._json("GET", "https://api.test/x")
+                self.client._json("GET", "https://api.github.com/x")
 
 
 class ResponseLimitTests(unittest.TestCase):
@@ -238,20 +288,20 @@ class ResponseLimitTests(unittest.TestCase):
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    return_value=FakeResponse(b"{}", {"Content-Length": "11"})):
             with self.assertRaisesRegex(RuntimeError, "exceeds the 10 byte limit"):
-                client._json("GET", "https://api.test/x")
+                client._json("GET", "https://api.github.com/x")
 
     def test_invalid_content_length_is_ignored(self):
         client = GitHubClient("", max_response_bytes=10)
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    return_value=FakeResponse(b"{}", {"Content-Length": "unknown"})):
-            self.assertEqual({}, client._json("GET", "https://api.test/x"))
+            self.assertEqual({}, client._json("GET", "https://api.github.com/x"))
 
     def test_streamed_body_limit(self):
         client = GitHubClient("", max_response_bytes=10)
         with patch("evoagent.adapters.github.urllib.request.urlopen",
                    return_value=FakeResponse(b"x" * 11)):
             with self.assertRaisesRegex(RuntimeError, "exceeds the 10 byte limit"):
-                client._json("GET", "https://api.test/x")
+                client._json("GET", "https://api.github.com/x")
 
 
 class EndpointTests(unittest.TestCase):
