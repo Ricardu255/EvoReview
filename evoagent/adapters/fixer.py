@@ -147,13 +147,32 @@ class SafeFixer:
             path: result["content"] for path, _current, result in planned
         })
         files = {path: result["content"] for path, _current, result in planned}
-        if verification["passed"] and self.verifier.test_command:
-            archive = client.download_archive(source_repository, source_sha)
-            verification = self.verifier.verify_archive(archive, files)
         if not verification["passed"]:
             return {
+                "status": "blocked",
                 "branch": None, "source_sha": source_sha, "commits": [],
-                "verification": verification,
+                "verification": verification, "behavioral_tests_run": False,
+                "note": "Repair was blocked because compilation failed.",
+            }
+        if not self.verifier.test_command:
+            # Compilation alone cannot show that a rewrite such as
+            # `password = "secret"` -> `os.environ["PASSWORD"]` still runs.
+            # Do not publish a commit (or claim that tests passed) until a
+            # repository test command has actually been executed.
+            return {
+                "status": "suggestion-only",
+                "branch": None, "source_sha": source_sha, "commits": [],
+                "files": files, "verification": verification,
+                "behavioral_tests_run": False,
+                "note": "No repository test command is configured; static checks only, so this is a suggestion rather than a verified automatic fix.",
+            }
+        archive = client.download_archive(source_repository, source_sha)
+        verification = self.verifier.verify_archive(archive, files)
+        if not verification["passed"]:
+            return {
+                "status": "blocked",
+                "branch": None, "source_sha": source_sha, "commits": [],
+                "verification": verification, "behavioral_tests_run": True,
                 "note": "Repair was blocked because compilation or tests failed.",
             }
         commit = client.create_atomic_commit(
@@ -164,7 +183,7 @@ class SafeFixer:
             repository,
             "fix: verified EvoReview repairs for #%d" % pull_request,
             branch, pull.get("base", {}).get("ref", "main"),
-            "Automated deterministic repair. All configured compile and test gates passed.",
+            "Automated deterministic repair. Compilation and the configured repository test command passed in an isolated checkout. This PR is intentionally a draft.",
         )
         commits = [{
             "paths": sorted(files),
@@ -173,9 +192,10 @@ class SafeFixer:
             }),
             "sha": commit.get("sha"),
         }]
-        return {"branch": branch, "source_sha": source_sha, "commits": commits,
+        return {"status": "verified-draft",
+                "branch": branch, "source_sha": source_sha, "commits": commits,
                 "draft_pull_request": {
                     "number": draft.get("number"), "url": draft.get("html_url")
                 },
-                "verification": verification,
+                "verification": verification, "behavioral_tests_run": True,
                 "note": "Verified repairs were published as one atomic commit in a draft pull request."}

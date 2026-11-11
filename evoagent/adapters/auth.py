@@ -104,11 +104,26 @@ class AuthManager:
         self._login_lock = threading.Lock()
         self._last_login_prune = 0.0
         if bootstrap_username and bootstrap_password:
-            self.store.create_user(
+            created = self.store.create_user(
                 str(uuid.uuid5(uuid.NAMESPACE_URL, "evoagent:" + bootstrap_username)),
                 bootstrap_username, hash_password(bootstrap_password),
                 default_tenant_id, "admin", bool(bootstrap_platform_admin),
             )
+            if not created:
+                # The username is global and already belongs to somebody.  Do
+                # not adopt it (that is how a tenant could take over an
+                # account), and do not leave the operator with a console that
+                # silently has no administrator: fail with a fixable message.
+                existing = self.store.get_user(bootstrap_username) or {}
+                tenants = {
+                    item["tenant_id"] for item in existing.get("memberships", [])
+                }
+                if default_tenant_id not in tenants:
+                    raise ValueError(
+                        "bootstrap admin username %r already exists in another "
+                        "tenant; choose a different EVOAGENT_BOOTSTRAP_ADMIN_USERNAME"
+                        % bootstrap_username
+                    )
             if bootstrap_platform_admin:
                 # Promote an admin created by an earlier version without the
                 # platform flag; the password is deliberately unchanged.
@@ -249,14 +264,21 @@ class AuthManager:
             )
         if role not in ROLE_PERMISSIONS:
             raise ValueError("unsupported role: %s" % role)
-        existing = self.store.get_user(username)
-        self.store.create_user(
+        # Usernames are global.  Reusing one would attach a membership to an
+        # account owned by another tenant; the caller could then reset that
+        # account's password through /v1/users/{username}/password and log in
+        # as that user (including as a platform administrator).
+        if self.store.get_user(username) is not None:
+            raise ValueError("username already exists")
+        created = self.store.create_user(
             str(uuid.uuid5(uuid.NAMESPACE_URL, "evoagent:" + username)),
             username, hash_password(str(password)), tenant_id, role,
         )
+        if not created:  # a concurrent request claimed the username first
+            raise ValueError("username already exists")
         return {
             "username": username, "tenant_id": tenant_id, "role": role,
-            "created": existing is None,
+            "created": True,
         }
 
     def set_tenant_user_password(

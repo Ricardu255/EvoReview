@@ -89,6 +89,13 @@ class ReviewPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "automatic repair"):
             policy.authorize_auto_fix("tenant-a", "org/repo")
 
+    def test_authorize_auto_fix_denies_tenants_with_no_grants_at_all(self):
+        # repository_allowed() keeps its legacy "no grants means open" answer,
+        # so the policy must not rely on it for a write operation.
+        policy = self.policy(grants=False)
+        with self.assertRaisesRegex(PermissionError, "explicit auto_fix grant"):
+            policy.authorize_auto_fix("tenant-a", "org/repo")
+
     def test_resolve_repository_root_rules(self):
         policy = self.policy()
         self.assertEqual("", policy.resolve_repository_root("org/repo", "", "tenant-a"))

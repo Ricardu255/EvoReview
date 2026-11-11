@@ -172,8 +172,10 @@ class AgentSkill:
             return self.resource_contents[path]
         if not self.directory:
             raise PermissionError("skill resource directory is unavailable")
-        directory = os.path.abspath(self.directory)
-        absolute = os.path.abspath(os.path.join(directory, *path.split("/")))
+        # realpath (not abspath) so a symlinked resource inside the package
+        # cannot resolve to a file outside it between the check and open().
+        directory = os.path.realpath(self.directory)
+        absolute = os.path.realpath(os.path.join(directory, *path.split("/")))
         try:
             contained = os.path.commonpath([directory, absolute]) == directory
         except ValueError:

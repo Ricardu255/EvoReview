@@ -220,7 +220,7 @@ The command prints a public HTTPS URL such as `https://example.trycloudflare.com
 
 These quick tunnels expose both the console and the API on port 8080 to the public internet, so you must keep `EVOAGENT_AUTH_REQUIRED=true` with a strong admin password and a random `EVOAGENT_AUTH_SECRET`. For long-term deployment, use a reverse proxy to expose only `/webhooks/github` (and optionally `/health`) rather than exposing the entire console.
 
-When the service sits behind a tunnel or reverse proxy, set `EVOAGENT_TRUSTED_PROXIES` to the proxy addresses (comma-separated IPs/CIDRs, for example `127.0.0.1` for a local cloudflared or ngrok process). Only then is `X-Forwarded-For` used to key login throttling by real client address; otherwise every request shares the proxy address and one attacker could exhaust the shared login limit.
+When the service sits behind a tunnel or reverse proxy, set `EVOAGENT_TRUSTED_PROXIES` to the proxy addresses (comma-separated IPs/CIDRs, for example `127.0.0.1` for a local cloudflared or ngrok process). Only then is `X-Forwarded-For` used to key login throttling by real client address; otherwise every request shares the proxy address and one attacker could exhaust the shared login limit. Because a proxied console is reachable from outside the loopback interface, startup validation rejects `EVOAGENT_TRUSTED_PROXIES` unless `EVOAGENT_AUTH_REQUIRED=true`; this closes the case where a tunnel exposes a loopback-bound service that never enabled authentication.
 
 ### 3. Add the Webhook in the GitHub Repository
 
@@ -252,7 +252,7 @@ Set `EVOAGENT_INLINE_REVIEW_COMMENTS=true` to additionally post each accepted fi
 
 Set `EVOAGENT_AUTO_POST_CHECKS=true` to publish a completed `EvoReview` Check Run for the reviewed commit. High-risk findings produce `failure`, other findings `neutral`, and a clean review `success`. Check Runs require a GitHub App with `Checks: write`; a PAT generally cannot create them. Check delivery is also best-effort.
 
-Auto-fix only covers rules that are deterministically safe, such as debug output, `shell=True`, and hardcoded Python credentials; results are always committed to a new `evoagent/fix-pr-*` branch and never modify the source branch directly.
+Auto-fix only covers rules that are deterministically safe, such as debug output, `shell=True`, and hardcoded Python credentials; results are always committed to a new `evoagent/fix-pr-*` branch and never modify the source branch directly. Without `EVOAGENT_REPAIR_TEST_COMMAND` the fix pipeline stops after static checks and returns a suggestion only — no commit is published and no "tests passed" claim is made.
 
 `EVOAGENT_REPAIR_TEST_COMMAND` runs inside an extracted copy of the PR's source repository (which may be an attacker-controlled fork) with a restricted environment but without network or container isolation. Enable it only for repositories you trust, or run EvoReview in a disposable environment.
 
@@ -264,7 +264,7 @@ Auto-fix only covers rules that are deterministically safe, such as debug output
 | `GET` | `/openapi.json` | Machine-readable OpenAPI 3.0 contract for the public API |
 | `GET` | `/health/detail` | Deployment details; requires the `read` permission |
 | `POST` | `/v1/auth/login` | Log in and obtain a short-lived tenant-bound Bearer token |
-| `POST` | `/v1/auth/token` | Issue a long-lived tenant-bound Bearer token (manage permission) |
+| `POST` | `/v1/auth/token` | Issue a long-lived tenant-bound Bearer token for yourself; platform administrators may issue one for another user |
 | `POST` | `/v1/reviews` | Create a synchronous review task |
 | `POST` | `/v1/reviews?async=true` | Create an asynchronous review task |
 | `GET` | `/v1/tasks/{id}` | Get status, execution record, and report |
@@ -326,7 +326,9 @@ All four settings default to `0`, which disables that cleanup. Because audit row
 
 ### Tenant Lifecycle
 
-Platform scope is separate from a tenant administrator's `manage` permission. Set `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true` for the initial operator, create tenants through `POST /v1/tenants`, and create memberships in another tenant with `POST /v1/users` plus `tenant_id`. Platform scope can be granted or revoked through `/v1/platform/users/{username}/platform-admin`.
+Platform scope is separate from a tenant administrator's `manage` permission. Set `EVOAGENT_BOOTSTRAP_ADMIN_PLATFORM_ADMIN=true` for the initial operator, create tenants through `POST /v1/tenants`, and create an account in another tenant with `POST /v1/users` plus `tenant_id`. Platform scope can be granted or revoked through `/v1/platform/users/{username}/platform-admin`.
+
+Usernames are global. `POST /v1/users` rejects a username that already exists instead of attaching a new membership to that account, so a tenant administrator cannot adopt an account from another tenant and reset its global password. Because the password, the active flag and platform scope live on the global user row, a tenant manager may only reset or disable an account that belongs to its own tenant and no other. Accounts shared across tenants and platform administrators need platform scope, and only platform administrators may issue a token for another user.
 
 ### Tenant Quotas
 
@@ -334,7 +336,7 @@ Daily review, token and cost limits default to `0` (unlimited) and can be overri
 
 ### Repository Grants
 
-Grants are optional. While a tenant has **no** grant rows, the original single-tenant behaviour is preserved: reviews and automatic repair are open. As soon as one grant exists, only listed repositories are accepted, and `POST /v1/tasks/{id}/fix` additionally requires the grant to have `auto_fix=true`. Set `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` to deny every repository until grants are added. Managers can use the API (all calls are tenant-scoped and audited):
+Grants are optional for reviews. While a tenant has **no** grant rows, the original single-tenant behaviour is preserved for reviews. As soon as one grant exists, only listed repositories are accepted. Automatic repair is stricter: it pushes branches and draft PRs with the server's GitHub credentials, so `POST /v1/tasks/{id}/fix` always requires an explicit grant with `auto_fix=true`, even when the tenant has no other grants. Set `EVOAGENT_REQUIRE_AUTO_FIX_GRANT=false` to restore the legacy open behaviour, or `EVOAGENT_REQUIRE_REPOSITORY_GRANTS=true` to deny every repository until grants are added. Managers can use the API (all calls are tenant-scoped and audited):
 
 ```bash
 curl -X POST http://127.0.0.1:8080/v1/repository-grants \

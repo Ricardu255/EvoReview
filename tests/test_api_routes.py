@@ -60,6 +60,12 @@ class FakeStore:
         self._record("list_users", tenant_id)
         return [{"username": "alice", "role": "maintainer", "active": True}]
 
+    def get_user(self, username):
+        return {
+            "username": username, "platform_admin": False,
+            "memberships": [{"tenant_id": "default", "role": "admin"}],
+        }
+
     def resolve_alert(self, tenant_id, alert_id):
         self._record("resolve_alert", tenant_id, alert_id)
         return alert_id == 1
@@ -928,6 +934,108 @@ class PostRouteTests(ApiRouteTestCase):
         self.assertTrue(any(
             event[2] == "auth.token.issue" for event in self.service.store.audit_events
         ))
+
+    def test_non_platform_admin_cannot_issue_a_token_for_another_user(self):
+        secure = replace(self.settings, auth_required=True)
+        non_platform = Principal("u", "tenant-admin", "default", "admin", False)
+        with patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": non_platform):
+            response = Handler(
+                self.service, secure, "/v1/auth/token",
+                body=json.dumps({"username": "alice"}).encode("utf-8"),
+            )
+            response.do_POST()
+        self.assertEqual(403, response.status)
+
+    def test_platform_admin_can_still_issue_a_token_for_another_user(self):
+        secure = replace(self.settings, auth_required=True)
+        platform = Principal("u", "root", "default", "admin", True)
+        with patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": platform):
+            response = Handler(
+                self.service, secure, "/v1/auth/token",
+                body=json.dumps({"username": "alice"}).encode("utf-8"),
+            )
+            response.do_POST()
+        self.assertEqual(201, response.status)
+
+    def test_non_platform_admin_cannot_reset_a_platform_admin(self):
+        non_platform = Principal("u", "tenant-admin", "default", "admin", False)
+        with patch.object(self.service.store, "get_user",
+                          return_value={
+                              "username": "root", "platform_admin": True,
+                              "memberships": [{"tenant_id": "default", "role": "admin"}],
+                          }), \
+             patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": non_platform):
+            password = self.call(
+                "/v1/users/root/password", "POST",
+                {"password": "another-long-password"},
+            )
+            active = self.call(
+                "/v1/users/root/active", "POST", {"active": False},
+            )
+        self.assertEqual(403, password.status)
+        self.assertEqual(403, active.status)
+
+    def test_manager_cannot_reset_an_account_shared_with_another_tenant(self):
+        # The password is stored on the global user row, so a reset by tenant A
+        # would also unlock that account in tenant B.
+        non_platform = Principal("u", "tenant-admin", "default", "admin", False)
+        with patch.object(self.service.store, "get_user",
+                          return_value={
+                              "username": "alice", "platform_admin": False,
+                              "memberships": [
+                                  {"tenant_id": "default", "role": "maintainer"},
+                                  {"tenant_id": "tenant-b", "role": "admin"},
+                              ],
+                          }), \
+             patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": non_platform):
+            password = self.call(
+                "/v1/users/alice/password", "POST",
+                {"password": "another-long-password"},
+            )
+        self.assertEqual(403, password.status)
+        self.assertNotIn(
+            ("password", "alice", "another-long-password", "default"),
+            self.service.auth.calls,
+        )
+
+    def test_manager_cannot_probe_for_platform_admins_outside_its_tenant(self):
+        # A 403 here would confirm that a global username exists and is a
+        # platform administrator; the tenant-scoped 404 must win instead.
+        non_platform = Principal("u", "tenant-admin", "default", "admin", False)
+        with patch.object(self.service.store, "get_user",
+                          return_value={
+                              "username": "root", "platform_admin": True,
+                              "memberships": [{"tenant_id": "tenant-b", "role": "admin"}],
+                          }), \
+             patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": non_platform):
+            response = self.call(
+                "/v1/users/root/password", "POST",
+                {"password": "another-long-password"},
+            )
+        self.assertEqual(404, response.status)
+
+    def test_platform_admin_may_reset_a_multi_tenant_account(self):
+        platform = Principal("u", "root", "default", "admin", True)
+        with patch.object(self.service.store, "get_user",
+                          return_value={
+                              "username": "alice", "platform_admin": False,
+                              "memberships": [
+                                  {"tenant_id": "default", "role": "maintainer"},
+                                  {"tenant_id": "tenant-b", "role": "admin"},
+                              ],
+                          }), \
+             patch.object(ApiHandler, "_principal",
+                          lambda self, permission="read": platform):
+            response = self.call(
+                "/v1/users/alice/password", "POST",
+                {"password": "another-long-password"},
+            )
+        self.assertEqual(200, response.status)
 
     def test_user_management_routes(self):
         created = self.call("/v1/users", "POST", {

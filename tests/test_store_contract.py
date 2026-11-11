@@ -482,16 +482,19 @@ class StoreContract:
 
     def test_users_repositories_and_audit(self):
         run = _uid()
-        self.store.create_user(
+        self.assertTrue(self.store.create_user(
             "u1-%s" % run, "alice-%s" % run, "hash", "tenant-a", "admin"
-        )
-        self.store.create_user(
+        ))
+        # Reusing an existing username must be a no-op.  Attaching a second
+        # membership here would let another tenant adopt this account and
+        # reset its (global) password.
+        self.assertFalse(self.store.create_user(
             "u1-%s" % run, "alice-%s" % run, "hash", "tenant-b", "viewer"
-        )
+        ))
         user = self.store.get_user("alice-%s" % run)
         self.assertEqual("hash", user["password_hash"])
         self.assertEqual(
-            {"tenant-a": "admin", "tenant-b": "viewer"},
+            {"tenant-a": "admin"},
             {item["tenant_id"]: item["role"] for item in user["memberships"]},
         )
         self.assertIsNone(self.store.get_user("bob-%s" % run))
@@ -503,7 +506,7 @@ class StoreContract:
             "admin", self.store.list_users("tenant-a")[0]["role"],
         )
         self.assertTrue(self.store.update_user_password(
-            "alice-%s" % run, "tenant-b", "new-hash",
+            "alice-%s" % run, "tenant-a", "new-hash",
         ))
         self.assertEqual(
             "new-hash", self.store.get_user("alice-%s" % run)["password_hash"],

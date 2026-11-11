@@ -162,6 +162,35 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return str(candidate)
         return peer
 
+    def _check_manageable_target(self, username: str, principal) -> None:
+        """Reject tenant-scoped account changes that would cross tenant lines.
+
+        The password, the active flag and platform scope live on the global
+        user row, while ``manage`` is granted per tenant.  A tenant manager may
+        therefore only touch accounts that belong to its own tenant and nowhere
+        else; anything wider needs platform scope.
+        """
+        if principal.can("platform"):
+            return
+        target = self.service.store.get_user(username) or {}
+        memberships = {
+            str(item["tenant_id"]) for item in target.get("memberships", [])
+        }
+        if principal.tenant_id not in memberships:
+            # The account is not a member here, so the tenant-scoped store call
+            # answers 404.  Return without another error to avoid turning this
+            # endpoint into a username/platform-admin oracle.
+            return
+        if target.get("platform_admin"):
+            raise PermissionError(
+                "only platform administrators may modify a platform administrator"
+            )
+        if memberships - {principal.tenant_id} and username != principal.username:
+            raise PermissionError(
+                "only platform administrators may modify an account that belongs "
+                "to multiple tenants"
+            )
+
     def _setup_state_hash(self, token: str) -> str:
         """Hash a setup token before persistence; tokens are never stored raw."""
         return hmac.new(
@@ -628,6 +657,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload = self._read_json(body)
                 username = text_field(payload, "username").strip() or principal.username
                 tenant_id = text_field(payload, "tenant_id").strip() or principal.tenant_id
+                if username != principal.username and not principal.can("platform"):
+                    raise PermissionError(
+                        "only platform administrators may issue tokens for another user"
+                    )
                 if tenant_id != principal.tenant_id:
                     raise PermissionError("cannot issue tokens for another tenant")
                 ttl = payload.get("ttl_seconds")
@@ -842,6 +875,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 principal = self._principal("manage")
                 payload = self._read_json(body)
                 username = urllib.parse.unquote(match.group(1))
+                self._check_manageable_target(username, principal)
                 ok = self.service.auth.set_tenant_user_password(
                     username, text_field(payload, "password"),
                     principal.tenant_id,
@@ -857,6 +891,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 principal = self._principal("manage")
                 payload = self._read_json(body)
                 username = urllib.parse.unquote(match.group(1))
+                self._check_manageable_target(username, principal)
                 if username == principal.username:
                     raise ValueError("cannot change your own active state")
                 active = payload.get("active")

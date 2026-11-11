@@ -136,6 +136,10 @@ class Settings:
     default_tenant_id: str = "default"
     repository_roots_json: str = "{}"
     require_repository_grants: bool = False
+    # Automatic repair writes branches and draft PRs with the server's GitHub
+    # credentials, so it needs an explicit per-repository opt-in by default.
+    # Set to false only to restore the legacy "no grants means open" behaviour.
+    require_auto_fix_grant: bool = True
     session_ttl_seconds: int = 3600
     api_token_ttl_seconds: int = 30 * 24 * 3600
     webhook_max_age_seconds: int = 600
@@ -345,6 +349,12 @@ class Settings:
             raise ValueError(
                 "EVOAGENT_AUTH_REQUIRED must be enabled when EVOAGENT_HOST is not loopback"
             )
+        if self.trusted_proxies and not self.auth_required:
+            # A tunnel/reverse proxy can expose a loopback-bound console to the
+            # public internet, which the host check above cannot detect.
+            raise ValueError(
+                "EVOAGENT_AUTH_REQUIRED must be enabled when EVOAGENT_TRUSTED_PROXIES is set"
+            )
         if bool(self.bootstrap_admin_username) != bool(self.bootstrap_admin_password):
             raise ValueError("bootstrap admin username and password must be configured together")
         if not 0.0 <= self.alert_failure_rate <= 1.0:
@@ -431,6 +441,9 @@ class Settings:
             repository_roots_json=os.getenv("EVOAGENT_REPOSITORY_ROOTS_JSON", "{}"),
             require_repository_grants=_bool(
                 "EVOAGENT_REQUIRE_REPOSITORY_GRANTS", False
+            ),
+            require_auto_fix_grant=_bool(
+                "EVOAGENT_REQUIRE_AUTO_FIX_GRANT", True
             ),
             session_ttl_seconds=_int("EVOAGENT_SESSION_TTL_SECONDS", 3600),
             api_token_ttl_seconds=_int(

@@ -423,10 +423,22 @@ class SafeFixerPublicationTests(unittest.TestCase):
         self.assertFalse(result["verification"]["passed"])
         self.assertIn("blocked", result["note"])
 
-    def test_successful_fix_creates_one_draft_commit(self):
+    def test_missing_test_command_publishes_no_commit(self):
         result = self.fixer.create_fix_commits(
             self.github, "org/repo", 5, self._report(),
         )
+        self.assertEqual("suggestion-only", result["status"])
+        self.assertIsNone(result["branch"])
+        self.assertEqual([], result["commits"])
+        self.assertFalse(result["behavioral_tests_run"])
+        self.assertEqual([], self.github.commits)
+
+    def test_successful_fix_creates_one_draft_commit(self):
+        self.fixer.verifier = FakeVerifier(test_command="pytest")
+        result = self.fixer.create_fix_commits(
+            self.github, "org/repo", 5, self._report(),
+        )
+        self.assertTrue(result["behavioral_tests_run"])
         self.assertTrue(result["branch"].startswith("evoagent/fix-pr-5-"))
         self.assertEqual(["SEC-HARDCODED-SECRET"], result["commits"][0]["rules"])
         self.assertEqual(["app.py"], result["commits"][0]["paths"])
