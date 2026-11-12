@@ -1,10 +1,67 @@
 """Contract checks for the public OpenAPI document and key responses."""
+import inspect
 import json
+import re
 import unittest
 
+from evoagent import api as api_module
 from evoagent.openapi import build_openapi
 
 from test_api_routes import FakeService, Handler, settings
+
+
+# Browser-flow endpoints (302 redirect / GitHub callback with one-time state)
+# and dashboard static assets. They are intentionally excluded from the
+# Bearer-token REST contract.
+BROWSER_ONLY_ROUTES = frozenset({"/github/install", "/github/setup"})
+STATIC_ASSET_PREFIX = "/assets/"
+
+
+def _non_rest(path):
+    return path in BROWSER_ONLY_ROUTES or path.startswith(STATIC_ASSET_PREFIX)
+
+
+def _implemented_routes():
+    """Collect every path the router can answer, from three sources.
+
+    Sources: module-level regex routes, module-level string path constants,
+    and ``path == "..."`` literals inside the handler. Keeping this derived
+    (not hand-copied) is what makes the sync check trustworthy.
+    """
+    patterns = []
+    literals = set()
+    for value in vars(api_module).values():
+        if isinstance(value, re.Pattern) and value.pattern.startswith("^/"):
+            patterns.append(value.pattern)
+        elif isinstance(value, str) and re.fullmatch(
+            r"/(?:v1|api|webhooks|health|metrics|openapi|github)[a-z0-9/_.-]*", value,
+        ):
+            literals.add(value)
+    source = inspect.getsource(api_module)
+    literals.update(re.findall(r'path == "(/[a-z0-9/_.-]+)"', source))
+    return patterns, literals
+
+
+def _sample_for(pattern):
+    """Build a request path that the given route regex accepts."""
+    def repl(match):
+        text = match.group(0)
+        if "0-9a-f" in text:
+            return "0a1b2c3d"
+        if "\\d" in text:
+            return "42"
+        return "sample"
+    return re.sub(r"\([^)]+\)", repl, pattern).lstrip("^").rstrip("$")
+
+
+def _route_template(pattern):
+    """Turn a route regex into an OpenAPI-style path template."""
+    return re.sub(r"\([^)]+\)", "{x}", pattern.lstrip("^").rstrip("$"))
+
+
+def _path_matcher(template):
+    """Turn an OpenAPI path template into a regex over concrete paths."""
+    return re.compile("^" + re.sub(r"\{[^}]+\}", "[^/]+", template) + "$")
 
 
 def _resolve(spec, schema):
@@ -88,6 +145,38 @@ class OpenApiSpecTests(unittest.TestCase):
                     self.assertTrue(operation.get("responses"))
                     self.assertIn("tags", operation)
         self.assertEqual(len(operation_ids), len(set(operation_ids)))
+
+    def test_every_api_route_is_documented_in_openapi(self):
+        """Adding a route without documenting it must fail this test."""
+        patterns, literals = _implemented_routes()
+        documented = set(self.spec["paths"]) | BROWSER_ONLY_ROUTES
+        undocumented = []
+        for pattern in patterns:
+            template = _route_template(pattern)
+            covered = template in literals or any(
+                re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", op), template)
+                for op in documented
+            )
+            if not covered:
+                undocumented.append(template)
+        for literal in sorted(literals):
+            if literal not in documented and not _non_rest(literal):
+                undocumented.append(literal)
+        self.assertEqual([], undocumented,
+                         "routes implemented but missing from OpenAPI paths")
+
+    def test_every_openapi_path_is_implemented_by_the_router(self):
+        """A typo in the hand-maintained spec must fail this test."""
+        patterns, literals = _implemented_routes()
+        ghosts = []
+        for path in self.spec["paths"]:
+            if path in literals:
+                continue
+            matcher = _path_matcher(path)
+            if not any(matcher.match(_sample_for(p)) for p in patterns):
+                ghosts.append(path)
+        self.assertEqual([], ghosts,
+                         "OpenAPI paths with no matching route in api.py")
 
     def test_expected_public_paths_exist(self):
         expected = {
