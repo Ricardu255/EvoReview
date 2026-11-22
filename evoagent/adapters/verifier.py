@@ -1,6 +1,5 @@
 """Compilation and test gates for generated repairs."""
 import os
-import shlex
 import subprocess
 import tempfile
 import time
@@ -10,7 +9,7 @@ import tokenize
 from io import BytesIO
 from typing import Dict
 
-from ..process_env import restricted_env
+from ..process_env import resolve_command, restricted_env
 
 
 class RepairVerifier:
@@ -21,9 +20,16 @@ class RepairVerifier:
     MAX_MEMBER_BYTES = 64 * 1024 * 1024
     MAX_TOTAL_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 
-    def __init__(self, test_command: str = "", timeout_seconds: int = 120):
+    def __init__(
+        self, test_command: str = "", timeout_seconds: int = 120,
+        allow_untrusted: bool = True,
+    ):
         self.test_command = test_command
         self.timeout_seconds = timeout_seconds
+        # Configuring a test command has always meant "execute it"; keep that
+        # behaviour by default.  The flag only lets an operator stop execution
+        # without removing the command.
+        self.allow_untrusted = bool(allow_untrusted)
 
     def verify_contents(self, files: Dict[str, str]) -> dict:
         started = time.monotonic()
@@ -57,10 +63,24 @@ class RepairVerifier:
         root = os.path.abspath(root)
         if not os.path.isdir(root):
             raise ValueError("verification worktree does not exist")
-        command = shlex.split(self.test_command, posix=os.name != "nt")
+        if not self.allow_untrusted:
+            return {
+                "passed": False, "checks": [], "skipped": True,
+                "reason": "test execution is disabled by configuration",
+            }
+        try:
+            command = resolve_command(self.test_command, root)
+        except ValueError as exc:
+            return {
+                "passed": False,
+                "checks": [{
+                    "name": "repository-tests", "passed": False,
+                    "detail": str(exc),
+                }],
+            }
         started = time.monotonic()
-        env = restricted_env()
         with tempfile.TemporaryDirectory(prefix="evoagent-verify-") as temp:
+            env = restricted_env()
             env["TMPDIR"] = temp
             try:
                 result = subprocess.run(
@@ -120,7 +140,7 @@ class RepairVerifier:
                 return compile_result
             test_result = self.verify_worktree(worktree)
             checks = compile_result["checks"] + test_result["checks"]
-            return {
+            value = {
                 "passed": compile_result["passed"] and test_result["passed"],
                 "checks": checks,
                 "duration_seconds": round(
@@ -128,6 +148,10 @@ class RepairVerifier:
                     + test_result.get("duration_seconds", 0), 4
                 ),
             }
+            if test_result.get("skipped"):
+                value["skipped"] = True
+                value["reason"] = test_result.get("reason", "")
+            return value
 
     @staticmethod
     def compare(before: dict, after: dict) -> dict:

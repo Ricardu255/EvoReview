@@ -15,6 +15,7 @@
 
 ## 审查与评测
 
+- [代码审查标准与流程（简体中文）](CODE_REVIEW_GUIDELINES.zh-CN.md)
 - [变异模拟评测语料](experiments/mutation-corpus.zh-CN.md)
 
 ## 维护约定

@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fbf9f4">
+<title>EvoReview · Maison du Code — 纸册 Demo</title>
+<!--
+  Static visual demo only. Data is illustrative.
+  Production note: localise the five font families (Cormorant Garamond,
+  Pinyon Script, Noto Serif SC, Special Elite, LXGW WenKai) as woff2/subset
+  before shipping; this demo intentionally uses system fallbacks.
+-->
+<style>
+:root{
+  --ink:#1e2748;
+  --ink-soft:#46536f;
+  --fog:#4a5672;
+  --fog-light:#8f9bb8;
+  --silver:#bfc8e0;
+  --silver-light:#dce2f1;
+  --paper:#fbf9f4;
+  --paper-light:#fffdf8;
+  --paper-deep:#eef0f5;
+  --lotus:#e8c9d0;
+  --line:rgba(30,39,72,.42);
+  --hairline:rgba(30,39,72,.16);
+  --paper-shadow:
+    0 0 0 3px rgba(255,255,255,.88),
+    0 0 0 4px rgba(30,39,72,.12),
+    0 16px 30px rgba(30,39,72,.14);
+  --serif-en:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Georgia,serif;
+  --serif-zh:"Noto Serif SC","Songti SC","STSong",SimSun,serif;
+  --hand:"Segoe UI Variable","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans SC",system-ui,sans-serif;
+  --script:"Pinyon Script","Segoe Script","Brush Script MT",cursive;
+  --type:"Special Elite","Courier New",Courier,monospace;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;min-width:320px;color:var(--ink);
+  background:
+    radial-gradient(ellipse at 12% 4%,rgba(191,200,224,.34),transparent 34rem),
+    radial-gradient(ellipse at 86% 16%,rgba(232,201,208,.26),transparent 30rem),
+    radial-gradient(ellipse at 50% 108%,rgba(220,226,241,.5),transparent 44rem),
+    var(--paper-deep);
+  font-family:var(--hand);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+::selection{background:var(--lotus);color:var(--ink)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--ink);outline-offset:3px;
+}
+a{color:inherit}
+
+/* ---------- paper grain ---------- */
+.grain{position:fixed;inset:0;width:100%;height:100%;z-index:60;pointer-events:none;opacity:.03;mix-blend-mode:multiply}
+
+/* ---------- book shell ---------- */
+.book-shell{
+  position:relative;max-width:1680px;margin:22px auto;
+  background:var(--paper);
+  outline:1px solid rgba(255,255,255,.9);outline-offset:-8px;
+  box-shadow:0 0 0 1px var(--hairline),0 30px 70px rgba(30,39,72,.16);
+  overflow:clip;
+}
+.inner-frame{position:relative;margin:15px;border:1px solid var(--hairline);min-height:calc(100vh - 74px)}
+.corner{position:absolute;width:78px;height:78px;color:rgba(30,39,72,.3);pointer-events:none;z-index:3}
+.corner.tl{top:8px;left:8px}
+.corner.tr{top:8px;right:8px;transform:rotate(90deg)}
+.corner.br{bottom:8px;right:8px;transform:rotate(180deg)}
+.corner.bl{bottom:8px;left:8px;transform:rotate(270deg)}
+
+/* ---------- masthead ---------- */
+.masthead{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;
+  padding:20px clamp(86px,7vw,104px) 18px;border-bottom:1px solid var(--hairline);
+}
+.mast-left{display:flex;align-items:baseline;gap:10px;font-family:var(--serif-en);font-size:17px;letter-spacing:.16em}
+.mast-left small{font-family:var(--type);font-size:8px;letter-spacing:.2em;color:var(--fog)}
+.mast-center{text-align:center}
+.mast-center .script{display:block;font-family:var(--script);font-size:22px;color:var(--ink-soft);line-height:1}
+.mast-center small{display:block;margin-top:4px;font-family:var(--type);font-size:8px;letter-spacing:.24em;color:var(--fog)}
+.mast-right{text-align:right;font-family:var(--type);font-size:9px;letter-spacing:.12em;color:var(--fog)}
+.mast-right small{display:block;margin-top:4px;font-size:8px;letter-spacing:.2em;color:var(--fog-light)}
+
+/* ---------- bookmarks ---------- */
+.bookmarks{
+  position:absolute;right:13px;top:152px;z-index:24;
+  display:flex;flex-direction:column;gap:9px;
+}
+.bookmark{
+  position:relative;width:44px;height:124px;padding:10px 4px 18px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
+  border:1px solid var(--line);background:var(--paper-light);color:var(--fog);
+  clip-path:polygon(0 0,100% 0,100% 88%,50% 100%,0 88%);
+  box-shadow:0 6px 12px rgba(30,39,72,.08);
+  transition:transform .18s ease,background .18s ease,color .18s ease;
+}
+.bookmark::before{
+  content:"";position:absolute;top:7px;left:50%;width:6px;height:6px;margin-left:-3px;
+  border:1px solid var(--fog-light);border-radius:50%;
+}
+.bookmark:hover{transform:translateX(-9px);background:var(--paper);color:var(--ink)}
+.bookmark.active{transform:translateX(-15px);background:var(--paper);color:var(--ink);border-color:var(--ink)}
+.bookmark.active::after{content:"";position:absolute;left:0;top:14px;bottom:14px;width:2px;background:var(--ink)}
+.bm-no{font-family:var(--type);font-size:8px;letter-spacing:.12em;color:var(--fog)}
+.bm-cn{writing-mode:vertical-rl;text-orientation:upright;font-size:12px;letter-spacing:.1em;line-height:1;white-space:nowrap}
+.bm-fr{display:none}
+
+/* ---------- pages ---------- */
+#stage{position:relative;min-height:calc(100vh - 230px)}
+.page-view{display:none;position:relative;padding:34px clamp(84px,7vw,112px) 48px clamp(24px,4vw,64px)}
+.page-view.active{display:block;animation:settle .42s ease both}
+@keyframes settle{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+#couverture{padding-left:clamp(24px,8vw,122px)}
+
+/* ---------- tag rail ---------- */
+.tag-rail{
+  position:absolute;left:clamp(12px,2.4vw,34px);top:40px;bottom:40px;width:64px;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  pointer-events:none;
+}
+.tag-rail::before{
+  content:"";position:absolute;top:-18px;bottom:-18px;left:50%;width:1px;
+  background:linear-gradient(var(--silver-light),var(--silver),var(--silver-light));
+}
+.tag{
+  position:relative;z-index:1;display:grid;place-items:center;width:58px;height:74px;
+  background:var(--paper-light);border:1px solid var(--hairline);
+  box-shadow:0 0 0 2px rgba(255,255,255,.8),0 5px 10px rgba(30,39,72,.1);
+  color:var(--ink-soft);
+}
+.tag::before{content:"";position:absolute;top:6px;left:50%;width:5px;height:5px;margin-left:-2.5px;border:1px solid var(--fog-light);border-radius:50%}
+.tag svg{width:26px;height:26px;opacity:.75}
+.tag:nth-child(1){transform:rotate(-4deg)}
+.tag:nth-child(2){transform:rotate(3deg)}
+.tag:nth-child(3){transform:rotate(-2deg)}
+.tag:nth-child(4){transform:rotate(4deg)}
+.tag:nth-child(5){transform:rotate(-3deg)}
+
+/* ---------- page heads ---------- */
+.page-head{margin-bottom:28px;max-width:78ch}
+.page-kicker{font-family:var(--type);font-size:9px;letter-spacing:.24em;color:var(--fog);text-transform:uppercase}
+.page-title{font-family:var(--serif-zh);font-weight:500;font-size:clamp(30px,3vw,44px);line-height:1.28;letter-spacing:-.035em;margin:10px 0 12px}
+.page-lede{font-family:var(--hand);font-size:15px;line-height:2;color:var(--ink-soft);margin:0}
+
+/* ---------- hero ---------- */
+.hero{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,.98fr);gap:clamp(26px,4vw,60px);align-items:center;min-height:500px}
+.letter{
+  position:relative;background:var(--paper-light);padding:32px clamp(26px,3vw,44px) 28px;
+  box-shadow:var(--paper-shadow);transform:rotate(-1.2deg);
+}
+.letter::before{content:"";position:absolute;inset:9px;border:1px solid var(--hairline);pointer-events:none}
+.letter-meta{display:flex;justify-content:space-between;gap:16px;font-family:var(--type);font-size:9px;letter-spacing:.14em;color:var(--fog)}
+.fr-line{font-family:var(--serif-en);font-style:italic;font-size:15px;letter-spacing:.02em;color:var(--ink-soft);margin:20px 0 0}
+.letter h1{font-family:var(--serif-zh);font-weight:500;font-size:clamp(26px,3.6vw,52px);line-height:1.28;letter-spacing:-.045em;margin:16px 0 4px}
+.script-line{font-family:var(--script);font-size:clamp(24px,2.6vw,38px);color:var(--ink-soft);text-align:right;transform:rotate(-4deg);margin:2px 6px 18px 0;line-height:1}
+.lede{font-family:var(--hand);font-size:14px;line-height:2;color:var(--ink-soft);margin:0 0 22px;max-width:46ch}
+.letter-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.btn-primary{
+  display:inline-flex;align-items:center;gap:10px;border:0;padding:13px 22px;
+  background:var(--ink);color:var(--paper);font-family:var(--serif-zh);font-size:13px;letter-spacing:.08em;
+  box-shadow:0 0 0 3px rgba(255,255,255,.85),0 0 0 4px rgba(30,39,72,.16),0 10px 18px rgba(30,39,72,.16);
+  transition:transform .18s ease,box-shadow .18s ease;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 0 3px rgba(255,255,255,.85),0 0 0 4px rgba(30,39,72,.2),0 14px 24px rgba(30,39,72,.2)}
+.btn-text{background:none;border:0;border-bottom:1px solid var(--line);padding:6px 0;font-family:var(--hand);font-size:14px;color:var(--ink-soft)}
+.btn-text:hover{color:var(--ink);border-color:var(--ink)}
+.letter-foot{display:flex;justify-content:space-between;gap:14px;margin-top:26px;padding-top:12px;border-top:1px solid var(--hairline);font-family:var(--type);font-size:8px;letter-spacing:.14em;color:var(--fog)}
+
+.collage{position:relative;min-height:520px}
+.dial{position:absolute;inset:-18px auto auto -6%;width:min(520px,100%);height:auto;color:var(--ink);opacity:.5;pointer-events:none}
+.dial text{font-family:var(--serif-en);font-size:10px;letter-spacing:.3em;fill:var(--fog)}
+.mist-paper{
+  position:absolute;top:14%;left:20%;width:62%;height:66%;
+  background:linear-gradient(145deg,var(--silver-light),var(--paper-deep) 58%,var(--silver-light));
+  clip-path:polygon(6% 0,96% 5%,100% 88%,12% 100%,0 46%);
+  transform:rotate(5deg);box-shadow:0 18px 36px rgba(30,39,72,.12);
+}
+.mini-card{
+  position:absolute;background:var(--paper-light);padding:16px 18px;box-shadow:var(--paper-shadow);
+}
+.mini-card .no{font-family:var(--type);font-size:8px;letter-spacing:.18em;color:var(--fog)}
+.mini-card strong{display:block;margin-top:5px;font-family:var(--serif-en);font-size:28px;font-weight:500;line-height:1}
+.mini-card small{display:block;margin-top:4px;font-family:var(--hand);font-size:11px;color:var(--ink-soft)}
+.card-archive{top:2%;left:0;transform:rotate(-4deg)}
+.card-gate{bottom:4%;left:38%;transform:rotate(3deg)}
+.card-gate strong{color:#3f6b58}
+.card-note{
+  top:32%;left:18%;width:50%;transform:rotate(-2deg);
+  background:var(--paper);padding:18px 20px 16px;text-align:center;
+}
+.card-note .no{display:block;font-family:var(--type);font-size:8px;letter-spacing:.2em;color:var(--fog)}
+.card-note .script{display:block;margin:8px 0 5px;font-family:var(--script);font-size:24px;line-height:1.1;color:var(--ink-soft)}
+.card-note small{display:block;font-family:var(--hand);font-size:10px;color:var(--ink-soft)}
+.stamp{
+  position:absolute;right:6%;top:2%;width:112px;height:112px;border-radius:50%;
+  border:2px double rgba(30,39,72,.38);display:grid;place-items:center;text-align:center;
+  transform:rotate(-12deg);color:rgba(30,39,72,.62);font-family:var(--type);font-size:8px;
+  letter-spacing:.14em;line-height:1.7;opacity:.85;
+}
+.stamp::before{content:"";position:absolute;inset:7px;border:1px dashed rgba(30,39,72,.26);border-radius:50%}
+.hanging-tag{
+  position:absolute;left:4%;bottom:8%;width:92px;height:128px;background:var(--paper-light);
+  border:1px solid var(--hairline);box-shadow:var(--paper-shadow);transform:rotate(-6deg);
+  display:grid;place-items:center;padding-top:14px;
+}
+.hanging-tag::before{content:"";position:absolute;top:8px;left:50%;width:7px;height:7px;margin-left:-3.5px;border:1px solid var(--fog);border-radius:50%}
+.hanging-tag svg{width:42px;height:42px;opacity:.72}
+.souvenir{
+  position:absolute;right:4%;bottom:0;width:108px;height:108px;background:var(--paper-light);
+  border:1px solid var(--hairline);transform:rotate(45deg);box-shadow:var(--paper-shadow);
+  display:grid;place-items:center;
+}
+.souvenir span{transform:rotate(-45deg);font-family:var(--serif-en);font-style:italic;font-size:13px;letter-spacing:.12em;color:var(--ink-soft)}
+
+/* ---------- ledger ---------- */
+.ledger{
+  display:grid;grid-template-columns:repeat(6,1fr);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  margin-top:38px;background:rgba(255,253,248,.55);
+}
+.ledger-item{padding:15px 18px 14px;border-right:1px solid var(--hairline)}
+.ledger-item:last-child{border-right:0}
+.ledger-label{font-family:var(--type);font-size:8px;letter-spacing:.16em;color:var(--fog);text-transform:uppercase}
+.ledger-value{display:block;margin-top:5px;font-family:var(--serif-en);font-size:32px;font-weight:500;line-height:1}
+.ledger-note{display:block;margin-top:5px;font-family:var(--hand);font-size:10px;color:var(--ink-soft)}
+.ledger-item.accent .ledger-value{color:#3f6b58}
+.ledger-item.warn .ledger-value{color:#8a5a63}
+
+/* ---------- panels ---------- */
+.panels{display:grid;grid-template-columns:1.08fr .92fr;gap:24px;margin-top:26px}
+.panel{position:relative;background:rgba(255,253,248,.68);border:1px solid var(--hairline);box-shadow:var(--paper-shadow);padding:22px 24px}
+.panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--hairline);margin-bottom:8px}
+.panel-head h2,.panel-head h3{margin:0;font-family:var(--serif-zh);font-size:17px;font-weight:600;letter-spacing:.02em}
+.panel-head .small{font-family:var(--type);font-size:8px;letter-spacing:.16em;color:var(--fog)}
+.task-list{display:grid}
+.task-row{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  width:100%;padding:14px 4px;background:none;border:0;border-bottom:1px dashed var(--hairline);
+  text-align:left;transition:background .16s ease,padding .16s ease;
+}
+.task-row:last-child{border-bottom:0}
+.task-row:hover{background:rgba(220,226,241,.28);padding-left:10px}
+.task-main{display:flex;align-items:center;gap:13px;min-width:0}
+.task-glyph{
+  display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border:1px solid var(--line);
+  font-family:var(--type);font-size:8px;letter-spacing:.08em;color:var(--fog);
+}
+.task-copy{display:grid;gap:4px;min-width:0}
+.task-name{font-family:var(--serif-en);font-size:15px;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-meta{display:flex;gap:12px;font-family:var(--type);font-size:8px;letter-spacing:.1em;color:var(--fog)}
+.status-pill{font-family:var(--type);font-size:8px;letter-spacing:.08em;padding:4px 8px;border:1px solid currentColor;border-radius:999px;white-space:nowrap}
+.status-success{color:#3f6b58}
+.status-running{color:#6a5a2e}
+.status-failed{color:#8a4a54}
+.status-pending{color:var(--fog)}
+
+.chain{display:grid}
+.chain-item{display:grid;grid-template-columns:32px 1fr auto;gap:13px;align-items:start;padding:14px 0;border-bottom:1px dashed var(--hairline)}
+.chain-item:last-child{border-bottom:0}
+.chain-no{font-family:var(--type);font-size:9px;color:var(--fog);letter-spacing:.1em;padding-top:2px}
+.chain-copy strong{display:block;font-size:13px;font-weight:600}
+.chain-copy small{display:block;margin-top:4px;font-family:var(--hand);font-size:11px;color:var(--ink-soft);line-height:1.7}
+.chain-state{font-family:var(--type);font-size:8px;letter-spacing:.1em}
+.chain-state.ok{color:#3f6b58}
+.chain-state.idle{color:#6a5a2e}
+.chain-state.gate{color:var(--fog)}
+
+/* ---------- split layouts ---------- */
+.split{display:grid;grid-template-columns:minmax(0,1.04fr) minmax(0,.96fr);gap:28px;align-items:start}
+.paper-card{position:relative;background:var(--paper-light);box-shadow:var(--paper-shadow);padding:28px 30px}
+.paper-card.plain{background:rgba(255,253,248,.7);border:1px solid var(--hairline);box-shadow:var(--paper-shadow)}
+.tape{
+  position:absolute;top:-11px;left:30px;width:112px;height:24px;
+  background:rgba(232,201,208,.62);border-left:1px dashed rgba(30,39,72,.12);border-right:1px dashed rgba(30,39,72,.12);
+  transform:rotate(-3deg);mix-blend-mode:multiply;
+}
+.field{display:grid;gap:7px;margin-bottom:18px}
+.field > span{font-size:12px;letter-spacing:.08em;color:var(--ink)}
+.field .no{font-family:var(--type);font-size:8px;letter-spacing:.14em;color:var(--fog);margin-right:8px}
+.field .optional{font-family:var(--hand);font-size:10px;color:var(--fog);margin-left:6px}
+.field input,.field select{
+  width:100%;border:0;border-bottom:1px solid var(--line);background:transparent;
+  padding:9px 2px;font-family:var(--hand);font-size:15px;outline:none;
+}
+.field input:focus,.field select:focus{border-color:var(--ink);box-shadow:0 1px 0 var(--ink)}
+.field select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--fog) 50%),linear-gradient(135deg,var(--fog) 50%,transparent 50%);background-position:calc(100% - 12px) 16px,calc(100% - 7px) 16px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.field textarea{
+  width:100%;min-height:210px;resize:vertical;border:1px solid var(--hairline);
+  padding:13px 14px;font-family:var(--type);font-size:11.5px;line-height:30px;
+  background-color:rgba(255,255,255,.35);
+  background-image:repeating-linear-gradient(transparent,transparent 29px,var(--hairline) 29px,var(--hairline) 30px);
+  background-attachment:local;outline:none;
+}
+.field textarea:focus{border-color:var(--ink)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.form-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:8px}
+.check{display:flex;align-items:center;gap:9px;font-family:var(--hand);font-size:13px;color:var(--ink-soft)}
+.check input{appearance:none;width:16px;height:16px;border:1px solid var(--line);background:var(--paper-light);display:grid;place-items:center}
+.check input:checked::after{content:"✓";font-family:var(--serif-en);font-size:12px;color:var(--ink)}
+.hint{font-family:var(--hand);font-size:11px;color:var(--fog);line-height:1.7}
+
+.strategy{list-style:none;margin:8px 0 0;padding:0}
+.strategy li{display:grid;grid-template-columns:32px 1fr;gap:13px;padding:14px 0;border-bottom:1px dashed var(--hairline)}
+.strategy li:last-child{border-bottom:0}
+.strategy .no{font-family:var(--type);font-size:9px;color:var(--fog);padding-top:2px}
+.strategy strong{display:block;font-size:13px;font-weight:600}
+.strategy small{display:block;margin-top:4px;font-family:var(--hand);font-size:11px;color:var(--ink-soft);line-height:1.7}
+.result{
+  min-height:170px;margin-top:18px;padding:18px;border:1px dashed var(--line);
+  background:rgba(255,253,248,.6);font-family:var(--type);font-size:10.5px;line-height:1.9;color:var(--ink-soft);
+}
+.result strong{font-family:var(--serif-zh);font-size:13px;color:var(--ink)}
+.stamp-small{
+  display:inline-block;margin-top:14px;padding:7px 12px;border:1px solid rgba(30,39,72,.32);
+  transform:rotate(-3deg);font-family:var(--type);font-size:8px;letter-spacing:.18em;color:var(--fog);
+}
+
+/* ---------- tasks page ---------- */
+.task-layout{display:grid;grid-template-columns:minmax(0,.82fr) minmax(0,1.18fr);gap:28px;align-items:start}
+.index-card{
+  position:relative;background:var(--paper-light);box-shadow:var(--paper-shadow);
+  padding:18px 20px;margin-bottom:16px;transform:rotate(var(--r,0deg));
+}
+.index-card .top{display:flex;justify-content:space-between;gap:14px;align-items:baseline}
+.index-card h3{margin:0;font-family:var(--serif-en);font-size:18px;font-weight:500;letter-spacing:.01em}
+.index-card .meta{display:flex;gap:14px;margin-top:7px;font-family:var(--type);font-size:8px;letter-spacing:.1em;color:var(--fog)}
+.index-card p{margin:11px 0 0;font-family:var(--hand);font-size:11.5px;line-height:1.8;color:var(--ink-soft)}
+.report-paper{background:var(--paper-light);box-shadow:var(--paper-shadow);padding:30px 32px;position:relative}
+.report-paper::before{content:"";position:absolute;inset:9px;border:1px solid var(--hairline);pointer-events:none}
+.report-title{display:flex;justify-content:space-between;align-items:baseline;gap:16px;border-bottom:1px solid var(--hairline);padding-bottom:14px}
+.report-title h2{margin:0;font-family:var(--serif-zh);font-size:21px;font-weight:600}
+.report-title .small{font-family:var(--type);font-size:8px;letter-spacing:.14em;color:var(--fog)}
+.report-summary{font-family:var(--hand);font-size:13px;line-height:1.95;color:var(--ink-soft);margin:18px 0 20px}
+.finding{border-top:1px dashed var(--hairline);padding:14px 0}
+.finding-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.finding-head strong{font-family:var(--serif-en);font-size:15px;font-weight:600}
+.sev{font-family:var(--type);font-size:8px;letter-spacing:.08em;padding:3px 7px;border:1px solid currentColor;border-radius:999px}
+.sev.high{color:#8a4a54}
+.sev.medium{color:#6a5a2e}
+.finding .loc{font-family:var(--type);font-size:8px;letter-spacing:.08em;color:var(--fog)}
+.finding p{margin:8px 0 0;font-family:var(--hand);font-size:11.5px;line-height:1.85;color:var(--ink-soft)}
+.report-actions{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--hairline)}
+
+/* ---------- skills ---------- */
+.capability{
+  display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;
+  background:var(--paper-light);box-shadow:var(--paper-shadow);padding:24px 28px;margin-bottom:26px;
+}
+.capability-main{display:flex;align-items:center;gap:18px}
+.capability-glyph{
+  display:grid;place-items:center;width:58px;height:58px;border:1px solid var(--line);
+  font-family:var(--type);font-size:9px;letter-spacing:.12em;color:var(--fog);
+}
+.capability h2{margin:0;font-family:var(--serif-en);font-size:22px;font-weight:500;letter-spacing:.02em}
+.capability p{margin:5px 0 0;font-family:var(--hand);font-size:12px;color:var(--ink-soft)}
+.capability-runtime{text-align:right;display:grid;gap:5px}
+.capability-runtime strong{font-family:var(--type);font-size:10px;letter-spacing:.08em;font-weight:400}
+.capability-runtime span{font-family:var(--type);font-size:8px;letter-spacing:.14em;color:#3f6b58}
+.skill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+.skill-card{
+  position:relative;background:var(--paper-light);box-shadow:var(--paper-shadow);padding:22px 22px 20px;
+  transform:rotate(var(--r,0deg));transition:transform .18s ease,box-shadow .18s ease;
+}
+.skill-card:hover{transform:rotate(0) translateY(-3px)}
+.skill-card::before{content:"";position:absolute;inset:8px;border:1px solid var(--hairline);pointer-events:none}
+.skill-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.skill-kind{font-family:var(--type);font-size:8px;letter-spacing:.18em;color:var(--fog)}
+.skill-version{font-family:var(--type);font-size:8px;color:var(--fog-light);letter-spacing:.12em}
+.skill-card h3{margin:14px 0 8px;font-family:var(--serif-en);font-size:21px;font-weight:500;letter-spacing:.01em;line-height:1.2}
+.skill-card p{margin:0;font-family:var(--hand);font-size:11.5px;line-height:1.85;color:var(--ink-soft)}
+.skill-foot{display:flex;justify-content:space-between;gap:12px;margin-top:16px;padding-top:11px;border-top:1px dashed var(--hairline);font-family:var(--type);font-size:8px;letter-spacing:.1em;color:var(--fog)}
+
+/* ---------- evolution ---------- */
+.purpose{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:14px 0;margin-bottom:26px;font-family:var(--type);font-size:11px;letter-spacing:.06em;
+}
+.purpose b{font-family:var(--type);font-size:9px;color:var(--fog);margin-right:7px}
+.purpose i{flex:1;min-width:24px;height:1px;background:var(--hairline)}
+.purpose p{flex-basis:100%;margin:2px 0 0;font-family:var(--hand);font-size:11.5px;line-height:1.8;color:var(--ink-soft)}
+.status-paper{background:rgba(255,253,248,.7);border:1px solid var(--hairline);box-shadow:var(--paper-shadow);padding:22px 24px;margin-bottom:26px}
+.status-paper .panel-head{margin-bottom:12px}
+.status-lines{margin:0;font-family:var(--type);font-size:10.5px;line-height:2;color:var(--ink-soft);white-space:pre-wrap}
+.evolution-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+.failure-card{border-top:1px dashed var(--hairline);padding:13px 0}
+.failure-card:first-child{border-top:0;padding-top:0}
+.failure-card .top{display:flex;justify-content:space-between;gap:12px;font-family:var(--type);font-size:8px;letter-spacing:.1em;color:var(--fog)}
+.failure-card strong{display:block;margin-top:6px;font-size:12.5px;font-weight:600}
+.failure-card p{margin:5px 0 0;font-family:var(--hand);font-size:11px;line-height:1.8;color:var(--ink-soft)}
+
+/* ---------- footer ---------- */
+.colophon{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:20px;
+  padding:16px clamp(20px,3vw,40px);border-top:1px solid var(--hairline);
+  font-family:var(--type);font-size:8px;letter-spacing:.16em;color:var(--fog);
+}
+.colophon span:nth-child(2){font-family:var(--script);font-size:19px;letter-spacing:0;color:var(--ink-soft)}
+.colophon span:last-child{text-align:right}
+
+/* ---------- page turn ---------- */
+.turn-sheet{
+  position:fixed;inset:0;z-index:120;pointer-events:none;opacity:0;
+  background:
+    linear-gradient(90deg,rgba(30,39,72,.16),transparent 8%,transparent 92%,rgba(30,39,72,.1)),
+    linear-gradient(160deg,var(--paper-light),var(--paper) 58%,var(--silver-light));
+  border-left:3px solid rgba(30,39,72,.18);
+  box-shadow:18px 0 40px rgba(30,39,72,.18);
+  transform-origin:left center;transform-style:preserve-3d;
+}
+.turn-sheet.turning{animation:pageTurn .65s cubic-bezier(.45,.05,.2,1) both}
+@keyframes pageTurn{
+  0%{opacity:1;transform:perspective(2400px) rotateY(0deg)}
+  42%{opacity:1;box-shadow:40px 0 60px rgba(30,39,72,.24)}
+  100%{opacity:0;transform:perspective(2400px) rotateY(-178deg)}
+}
+body.is-turning{overflow:hidden}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:26px;z-index:200;transform:translate(-50%,18px);
+  max-width:min(560px,90vw);padding:12px 18px;background:var(--ink);color:var(--paper);
+  font-family:var(--hand);font-size:13px;line-height:1.6;box-shadow:0 0 0 3px rgba(255,255,255,.8),0 14px 30px rgba(30,39,72,.24);
+  opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1280px){
+  #couverture{padding-left:clamp(24px,4vw,64px)}
+  .tag-rail{position:static;width:auto;height:auto;flex-direction:row;justify-content:center;gap:10px;margin-bottom:22px;pointer-events:none}
+  .tag-rail::before{display:none}
+  .tag{width:52px;height:64px}
+  .hero{grid-template-columns:1fr;min-height:0}
+  .collage{min-height:440px;max-width:640px;margin:0 auto;width:100%}
+  .letter{transform:none}
+  .panels,.split,.task-layout,.evolution-grid{grid-template-columns:1fr}
+}
+@media (max-width:1080px){
+  .book-shell{margin:12px;margin-bottom:86px}
+  .bookmarks{
+    position:fixed;left:0;right:0;bottom:0;top:auto;
+    flex-direction:row;justify-content:center;gap:6px;
+    padding:8px max(12px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+    background:rgba(251,249,244,.94);border-top:1px solid var(--hairline);
+    backdrop-filter:blur(6px);
+  }
+  .bookmark{
+    width:auto;flex:1 1 0;max-width:120px;height:50px;padding:6px 4px;
+    clip-path:none;flex-direction:row;gap:7px;border-radius:0;
+    box-shadow:none;border:0;border-bottom:2px solid transparent;
+  }
+  .bookmark::before{display:none}
+  .bookmark:hover{transform:none}
+  .bookmark.active{transform:none;border-bottom-color:var(--ink);background:transparent}
+  .bookmark.active::after{display:none}
+  .bm-cn{writing-mode:horizontal-tb;font-size:12px;letter-spacing:.04em;white-space:nowrap}
+  .bm-fr{display:none}
+  .bm-no{font-size:8px}
+  .colophon{margin-bottom:0}
+  #stage{padding-bottom:20px}
+}
+@media (max-height:940px) and (min-width:1081px){
+  .bookmarks{top:118px;gap:6px}
+  .bookmark{height:106px}
+  .bm-fr{display:none}
+}
+@media (max-width:820px){
+  .masthead{grid-template-columns:1fr auto;padding:16px 20px}
+  .mast-center{display:none}
+  .mast-right{grid-column:2}
+  .page-view{padding:28px 20px 40px}
+  .ledger{grid-template-columns:repeat(2,1fr)}
+  .ledger-item:nth-child(2n){border-right:0}
+  .ledger-item:nth-child(n+3){border-top:1px solid var(--hairline)}
+  .field-row{grid-template-columns:1fr}
+  .colophon{grid-template-columns:1fr;text-align:center;gap:7px}
+  .colophon span:last-child{text-align:center}
+  .corner{display:none}
+}
+@media (max-width:640px){
+  .book-shell{margin:8px;margin-bottom:82px}
+  .inner-frame{margin:9px}
+  .letter{padding:26px 20px 24px}
+  .letter h1{font-size:clamp(24px,7.2vw,34px)}
+  .script-line{font-size:24px;margin-top:10px}
+  .collage{min-height:320px}
+  .card-note,.hanging-tag,.souvenir{display:none}
+  .dial{inset:-10px auto auto -18%;width:420px;opacity:.36}
+  .mini-card{padding:12px 14px}
+  .mini-card strong{font-size:23px}
+  .stamp{width:86px;height:86px;font-size:7px}
+  .hanging-tag{width:72px;height:102px}
+  .souvenir{width:84px;height:84px}
+  .purpose{gap:10px}
+  .purpose i{min-width:12px}
+  .capability{padding:18px 20px}
+}
+@media (max-width:480px){
+  .bm-no{display:none}
+  .bm-cn{font-size:10px;letter-spacing:0;white-space:nowrap}
+  .bookmark{max-width:none}
+  .tag-rail{display:none}
+  .mast-left small{display:none}
+  .letter-meta span:last-child{display:none}
+  .letter-foot span:last-child{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .turn-sheet{display:none}
+}
+</style>
+</head>
+<body>
+<svg class="grain" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <filter id="paperGrain"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch"/></filter>
+  <rect width="100%" height="100%" filter="url(#paperGrain)"/>
+</svg>
+
+<div class="book-shell">
+  <div class="inner-frame">
+    <svg class="corner tl" viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1"><path d="M6 62C6 30 30 6 62 6"/><path d="M14 56C18 32 34 16 58 12"/><circle cx="62" cy="6" r="2.2"/><circle cx="6" cy="62" r="2.2"/><path d="M26 30c8-6 18-10 30-10"/></svg>
+    <svg class="corner tr" viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1"><path d="M6 62C6 30 30 6 62 6"/><path d="M14 56C18 32 34 16 58 12"/><circle cx="62" cy="6" r="2.2"/><circle cx="6" cy="62" r="2.2"/><path d="M26 30c8-6 18-10 30-10"/></svg>
+    <svg class="corner br" viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1"><path d="M6 62C6 30 30 6 62 6"/><path d="M14 56C18 32 34 16 58 12"/><circle cx="62" cy="6" r="2.2"/><circle cx="6" cy="62" r="2.2"/><path d="M26 30c8-6 18-10 30-10"/></svg>
+    <svg class="corner bl" viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1"><path d="M6 62C6 30 30 6 62 6"/><path d="M14 56C18 32 34 16 58 12"/><circle cx="62" cy="6" r="2.2"/><circle cx="6" cy="62" r="2.2"/><path d="M26 30c8-6 18-10 30-10"/></svg>
+
+    <header class="masthead">
+      <div class="mast-left"><span>EVOREVIEW</span><small>MAISON DU CODE</small></div>
+      <div class="mast-center"><span class="script">Le cabinet de révision</span><small>REVUE DE CODE · PARIS</small></div>
+      <div class="mast-right">ÉDITION 2026<small>N° 004</small></div>
+    </header>
+
+    <nav class="bookmarks" aria-label="册页导航">
+      <button class="bookmark active" data-page="couverture" aria-current="page" aria-label="01 运行总览 · Couverture" title="运行总览 · Couverture"><span class="bm-no">01</span><span class="bm-cn">总览</span><span class="bm-fr">Couverture</span></button>
+      <button class="bookmark" data-page="atelier" aria-label="02 发起审查 · Atelier" title="发起审查 · Atelier"><span class="bm-no">02</span><span class="bm-cn">发起审查</span><span class="bm-fr">Atelier</span></button>
+      <button class="bookmark" data-page="taches" aria-label="03 任务中心 · Cabinet" title="任务中心 · Cabinet"><span class="bm-no">03</span><span class="bm-cn">任务中心</span><span class="bm-fr">Cabinet</span></button>
+      <button class="bookmark" data-page="skills" aria-label="04 Skills · Bibliothèque" title="Skills · Bibliothèque"><span class="bm-no">04</span><span class="bm-cn">技能</span><span class="bm-fr">Bibliothèque</span></button>
+      <button class="bookmark" data-page="laboratoire" aria-label="05 演进实验室 · Laboratoire" title="演进实验室 · Laboratoire"><span class="bm-no">05</span><span class="bm-cn">演进</span><span class="bm-fr">Laboratoire</span></button>
+    </nav>
+
+    <main id="stage" tabindex="-1">
+
+      <!-- ============ 01 COUVERTURE ============ -->
+      <section class="page-view active" id="couverture" aria-labelledby="title-couverture">
+        <div class="tag-rail" aria-hidden="true">
+          <span class="tag"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M12 12h8v5c0 2-1.5 3-4 3s-4-1-4-3z"/><path d="M14 12V9h4v3"/><path d="M13 20v4h6v-4"/></svg></span>
+          <span class="tag"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M16 5c4 4 6 8 6 12a6 6 0 0 1-12 0c0-4 2-8 6-12z"/><path d="M16 12v13"/></svg></span>
+          <span class="tag"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"><circle cx="12" cy="14" r="4"/><path d="M15 17l9 9m-3-3 3-3m-6 0 3-3"/></svg></span>
+          <span class="tag"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M21 6a9 9 0 1 0 0 18A10 10 0 0 1 21 6z"/><path d="M24 9l1-3 2 2 2-1"/></svg></span>
+          <span class="tag"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M7 12c4-3 14-3 18 0v9c-4 3-14 3-18 0z"/><path d="M7 12l9 6 9-6"/></svg></span>
+        </div>
+
+        <div class="hero">
+          <div class="letter">
+            <div class="letter-meta"><span>LETTRE N° 001</span><span>PARIS · 2026</span></div>
+            <p class="fr-line">Chaque ligne mérite une seconde lecture.</p>
+            <h1 id="title-couverture">让每一次代码审查，<br>都成为系统的经验。</h1>
+            <p class="script-line">Les mots du code</p>
+            <p class="lede">Lead 主 Agent 委派安全、可靠性与 Critic 从 Agent；确定性工具提供事实，证据门禁筛去无据之言。每一次审查，都被归档成下一版的经验。</p>
+            <div class="letter-actions">
+              <button class="btn-primary" data-jump="atelier">新建 PR 审查 <span aria-hidden="true">→</span></button>
+              <button class="btn-text" data-jump="taches">查看任务记录</button>
+            </div>
+            <div class="letter-foot"><span>SEC · REL · CRITIC</span><span>ARCHIVE OUVERTE</span></div>
+          </div>
+
+          <div class="collage" aria-hidden="true">
+            <svg class="dial" viewBox="0 0 520 520">
+              <defs><path id="dialText" d="M260,260 m-214,0 a214,214 0 1,1 428,0 a214,214 0 1,1 -428,0"/></defs>
+              <circle cx="260" cy="260" r="236" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 7" opacity=".55"/>
+              <circle cx="260" cy="260" r="214" fill="none" stroke="currentColor" stroke-width=".8" opacity=".4"/>
+              <text><textPath href="#dialText">MAISON DU CODE · RÉVISION ARCHIVÉE · CHAQUE LIGNE COMPTE ·</textPath></text>
+              <g stroke="currentColor" stroke-width="1" opacity=".55">
+                <path d="M260 30v16"/><path d="M260 474v16"/><path d="M30 260h16"/><path d="M474 260h16"/>
+                <path d="M98 98l11 11"/><path d="M411 411l11 11"/><path d="M411 98l11-11"/><path d="M98 411l11-11"/>
+              </g>
+            </svg>
+            <div class="mist-paper"></div>
+            <div class="mini-card card-note"><span class="no">FICHE DE RÉVISION · 02</span><span class="script">La preuve avant la conclusion</span><small>每一条结论，都要有可核对的证据。</small></div>
+            <div class="mini-card card-archive"><span class="no">ARCHIVE · 128</span><strong>128</strong><small>累计审查任务</small></div>
+            <div class="mini-card card-gate"><span class="no">GATE · PASS</span><strong>93%</strong><small>成功率 · 本月</small></div>
+            <div class="stamp">EVOREVIEW<br>VÉRIFIÉ<br>· 2026 ·</div>
+            <div class="hanging-tag"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M18 18h12v8c0 3-2.5 5-6 5s-6-2-6-5z"/><path d="M21 18v-4h6v4"/><path d="M19 31v6h10v-6"/></svg></div>
+            <div class="souvenir"><span>Souvenir</span></div>
+          </div>
+        </div>
+
+        <div class="ledger" aria-label="运行数据">
+          <div class="ledger-item"><span class="ledger-label">Tâches · 总任务</span><b class="ledger-value">128</b><small class="ledger-note">累计审查任务</small></div>
+          <div class="ledger-item accent"><span class="ledger-label">Terminées · 已完成</span><b class="ledger-value">96</b><small class="ledger-note">通过质量门禁</small></div>
+          <div class="ledger-item warn"><span class="ledger-label">Échouées · 失败</span><b class="ledger-value">4</b><small class="ledger-note">需要进一步处理</small></div>
+          <div class="ledger-item"><span class="ledger-label">Réussite · 成功率</span><b class="ledger-value">93%</b><small class="ledger-note">全部任务成功率</small></div>
+          <div class="ledger-item"><span class="ledger-label">Retours · 待处理</span><b class="ledger-value">12</b><small class="ledger-note">未解决反馈</small></div>
+          <div class="ledger-item"><span class="ledger-label">Skills · 活跃</span><b class="ledger-value">8</b><small class="ledger-note">当前生效版本</small></div>
+        </div>
+
+        <div class="panels">
+          <article class="panel">
+            <div class="panel-head"><h2>最近任务</h2><span class="small">DERNIÈRES TÂCHES</span></div>
+            <div class="task-list">
+              <button class="task-row" data-jump="taches"><span class="task-main"><span class="task-glyph">PR</span><span class="task-copy"><span class="task-name">acme/payments-api</span><span class="task-meta"><span>PR #428</span><span>11-03 14:22</span></span></span></span><span class="status-pill status-success">已完成</span></button>
+              <button class="task-row" data-jump="taches"><span class="task-main"><span class="task-glyph">PR</span><span class="task-copy"><span class="task-name">acme/web-console</span><span class="task-meta"><span>PR #117</span><span>11-03 13:58</span></span></span></span><span class="status-pill status-running">汇总中</span></button>
+              <button class="task-row" data-jump="taches"><span class="task-main"><span class="task-glyph">PR</span><span class="task-copy"><span class="task-name">acme/auth-gateway</span><span class="task-meta"><span>PR #91</span><span>11-03 11:07</span></span></span></span><span class="status-pill status-failed">失败</span></button>
+              <button class="task-row" data-jump="taches"><span class="task-main"><span class="task-glyph">PR</span><span class="task-copy"><span class="task-name">acme/data-pipeline</span><span class="task-meta"><span>手动审查</span><span>11-02 18:40</span></span></span></span><span class="status-pill status-success">已完成</span></button>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><h2>实际执行链</h2><span class="small">CHAÎNE D'EXÉCUTION</span></div>
+            <div class="chain">
+              <div class="chain-item"><span class="chain-no">01</span><span class="chain-copy"><strong>Tool / Scanner</strong><small>规则、AST 与关键词证据提供事实</small></span><span class="chain-state ok">事实</span></div>
+              <div class="chain-item"><span class="chain-no">02</span><span class="chain-copy"><strong>4-role LLM Agents</strong><small>Lead、Security、Correctness、Critic 分工协作</small></span><span class="chain-state idle">待配置</span></div>
+              <div class="chain-item"><span class="chain-no">03</span><span class="chain-copy"><strong>Gate</strong><small>格式、证据、置信度与发布门禁</small></span><span class="chain-state gate">门禁</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ 02 ATELIER ============ -->
+      <section class="page-view" id="atelier" aria-labelledby="title-atelier">
+        <div class="page-head">
+          <span class="page-kicker">02 · Atelier de révision</span>
+          <h1 class="page-title" id="title-atelier">提交一份 Pull Request 的改动</h1>
+          <p class="page-lede">四个 LLM 角色协作完成审查；报告会披露实际调用成本。把 diff 放上工作台，剩下的交给他。</p>
+        </div>
+        <div class="split">
+          <article class="paper-card">
+            <span class="tape" aria-hidden="true"></span>
+            <form id="review-form">
+              <div class="field-row">
+                <label class="field"><span><b class="no">01</b>仓库地址</span><input name="repository" value="acme/payments-api" autocomplete="off"></label>
+                <label class="field"><span><b class="no">02</b>PR 编号<span class="optional">可选</span></span><input name="pull_request" value="428"></label>
+              </div>
+              <label class="field"><span><b class="no">03</b>运行模式</span>
+                <select name="mode"><option>agentic · 四个真实 LLM 角色</option><option>scanner · 仅确定性规则</option></select>
+              </label>
+              <label class="field"><span><b class="no">04</b>Unified Diff <span class="optional">0 行 · 0 字符</span></span>
+                <textarea name="diff" spellcheck="false">--- a/app/payments.py
++++ b/app/payments.py
+@@ -40,7 +40,9 @@ def charge(user_input):
+-    amount = int(user_input)
++    amount = eval(user_input)
++    if amount &lt; 0:
++        return None
+     return gateway.charge(amount)</textarea>
+              </label>
+              <div class="form-footer">
+                <label class="check"><input type="checkbox" checked><span>放入异步队列</span></label>
+                <button class="btn-primary" type="submit">开始代码审查 <span aria-hidden="true">→</span></button>
+              </div>
+              <p class="hint">未配置模型时，agentic 审查需要 LLM。Demo 不会发送真实请求。</p>
+            </form>
+          </article>
+
+          <aside>
+            <article class="paper-card plain">
+              <div class="panel-head"><h2>执行策略</h2><span class="small">PROTOCOLE</span></div>
+              <ol class="strategy">
+                <li><span class="no">01</span><span><strong>解析变更</strong><small>只定位新增代码与新文件行号</small></span></li>
+                <li><span class="no">02</span><span><strong>多角色执行</strong><small>Tool/Scanner 提供事实，四个 LLM 角色分工审查</small></span></li>
+                <li><span class="no">03</span><span><strong>质量门禁</strong><small>过滤无定位、无修复方案的结论</small></span></li>
+                <li><span class="no">04</span><span><strong>经验沉淀</strong><small>反馈自动进入失败案例库</small></span></li>
+              </ol>
+            </article>
+            <article class="paper-card plain" style="margin-top:22px">
+              <div class="panel-head"><h2>审查结果</h2><span class="small">RÉSULTAT</span></div>
+              <div class="result" id="review-result"><strong>等待中</strong><br>审查结果将在这里显示。<br><br>Demo：点击「开始代码审查」只会展示提示。</div>
+              <span class="stamp-small">À EXAMINER · 待审查</span>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============ 03 TÂCHES ============ -->
+      <section class="page-view" id="taches" aria-labelledby="title-taches">
+        <div class="page-head">
+          <span class="page-kicker">03 · Cabinet des tâches</span>
+          <h1 class="page-title" id="title-taches">审查任务与报告</h1>
+          <p class="page-lede">跟踪任务状态，查看报告并创建安全修复分支。点击左侧任意一张索引卡，右侧会换上对应报告。</p>
+        </div>
+        <div class="task-layout">
+          <div id="task-index">
+            <article class="index-card" style="--r:-.6deg" data-task="payments">
+              <div class="top"><h3>acme/payments-api</h3><span class="status-pill status-success">已完成</span></div>
+              <div class="meta"><span>PR #428</span><span>11-03 14:22</span><span>2 findings</span></div>
+              <p>新增的 eval 调用与空 except 分支触发安全与可靠性规则。</p>
+            </article>
+            <article class="index-card" style="--r:.5deg" data-task="console">
+              <div class="top"><h3>acme/web-console</h3><span class="status-pill status-running">汇总中</span></div>
+              <div class="meta"><span>PR #117</span><span>11-03 13:58</span><span>1 finding</span></div>
+              <p>Critic 正在复核 Security 与 Correctness 的候选结论。</p>
+            </article>
+            <article class="index-card" style="--r:-.4deg" data-task="auth">
+              <div class="top"><h3>acme/auth-gateway</h3><span class="status-pill status-failed">失败</span></div>
+              <div class="meta"><span>PR #91</span><span>11-03 11:07</span><span>0 findings</span></div>
+              <p>模型调用超时，任务已进入重试队列；可创建修复分支前需先重跑。</p>
+            </article>
+            <article class="index-card" style="--r:.7deg" data-task="pipeline">
+              <div class="top"><h3>acme/data-pipeline</h3><span class="status-pill status-success">已完成</span></div>
+              <div class="meta"><span>手动审查</span><span>11-02 18:40</span><span>1 finding</span></div>
+              <p>YAML 加载路径使用 safe_load，报告建议补一条回归测试。</p>
+            </article>
+          </div>
+
+          <article class="report-paper" aria-live="polite">
+            <div class="report-title"><h2 id="report-name">acme/payments-api</h2><span class="small" id="report-meta">PR #428 · 11-03 14:22</span></div>
+            <p class="report-summary" id="report-summary">本次改动在支付金额解析处引入了动态执行，并在负数分支吞掉了错误。两处都缺少足够的输入约束；建议改为显式解析并返回可观测的错误。</p>
+            <div id="report-findings">
+              <div class="finding">
+                <div class="finding-head"><strong>eval() 执行未受信任输入</strong><span class="sev high">HIGH</span><span class="loc">app/payments.py:42 · SEC-EVAL</span></div>
+                <p>新增行把 <code>user_input</code> 直接交给 <code>eval</code>。攻击者可构造表达式执行任意代码；这是本次改动引入的新风险。建议改用 <code>json.loads</code> 或 <code>Decimal</code>。</p>
+              </div>
+              <div class="finding">
+                <div class="finding-head"><strong>负数分支静默返回 None</strong><span class="sev medium">MEDIUM</span><span class="loc">app/payments.py:44 · REL-EMPTY-EXCEPT</span></div>
+                <p>金额为负时直接返回 <code>None</code>，调用方无法区分失败与零值。建议抛出带上下文的 <code>ValueError</code>，并补一条边界测试。</p>
+              </div>
+            </div>
+            <div class="report-actions">
+              <span class="hint">报告只保留有代码行证据的结论；无证据的高风险项已被门禁拦下。</span>
+              <button class="btn-text" id="create-fix">创建修复分支 →</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ 04 SKILLS ============ -->
+      <section class="page-view" id="skills" aria-labelledby="title-skills">
+        <div class="page-head">
+          <span class="page-kicker">04 · Bibliothèque des skills</span>
+          <h1 class="page-title" id="title-skills">组件与 Skill 能力</h1>
+          <p class="page-lede">区分 LLM Agent、Tool/Scanner 与 Gate，并查看真实模型运行时。每一张卡片都像一册可借阅的册子。</p>
+        </div>
+        <article class="capability">
+          <div class="capability-main">
+            <span class="capability-glyph">LLM</span>
+            <div><h2>LLM Review Agent</h2><p>Provider 未知 · 未配置模型时，agentic 审查不可用</p></div>
+          </div>
+          <div class="capability-runtime"><span>● 检查中</span><strong>Provider 未知</strong></div>
+        </article>
+        <div class="skill-grid" id="skill-grid">
+          <article class="skill-card" style="--r:-.5deg"><div class="skill-top"><span class="skill-kind">SCANNER</span><span class="skill-version">v1.0.0</span></div><h3>security-review</h3><p>确定性安全规则：动态执行、命令注入、硬编码密钥与路径穿越。</p><div class="skill-foot"><span>read_file · ast_analyze</span><span>内置</span></div></article>
+          <article class="skill-card" style="--r:.4deg"><div class="skill-top"><span class="skill-kind">AGENT</span><span class="skill-version">v1.2.0</span></div><h3>correctness-review</h3><p>检查边界条件、错误路径与回归风险，要求结论附带可核对证据。</p><div class="skill-foot"><span>search · tests</span><span>动态</span></div></article>
+          <article class="skill-card" style="--r:-.3deg"><div class="skill-top"><span class="skill-kind">GATE</span><span class="skill-version">v2.0.1</span></div><h3>api-compatibility</h3><p>对比请求与响应契约，阻断会破坏既有调用方的字段变更。</p><div class="skill-foot"><span>schema · diff</span><span>内置</span></div></article>
+          <article class="skill-card" style="--r:.6deg"><div class="skill-top"><span class="skill-kind">SCANNER</span><span class="skill-version">v0.9.4</span></div><h3>observability-review</h3><p>检查日志、指标与追踪是否覆盖新增分支，避免静默失败。</p><div class="skill-foot"><span>logs · metrics</span><span>动态</span></div></article>
+        </div>
+        <div style="margin-top:24px"><button class="btn-text" id="reload-skills">重新扫描 Skills →</button></div>
+      </section>
+
+      <!-- ============ 05 LABORATOIRE ============ -->
+      <section class="page-view" id="laboratoire" aria-labelledby="title-labo">
+        <div class="page-head">
+          <span class="page-kicker">05 · Laboratoire d'évolution</span>
+          <h1 class="page-title" id="title-labo">演进实验室</h1>
+          <p class="page-lede">将已提交的审查反馈转换为候选提示词，再用独立回放评测决定能否激活。</p>
+        </div>
+        <div class="purpose" aria-label="演进实验室的工作方式">
+          <span><b>01</b>收集任务反馈</span><i aria-hidden="true"></i><span><b>02</b>生成候选提示词</span><i aria-hidden="true"></i><span><b>03</b>回放门禁后激活</span>
+          <p>它不会直接修改线上规则；只有候选在 Validation 提升且 Holdout 不退化时，才会替换当前提示词版本。</p>
+        </div>
+        <article class="status-paper">
+          <div class="panel-head"><h2>评测就绪状态</h2><span class="small">ÉTAT DU LABORATOIRE</span></div>
+          <pre class="status-lines" id="evolution-status">model_configured      : false
+validation_cases      : 20
+holdout_cases         : 20
+minimum_cases         : 3
+minimum_improvement   : 0.01
+ready                 : false
+provider              : local</pre>
+        </article>
+        <div class="evolution-grid">
+          <article class="paper-card">
+            <span class="tape" aria-hidden="true"></span>
+            <form id="evolution-form">
+              <label class="field"><span><b class="no">01</b>Skill 名称</span><input name="skill_name" value="llm-review"></label>
+              <label class="field"><span><b class="no">02</b>候选提示词</span><textarea name="prompt">Review the unified diff. Return JSON findings with severity, fix and test. Report only actionable defects introduced by added lines.</textarea></label>
+              <button class="btn-primary" type="submit">运行新旧版本回放评测 <span aria-hidden="true">→</span></button>
+            </form>
+          </article>
+          <aside>
+            <article class="paper-card plain">
+              <div class="panel-head"><h2>失败案例与评测记录</h2><span class="small">DOSSIER</span></div>
+              <div class="failure-card"><div class="top"><span>MISSED_ISSUE</span><span>11-03</span></div><strong>SEC-WEAK-HASH · app/digest.py:18</strong><p>候选漏掉了 MD5 使用；人工确认后进入反馈队列。</p></div>
+              <div class="failure-card"><div class="top"><span>FALSE_POSITIVE</span><span>11-02</span></div><strong>REL-DEBUG-PRINT · tools/replay.py:54</strong><p>fixture 中的占位输出被误报；Critic 已标记为良性样本。</p></div>
+              <div class="failure-card"><div class="top"><span>BAD_FIX</span><span>11-01</span></div><strong>SEC-SHELL · runner.py:77</strong><p>修复建议保留了 shell=True，只替换了参数拼接方式。</p></div>
+            </article>
+            <article class="paper-card plain" style="margin-top:22px">
+              <div class="panel-head"><h2>演进结果</h2><span class="small">VERDICT</span></div>
+              <div class="result" id="evolution-result"><strong>等待中</strong><br>演进结果将在这里显示。<br><br>Demo：提交后展示一个模拟的激活结论。</div>
+              <span class="stamp-small">SCELLÉ · 已封存</span>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="colophon">
+      <span>EVOREVIEW · MAISON DU CODE</span>
+      <span>Chaque ligne compte</span>
+      <span>MMXXVI · ÉDITION 004</span>
+    </footer>
+  </div>
+</div>
+
+<div class="turn-sheet" id="turnSheet" aria-hidden="true"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+  var pages = ["couverture", "atelier", "taches", "skills", "laboratoire"];
+  var current = "couverture";
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var turning = false;
+  var toastTimer = null;
+
+  function $(selector, root) { return (root || document).querySelector(selector); }
+  function $$(selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); }
+
+  function toast(message) {
+    var el = $("#toast");
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2800);
+  }
+
+  function switchPage(page, updateHash) {
+    if (pages.indexOf(page) < 0) page = "couverture";
+    current = page;
+    $$(".page-view").forEach(function (el) { el.classList.toggle("active", el.id === page); });
+    $$(".bookmark").forEach(function (el) {
+      var active = el.dataset.page === page;
+      el.classList.toggle("active", active);
+      if (active) el.setAttribute("aria-current", "page");
+      else el.removeAttribute("aria-current");
+    });
+    if (updateHash !== false) history.pushState(null, "", "#/" + page);
+    $("#stage").focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: reduceMotion.matches ? "auto" : "smooth" });
+  }
+
+  function go(page) {
+    if (turning || page === current) return;
+    if (pages.indexOf(page) < 0) page = "couverture";
+    if (reduceMotion.matches) { switchPage(page); return; }
+    turning = true;
+    document.body.classList.add("is-turning");
+    var sheet = $("#turnSheet");
+    sheet.classList.add("turning");
+    setTimeout(function () { switchPage(page); }, 280);
+    setTimeout(function () {
+      sheet.classList.remove("turning");
+      document.body.classList.remove("is-turning");
+      turning = false;
+    }, 650);
+  }
+
+  $$(".bookmark").forEach(function (button) {
+    button.addEventListener("click", function () { go(button.dataset.page); });
+  });
+  $$("[data-jump]").forEach(function (button) {
+    button.addEventListener("click", function () { go(button.dataset.jump); });
+  });
+  window.addEventListener("hashchange", function () {
+    var page = location.hash.replace(/^#\/?/, "") || "couverture";
+    if (page !== current) switchPage(page, false);
+  });
+  window.addEventListener("popstate", function () {
+    var page = location.hash.replace(/^#\/?/, "") || "couverture";
+    if (page !== current) switchPage(page, false);
+  });
+
+  var reports = {
+    payments: {
+      name: "acme/payments-api", meta: "PR #428 · 11-03 14:22",
+      summary: "本次改动在支付金额解析处引入了动态执行，并在负数分支吞掉了错误。两处都缺少足够的输入约束；建议改为显式解析并返回可观测的错误。",
+      findings: [
+        ["eval() 执行未受信任输入", "high", "HIGH", "app/payments.py:42 · SEC-EVAL", "新增行把 user_input 直接交给 eval。攻击者可构造表达式执行任意代码；这是本次改动引入的新风险。建议改用 json.loads 或 Decimal。"],
+        ["负数分支静默返回 None", "medium", "MEDIUM", "app/payments.py:44 · REL-EMPTY-EXCEPT", "金额为负时直接返回 None，调用方无法区分失败与零值。建议抛出带上下文的 ValueError，并补一条边界测试。"]
+      ]
+    },
+    console: {
+      name: "acme/web-console", meta: "PR #117 · 11-03 13:58",
+      summary: "Critic 正在复核 Security 与 Correctness 的候选结论；当前只有一条候选通过了证据门禁。",
+      findings: [
+        ["Cookie 缺少 Secure 标记", "medium", "MEDIUM", "src/session.ts:31 · SEC-INSECURE-COOKIE", "新增的 set_cookie 调用显式关闭了 secure。建议保持 secure=True，并在测试中断言该属性。"]
+      ]
+    },
+    auth: {
+      name: "acme/auth-gateway", meta: "PR #91 · 11-03 11:07",
+      summary: "模型调用超时，任务已进入重试队列；当前没有可展示的门禁结论。请先重跑任务。",
+      findings: []
+    },
+    pipeline: {
+      name: "acme/data-pipeline", meta: "手动审查 · 11-02 18:40",
+      summary: "YAML 加载路径使用 safe_load，报告建议补一条回归测试，防止后续改回不安全写法。",
+      findings: [
+        ["缺少 safe_load 回归测试", "medium", "MEDIUM", "jobs/loader.py:22 · TEST-SAFE-YAML", "当前实现是正确的，但没有测试锁定该行为。建议加入一个加载恶意 YAML 的回归用例。"]
+      ]
+    }
+  };
+
+  function renderReport(key) {
+    var report = reports[key];
+    if (!report) return;
+    $("#report-name").textContent = report.name;
+    $("#report-meta").textContent = report.meta;
+    $("#report-summary").textContent = report.summary;
+    var root = $("#report-findings");
+    if (!report.findings.length) {
+      root.innerHTML = '<div class="finding"><p>暂无通过门禁的结论。</p></div>';
+      return;
+    }
+    root.innerHTML = report.findings.map(function (f) {
+      return '<div class="finding"><div class="finding-head"><strong>' + f[0] +
+        '</strong><span class="sev ' + f[1] + '">' + f[2] + '</span><span class="loc">' + f[3] +
+        '</span></div><p>' + f[4] + '</p></div>';
+    }).join("");
+  }
+
+  $$("[data-task]").forEach(function (card) {
+    card.addEventListener("click", function () {
+      $$("[data-task]").forEach(function (other) { other.style.outline = ""; });
+      card.style.outline = "1px solid var(--ink)";
+      card.style.outlineOffset = "5px";
+      renderReport(card.dataset.task);
+      toast("已打开 " + reports[card.dataset.task].name + " 的报告（Demo 数据）");
+    });
+  });
+
+  var reviewForm = $("#review-form");
+  if (reviewForm) reviewForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var result = $("#review-result");
+    result.innerHTML = "<strong>已加入队列（Demo）</strong><br>任务 ID：task_demo_8f2a<br>模式：agentic · 4 roles<br>状态：PENDING<br><br>真实版本会在这里轮询任务，并展示执行账本与报告。";
+    toast("Demo：审查请求不会真正发送");
+  });
+
+  var fixButton = $("#create-fix");
+  if (fixButton) fixButton.addEventListener("click", function () {
+    toast("Demo：真实版本会创建 isolated worktree、验证补丁并开 Draft PR");
+  });
+
+  var reloadSkills = $("#reload-skills");
+  if (reloadSkills) reloadSkills.addEventListener("click", function () {
+    toast("Demo：已模拟重新扫描，4 个 Skill 保持可用");
+  });
+
+  var evolutionForm = $("#evolution-form");
+  if (evolutionForm) evolutionForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var result = $("#evolution-result");
+    result.innerHTML = "<strong>正在回放…</strong><br>baseline 与 candidate 使用同一数据集。";
+    setTimeout(function () {
+      result.innerHTML = "<strong>决策：deferred（Demo）</strong><br>validation_f1     0.62 → 0.62<br>holdout_f1        0.58 → 0.58<br>reason            候选与当前版本等价，未激活。<br><br>真实版本会展示完整指标、门禁与版本记录。";
+    }, 900);
+  });
+
+  var initial = location.hash.replace(/^#\/?/, "");
+  if (pages.indexOf(initial) >= 0) switchPage(initial, false);
+})();
+</script>
+</body>
+</html>

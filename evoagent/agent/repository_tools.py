@@ -9,12 +9,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import shlex
 import time
 from typing import Any, Dict, Iterable, Optional, Set
 
 from ..domain.diff_parser import ParsedDiff
-from ..process_env import restricted_env
+from ..process_env import resolve_command, restricted_env
 from .runtime import AgentTool, ToolRegistry
 from .telemetry import ExecutionLedger
 
@@ -86,6 +85,7 @@ class RepositoryToolSuite:
         self, root: str, diff: str, parsed: ParsedDiff,
         ledger: Optional[ExecutionLedger] = None,
         test_command: str = "",
+        allow_test_execution: bool = True,
     ):
         candidate = os.path.realpath(root) if root else ""
         self.root = candidate if candidate and os.path.isdir(candidate) else ""
@@ -93,6 +93,7 @@ class RepositoryToolSuite:
         self.parsed = parsed
         self.ledger = ledger
         self.test_command = test_command
+        self.allow_test_execution = bool(allow_test_execution)
 
     @property
     def repository_available(self) -> bool:
@@ -461,6 +462,16 @@ class RepositoryToolSuite:
                 "available": False, "kind": kind,
                 "reason": "no administrator-configured test command",
             })
+        if kind == "tests" and not self.allow_test_execution:
+            return _evidence("test", {
+                "available": False, "kind": kind,
+                "reason": (
+                    "test execution is disabled by "
+                    "EVOAGENT_TEST_EXECUTION_ALLOW_UNTRUSTED=false; enable it "
+                    "only for trusted repositories or after moving execution "
+                    "into a sandbox"
+                ),
+            })
         with tempfile.TemporaryDirectory(prefix="evoagent-review-check-") as temp:
             checkout = os.path.join(temp, "checkout")
             base_ignore = shutil.ignore_patterns(*SKIP_DIRS)
@@ -477,21 +488,55 @@ class RepositoryToolSuite:
                         # checkout: repository tests can print files they read.
                         ignored.add(name)
                         continue
-                    if os.path.islink(path) and (
-                        not os.path.exists(path) or self._escaping_symlink(path)
-                    ):
-                        # Copying the target would pull data from outside the
-                        # repository into the temporary checkout, and a broken
-                        # link would abort the copy.
-                        ignored.add(name)
+                    if os.path.islink(path):
+                        # copytree(symlinks=False) copies the target under the
+                        # link's benign name, bypassing the sensitive-path
+                        # check above.  Copy internal relative links as links
+                        # (so normal repositories keep working) but skip
+                        # absolute or escaping links, which would reach outside
+                        # the checkout.
+                        try:
+                            target = os.readlink(path)
+                        except OSError:
+                            target = ""
+                        if (
+                            not target or os.path.isabs(target)
+                            or self._escaping_symlink(path)
+                        ):
+                            ignored.add(name)
                 return ignored
 
-            shutil.copytree(self.root, checkout, ignore=ignore)
-            command = (
-                [sys.executable, "-m", "compileall", "-q", "."]
-                if kind == "compile" else
-                shlex.split(self.test_command, posix=os.name != "nt")
-            )
+            try:
+                shutil.copytree(
+                    self.root, checkout, symlinks=True, ignore=ignore,
+                )
+            except OSError:
+                # Some Windows configurations cannot create symlinks.  Fall
+                # back to a copy without materialising any link rather than
+                # failing the whole check.
+                shutil.rmtree(checkout, ignore_errors=True)
+
+                def ignore_links(directory, names):
+                    ignored = set(ignore(directory, names))
+                    ignored.update(
+                        name for name in names
+                        if os.path.islink(os.path.join(directory, name))
+                    )
+                    return ignored
+
+                shutil.copytree(
+                    self.root, checkout, symlinks=False, ignore=ignore_links,
+                )
+            if kind == "compile":
+                command = [sys.executable, "-m", "compileall", "-q", "."]
+            else:
+                try:
+                    command = resolve_command(self.test_command, self.root)
+                except ValueError as exc:
+                    return _evidence("test", {
+                        "available": False, "kind": kind,
+                        "reason": str(exc),
+                    })
             env = self._restricted_env()
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             try:

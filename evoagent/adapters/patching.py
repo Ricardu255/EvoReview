@@ -183,6 +183,16 @@ class VerifiedPatchFixer:
                 "execution": ledger.summary(),
                 "note": "No repository test command is configured; this is a suggestion, not a successful automatic fix.",
             }
+        if not getattr(self.verifier, "allow_untrusted", False):
+            # The archive is the pull request head, possibly an
+            # attacker-controlled fork.  The operator can disable execution
+            # without removing the configured command.
+            return {
+                "status": "suggestion-only", "branch": None, "commits": [],
+                "patch": patch_text, "verification": {"structural": structural},
+                "execution": ledger.summary(),
+                "note": "Test execution is disabled for untrusted repository content; this is a suggestion, not a successful automatic fix.",
+            }
         archive = client.download_archive(source_repository, source_sha)
         baseline = self.verifier.verify_archive(archive, {})
         patched = self.verifier.verify_archive(archive, changed)

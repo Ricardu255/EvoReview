@@ -67,16 +67,31 @@ class WorktreeTests(unittest.TestCase):
 
     def test_passing_and_failing_commands_are_measured(self):
         with tempfile.TemporaryDirectory() as root:
-            passed = RepairVerifier("python -c pass").verify_worktree(root)
+            passed = RepairVerifier(
+                "python -c pass", allow_untrusted=True,
+            ).verify_worktree(root)
             self.assertTrue(passed["passed"])
             self.assertEqual("repository-tests", passed["checks"][0]["name"])
 
-            failed = RepairVerifier("python -c exit(1)").verify_worktree(root)
+            failed = RepairVerifier(
+                "python -c exit(1)", allow_untrusted=True,
+            ).verify_worktree(root)
             self.assertFalse(failed["passed"])
             self.assertFalse(failed["checks"][0]["passed"])
 
+    def test_test_execution_can_be_disabled(self):
+        with tempfile.TemporaryDirectory() as root:
+            result = RepairVerifier(
+                "python -c pass", allow_untrusted=False,
+            ).verify_worktree(root)
+        self.assertFalse(result["passed"])
+        self.assertTrue(result.get("skipped"))
+        self.assertIn("disabled", result["reason"])
+
     def test_timeout_is_reported_as_a_failure(self):
-        verifier = RepairVerifier("python -c pass", timeout_seconds=3)
+        verifier = RepairVerifier(
+            "python -c pass", timeout_seconds=3, allow_untrusted=True,
+        )
         with tempfile.TemporaryDirectory() as root, patch(
             "evoagent.adapters.verifier.subprocess.run",
             side_effect=subprocess.TimeoutExpired("cmd", 3),
@@ -92,7 +107,7 @@ class ArchiveTests(unittest.TestCase):
             ("repo/app.py", "print('original')\n"),
             ("repo/README.md", "readme\n"),
         ])
-        verifier = RepairVerifier("python app.py")
+        verifier = RepairVerifier("python app.py", allow_untrusted=True)
         with tempfile.TemporaryDirectory() as output:
             result = verifier.verify_archive(
                 bundle, {"app.py": "print('repaired')\n"},
@@ -111,7 +126,7 @@ class ArchiveTests(unittest.TestCase):
 
     def test_compilation_failure_short_circuits_the_test_command(self):
         bundle = archive([("repo/app.py", "value = 1\n")])
-        verifier = RepairVerifier("python -c pass")
+        verifier = RepairVerifier("python -c pass", allow_untrusted=True)
         result = verifier.verify_archive(bundle, {"app.py": "def broken(:\n"})
         self.assertFalse(result["passed"])
         self.assertEqual(
@@ -120,11 +135,24 @@ class ArchiveTests(unittest.TestCase):
 
     def test_failing_tests_make_the_archive_gate_fail(self):
         bundle = archive([("repo/app.py", "value = 1\n")])
-        result = RepairVerifier("python -c exit(1)").verify_archive(bundle, {})
+        result = RepairVerifier(
+            "python -c exit(1)", allow_untrusted=True,
+        ).verify_archive(bundle, {})
         self.assertFalse(result["passed"])
         self.assertEqual(
             ["repository-tests"], [item["name"] for item in result["checks"]],
         )
+
+    def test_untrusted_archive_does_not_execute_the_test_command(self):
+        bundle = archive([("repo/app.py", "value = 1\n")])
+        with patch("evoagent.adapters.verifier.subprocess.run") as run:
+            result = RepairVerifier(
+                "python -c pass", allow_untrusted=False,
+            ).verify_archive(bundle, {})
+        run.assert_not_called()
+        self.assertFalse(result["passed"])
+        self.assertTrue(result.get("skipped"))
+        self.assertIn("disabled", result["reason"])
 
     def test_unsafe_archive_members_are_rejected(self):
         for name in ("../evil.py", "/etc/passwd"):

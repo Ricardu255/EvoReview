@@ -254,7 +254,7 @@ Set `EVOAGENT_AUTO_POST_CHECKS=true` to publish a completed `EvoReview` Check Ru
 
 Auto-fix only covers rules that are deterministically safe, such as debug output, `shell=True`, and hardcoded Python credentials; results are always committed to a new `evoagent/fix-pr-*` branch and never modify the source branch directly. Without `EVOAGENT_REPAIR_TEST_COMMAND` the fix pipeline stops after static checks and returns a suggestion only — no commit is published and no "tests passed" claim is made.
 
-`EVOAGENT_REPAIR_TEST_COMMAND` runs inside an extracted copy of the PR's source repository (which may be an attacker-controlled fork) with a restricted environment but without network or container isolation. Enable it only for repositories you trust, or run EvoReview in a disposable environment.
+`EVOAGENT_REPAIR_TEST_COMMAND` runs inside an extracted copy of the PR's source repository (which may be an attacker-controlled fork) with a restricted environment but without network or container isolation. Configure it only for repositories you trust, or run EvoReview in a disposable environment. Set `EVOAGENT_TEST_EXECUTION_ALLOW_UNTRUSTED=false` to keep the command configured but stop executing repository tests; compilation checks still run. The same switch applies to the agent's `run_repository_checks(kind="tests")` tool; `kind="compile"` remains available.
 
 ## API
 

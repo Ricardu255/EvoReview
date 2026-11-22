@@ -338,9 +338,19 @@ class RepositoryToolSuiteTests(unittest.TestCase):
             failed = suite.run_repository_checks("compile")["output"]
             self.assertFalse(failed["passed"])
 
+    def test_configured_test_command_can_be_disabled(self):
+        suite = RepositoryToolSuite(
+            self.root, "", parse_unified_diff(""), test_command="python -c pass",
+            allow_test_execution=False,
+        )
+        output = suite.run_repository_checks("tests")["output"]
+        self.assertFalse(output["available"])
+        self.assertIn("disabled", output["reason"])
+
     def test_configured_test_command_runs_in_the_isolated_copy(self):
         suite = RepositoryToolSuite(
             self.root, "", parse_unified_diff(""), test_command="python -c pass",
+            allow_test_execution=True,
         )
         output = suite.run_repository_checks("tests")["output"]
         self.assertTrue(output["available"])
@@ -361,6 +371,28 @@ class RepositoryToolSuiteTests(unittest.TestCase):
                     "sys.exit(0 if not os.path.exists('.env') "
                     "and os.path.exists('.env.example') else 1)\""
                 ),
+                allow_test_execution=True,
+            )
+            output = suite.run_repository_checks("tests")["output"]
+            self.assertTrue(output["passed"], output)
+
+    def test_repository_checks_do_not_copy_symlinks(self):
+        with tempfile.TemporaryDirectory() as root:
+            with open(os.path.join(root, "app.py"), "w", encoding="utf-8") as handle:
+                handle.write("value = 1\n")
+            with open(os.path.join(root, ".env"), "w", encoding="utf-8") as handle:
+                handle.write("SECRET=do-not-copy\n")
+            try:
+                os.symlink(".env", os.path.join(root, "innocent.txt"))
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks are unavailable on this platform")
+            suite = RepositoryToolSuite(
+                root, "", parse_unified_diff(""),
+                test_command=(
+                    "python -c \"import os, sys; "
+                    "sys.exit(0 if not os.path.exists('innocent.txt') else 1)\""
+                ),
+                allow_test_execution=True,
             )
             output = suite.run_repository_checks("tests")["output"]
             self.assertTrue(output["passed"], output)

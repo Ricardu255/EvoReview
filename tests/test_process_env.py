@@ -7,13 +7,16 @@ cache variables that the tool suite forwarded.
 """
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 from evoagent.adapters.verifier import RepairVerifier
 from evoagent.agent.repository_tools import RepositoryToolSuite
-from evoagent.process_env import ALLOWED_ENV_KEYS, restricted_env
+from evoagent.process_env import (
+    ALLOWED_ENV_KEYS, resolve_command, restricted_env,
+)
 
 
 class RestrictedEnvTests(unittest.TestCase):
@@ -62,7 +65,10 @@ class SharedAllowlistTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0, "", "")
 
         with tempfile.TemporaryDirectory() as root:
-            verifier = RepairVerifier("python -m compileall .", timeout_seconds=5)
+            verifier = RepairVerifier(
+                "python -m compileall .", timeout_seconds=5,
+                allow_untrusted=True,
+            )
             with mock.patch.dict(
                 os.environ,
                 {"APPDATA": "C:/AppData", "GITHUB_TOKEN": "leak"},
@@ -76,6 +82,47 @@ class SharedAllowlistTests(unittest.TestCase):
         self.assertEqual("C:/AppData", captured["env"]["APPDATA"])
         self.assertNotIn("GITHUB_TOKEN", captured["env"])
         self.assertIn("TMPDIR", captured["env"])
+
+    def test_explicit_repository_script_is_allowed(self):
+        with tempfile.TemporaryDirectory() as root:
+            planted = os.path.join(root, "pytest")
+            with open(planted, "w", encoding="utf-8") as handle:
+                handle.write("")
+            resolved = resolve_command("./pytest", root)
+        self.assertEqual(os.path.realpath(planted), resolved[0])
+
+    def test_bare_name_is_not_resolved_from_a_path_inside_the_checkout(self):
+        with tempfile.TemporaryDirectory() as root:
+            bin_dir = os.path.join(root, "bin")
+            os.makedirs(bin_dir)
+            planted = os.path.join(bin_dir, "pytest")
+            with open(planted, "w", encoding="utf-8") as handle:
+                handle.write("")
+            with mock.patch.dict(
+                os.environ, {"PATH": bin_dir}, clear=True,
+            ):
+                with self.assertRaisesRegex(ValueError, "not found"):
+                    resolve_command("pytest", root)
+            resolved = resolve_command("python -c pass", root)
+        self.assertTrue(os.path.isabs(resolved[0]))
+        self.assertNotEqual(os.path.abspath(root), os.path.dirname(resolved[0]))
+
+    def test_repository_wrapper_is_used_when_not_on_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            name = "run-tests.bat" if os.name == "nt" else "run-tests"
+            path = os.path.join(root, name)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("")
+            if os.name != "nt":
+                os.chmod(path, 0o755)
+            with mock.patch.dict(os.environ, {"PATH": ""}, clear=True):
+                resolved = resolve_command("run-tests", root)
+        self.assertEqual(os.path.realpath(path), resolved[0])
+
+    def test_quoted_absolute_executable_is_accepted(self):
+        resolved = resolve_command('"%s" -c pass' % sys.executable)
+        self.assertEqual(os.path.realpath(sys.executable), resolved[0])
+        self.assertEqual(["-c", "pass"], resolved[1:])
 
 
 if __name__ == "__main__":

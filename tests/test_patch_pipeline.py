@@ -159,10 +159,14 @@ class ApplyFilePatchTests(unittest.TestCase):
 
 
 class FakeVerifier:
-    def __init__(self, structural=True, comparison=True, test_command=""):
+    def __init__(
+        self, structural=True, comparison=True, test_command="",
+        allow_untrusted=True,
+    ):
         self.structural = structural
         self.comparison = comparison
         self.test_command = test_command
+        self.allow_untrusted = allow_untrusted
         self.archive_calls = 0
 
     def verify_contents(self, files):
@@ -273,6 +277,18 @@ class VerifiedPatchFixerTests(unittest.TestCase):
         )
         self.assertEqual("suggestion-only", result["status"])
         self.assertIn("No repository test command", result["note"])
+        self.assertEqual([], result["commits"])
+
+    def test_untrusted_test_execution_returns_a_suggestion_only(self):
+        verifier = FakeVerifier(
+            test_command="pytest", allow_untrusted=False,
+        )
+        result = VerifiedPatchFixer(
+            FakeChat({"patch": SIMPLE_PATCH}), verifier,
+        ).create_fix_commits(FakeGitHub(), "org/repo", 5, report_for())
+        self.assertEqual("suggestion-only", result["status"])
+        self.assertIn("untrusted", result["note"])
+        self.assertEqual(0, verifier.archive_calls)
         self.assertEqual([], result["commits"])
 
     def test_before_after_regression_blocks_publication(self):
@@ -431,6 +447,19 @@ class SafeFixerPublicationTests(unittest.TestCase):
         self.assertIsNone(result["branch"])
         self.assertEqual([], result["commits"])
         self.assertFalse(result["behavioral_tests_run"])
+        self.assertEqual([], self.github.commits)
+
+    def test_untrusted_test_execution_publishes_no_commit(self):
+        self.fixer.verifier = FakeVerifier(
+            test_command="pytest", allow_untrusted=False,
+        )
+        result = self.fixer.create_fix_commits(
+            self.github, "org/repo", 5, self._report(),
+        )
+        self.assertEqual("suggestion-only", result["status"])
+        self.assertIsNone(result["branch"])
+        self.assertFalse(result["behavioral_tests_run"])
+        self.assertIn("untrusted", result["note"])
         self.assertEqual([], self.github.commits)
 
     def test_successful_fix_creates_one_draft_commit(self):

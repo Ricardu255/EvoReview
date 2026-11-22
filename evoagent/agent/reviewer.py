@@ -47,6 +47,7 @@ class AgenticReviewer(Reviewer):
         context_manager: Optional[ContextManager] = None,
         skill_provider=None,
         normal_task_tool_steps: int = 0,
+        allow_test_execution: bool = True,
     ):
         self.store = store
         self.client = llm_client
@@ -66,6 +67,10 @@ class AgenticReviewer(Reviewer):
         self.memory_manager = memory_manager
         self.context_manager = context_manager or ContextManager()
         self.skill_provider = skill_provider
+        self.allow_test_execution = bool(allow_test_execution)
+        # Batched reviews consolidate whole-PR memory once after the merge,
+        # not once per batch; the batch engine flips this off.
+        self.persist_review_memory = True
         self.normal_task_tool_steps = max(
             0, min(int(normal_task_tool_steps), 2),
         )
@@ -140,7 +145,10 @@ class AgenticReviewer(Reviewer):
             self.output_cost_per_million,
         )
         root = str(task_input.get("repository_root") or "")
-        suite = RepositoryToolSuite(root, diff, parsed, ledger, self.review_test_command)
+        suite = RepositoryToolSuite(
+            root, diff, parsed, ledger, self.review_test_command,
+            self.allow_test_execution,
+        )
         enabled = set(task_input.get("enabled_agents") or self.enabled_roles)
         scanners = self.scanners + (
             list(self.scanner_provider(tenant_id)) if self.scanner_provider else []
@@ -182,10 +190,11 @@ class AgenticReviewer(Reviewer):
                 finding.rule_id, finding.evidence,
             )
         ledger.trace("evidence-gate", "completed", **gated.checks)
-        self._persist_task_memory(
-            task_id, tenant_id, repository, findings, gated,
-            parsed.files, collaboration,
-        )
+        if self.persist_review_memory:
+            self._persist_task_memory(
+                task_id, tenant_id, repository, findings, gated,
+                parsed.files, collaboration,
+            )
         execution = ledger.summary()
         execution["prompt_version"] = task_input.get("prompt_version", 0)
         execution["tenant_id"] = tenant_id
@@ -195,6 +204,7 @@ class AgenticReviewer(Reviewer):
             "run_mode": resolution.to_dict(),
             "components": components + [
                 component(ComponentKind.GATE, "finding-format-gate"),
+                component(ComponentKind.GATE, "finding-taxonomy-gate"),
                 component(ComponentKind.GATE, "evidence-gate"),
                 component(ComponentKind.GATE, "confidence-gate"),
                 component(ComponentKind.GATE, "release-gate"),

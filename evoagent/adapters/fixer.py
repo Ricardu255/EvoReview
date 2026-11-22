@@ -30,7 +30,15 @@ class SafeFixer:
         lines = content.splitlines()
         changed = []
         needs_os = False
-        for finding in sorted((x for x in findings if x.get("path") == path), key=lambda x: x.get("line", 0), reverse=True):
+        # Line numbers of old-side findings refer to the removed content, not
+        # to this file's current text; fixing them here would rewrite the
+        # wrong line.
+        fixable = [
+            x for x in findings
+            if x.get("path") == path
+            and str(x.get("line_side") or "new") == "new"
+        ]
+        for finding in sorted(fixable, key=lambda x: x.get("line", 0), reverse=True):
             index = int(finding.get("line", 0)) - 1
             if index < 0 or index >= len(lines):
                 continue
@@ -49,6 +57,7 @@ class SafeFixer:
         targets = {
             (int(item.get("line", 0)), item.get("rule_id"))
             for item in findings if item.get("path") == path
+            and str(item.get("line_side") or "new") == "new"
         }
         changed = []
         needs_os = False
@@ -165,6 +174,17 @@ class SafeFixer:
                 "files": files, "verification": verification,
                 "behavioral_tests_run": False,
                 "note": "No repository test command is configured; static checks only, so this is a suggestion rather than a verified automatic fix.",
+            }
+        if not getattr(self.verifier, "allow_untrusted", False):
+            # The archive comes from a pull request, which may be an
+            # attacker-controlled fork.  Executing its tests is a trust
+            # boundary controlled by EVOAGENT_TEST_EXECUTION_ALLOW_UNTRUSTED.
+            return {
+                "status": "suggestion-only",
+                "branch": None, "source_sha": source_sha, "commits": [],
+                "files": files, "verification": verification,
+                "behavioral_tests_run": False,
+                "note": "Test execution is disabled for untrusted repository content; static checks only, so this is a suggestion rather than a verified automatic fix.",
             }
         archive = client.download_archive(source_repository, source_sha)
         verification = self.verifier.verify_archive(archive, files)

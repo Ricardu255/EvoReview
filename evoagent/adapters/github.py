@@ -16,7 +16,7 @@ from .. import __version__
 
 
 USER_AGENT = "EvoReview/" + __version__
-REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+REPOSITORY_SEGMENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 # Webhook payloads carry URLs (diff_url, issue_url, archive_url, ...) that are
 # attacker-influenced once the webhook secret is known.  The client holds a
@@ -47,6 +47,33 @@ def verify_signature(secret: str, body: bytes, signature: str) -> bool:
         return False
     expected = "sha256=" + hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject a redirect before urllib forwards the Authorization header.
+
+    Checking the final URL after ``urlopen`` returns is too late: the default
+    redirect handler copies request headers, including credentials, onto the
+    next hop.  Validating every hop keeps the token on allowlisted hosts.
+    """
+
+    max_redirections = 5
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_github_url(newurl):
+            raise urllib.error.HTTPError(
+                newurl, code, "refusing a redirect to a non-GitHub host",
+                headers, fp,
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirectHandler())
+
+
+def _open_url(request, timeout=None):
+    """Open a GitHub request through the redirect-validating opener."""
+    return _OPENER.open(request, timeout=timeout)
 
 
 class GitHubClient:
@@ -84,6 +111,13 @@ class GitHubClient:
         )
         return body.decode("utf-8", errors="replace")
 
+    def fetch_pull_diff(self, repository: str, number: int) -> str:
+        """Fetch a pull request diff without trusting a webhook-supplied URL."""
+        repository = self._validate_repository(repository)
+        return self.fetch_diff(
+            "https://api.github.com/repos/%s/pulls/%d" % (repository, int(number))
+        )
+
     def create_check_run(
         self, repository: str, head_sha: str, conclusion: str,
         title: str, summary: str,
@@ -99,6 +133,7 @@ class GitHubClient:
                 "status": "completed", "conclusion": conclusion,
                 "output": {"title": title[:255], "summary": summary[:65000]},
             },
+            idempotent=False,
         )
 
     def update_check_run(
@@ -124,6 +159,7 @@ class GitHubClient:
             "POST", "https://api.github.com/repos/%s/pulls/%d/reviews"
             % (repository, int(number)),
             {"body": body, "event": event, "comments": list(comments)},
+            idempotent=False,
         )
 
     def post_comment(self, api_url: str, markdown: str) -> None:
@@ -135,7 +171,7 @@ class GitHubClient:
             headers=dict(self._headers(url=url), **{"Content-Type": "application/json"}),
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+        with _open_url(request, timeout=self.timeout) as response:
             final_url = getattr(response, "geturl", None)
             if callable(final_url):
                 final_url = final_url()
@@ -165,14 +201,15 @@ class GitHubClient:
             if marker in str(comment.get("body", "")):
                 self._json("PATCH", comment["url"], {"body": body})
                 return
-        self._json("POST", comments_url, {"body": body})
+        self._json("POST", comments_url, {"body": body}, idempotent=False)
 
-    def _json(self, method: str, url: str, payload=None):
-        return self._request(method, url, payload)
+    def _json(self, method: str, url: str, payload=None, idempotent: bool = True):
+        return self._request(method, url, payload, idempotent=idempotent)
 
     def _request(
         self, method: str, url: str, payload=None,
         accept: str = "application/vnd.github+json", raw: bool = False,
+        idempotent: bool = True,
     ):
         self._validate_url(url)
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -183,7 +220,7 @@ class GitHubClient:
                 method=method,
             )
             try:
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                with _open_url(request, timeout=self.timeout) as response:
                     # A 30x to another host would otherwise bypass the check
                     # above while urllib still forwards our credentials.
                     final_url = getattr(response, "geturl", None)
@@ -216,6 +253,10 @@ class GitHubClient:
                 retryable = exc.code in {429, 500, 502, 503, 504}
                 if exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0":
                     retryable = True
+                # A retried POST can duplicate a review, check run or commit
+                # when the first request succeeded but its response was lost.
+                if not idempotent:
+                    retryable = False
                 if not retryable or attempt >= self.max_attempts:
                     detail = exc.read(1000).decode("utf-8", errors="replace")
                     raise RuntimeError(
@@ -239,7 +280,7 @@ class GitHubClient:
                     delay = min(2 ** (attempt - 1) + random.random(), 10)
                 time.sleep(min(delay, 30))
             except (urllib.error.URLError, TimeoutError) as exc:
-                if attempt >= self.max_attempts:
+                if not idempotent or attempt >= self.max_attempts:
                     raise RuntimeError("GitHub API request failed: %s" % exc) from exc
                 time.sleep(min(2 ** (attempt - 1) + random.random(), 10))
 
@@ -249,6 +290,7 @@ class GitHubClient:
 
     def get_file(self, repository: str, path: str, ref: str) -> dict:
         repository = self._validate_repository(repository)
+        path = self._validate_file_path(path)
         quoted = urllib.parse.quote(path, safe="/")
         result = self._json("GET", "https://api.github.com/repos/%s/contents/%s?ref=%s" % (
             repository, quoted, urllib.parse.quote(ref, safe="")
@@ -263,8 +305,27 @@ class GitHubClient:
     @staticmethod
     def _validate_repository(repository: str) -> str:
         value = str(repository or "")
-        if not REPOSITORY_NAME.fullmatch(value):
+        parts = value.split("/")
+        if len(parts) != 2 or any(
+            not part or part in {".", ".."}
+            or not REPOSITORY_SEGMENT.fullmatch(part)
+            for part in parts
+        ):
             raise ValueError("repository must use the owner/name format")
+        return value
+
+    @staticmethod
+    def _validate_file_path(path: str) -> str:
+        value = str(path or "").replace("\\", "/")
+        if (
+            not value or value.startswith("/")
+            or re.match(r"^[A-Za-z]:", value)
+            or "\x00" in value
+        ):
+            raise ValueError("file path must be repository-relative")
+        parts = value.split("/")
+        if any(not part or part in {".", ".."} for part in parts):
+            raise ValueError("file path contains an unsafe segment")
         return value
 
     def ensure_repository_access(self, repository: str) -> None:
@@ -274,11 +335,15 @@ class GitHubClient:
 
     def create_branch(self, repository: str, branch: str, sha: str) -> None:
         repository = self._validate_repository(repository)
-        self._json("POST", "https://api.github.com/repos/%s/git/refs" % repository,
-                   {"ref": "refs/heads/" + branch, "sha": sha})
+        self._json(
+            "POST", "https://api.github.com/repos/%s/git/refs" % repository,
+            {"ref": "refs/heads/" + branch, "sha": sha},
+            idempotent=False,
+        )
 
     def commit_file(self, repository: str, path: str, branch: str, content: str, sha: str, message: str) -> dict:
         repository = self._validate_repository(repository)
+        path = self._validate_file_path(path)
         quoted = urllib.parse.quote(path, safe="/")
         return self._json("PUT", "https://api.github.com/repos/%s/contents/%s" % (repository, quoted), {
             "message": message, "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
@@ -290,6 +355,10 @@ class GitHubClient:
         files: Dict[str, str], message: str,
     ) -> dict:
         repository = self._validate_repository(repository)
+        files = {
+            self._validate_file_path(path): content
+            for path, content in files.items()
+        }
         parent = self._json(
             "GET", "https://api.github.com/repos/%s/git/commits/%s"
             % (repository, parent_sha)
@@ -303,10 +372,12 @@ class GitHubClient:
                     for path, content in sorted(files.items())
                 ],
             },
+            idempotent=False,
         )
         commit = self._json(
             "POST", "https://api.github.com/repos/%s/git/commits" % repository,
             {"message": message, "tree": tree["sha"], "parents": [parent_sha]},
+            idempotent=False,
         )
         self.create_branch(repository, branch, commit["sha"])
         return commit
@@ -318,6 +389,7 @@ class GitHubClient:
         return self._json(
             "POST", "https://api.github.com/repos/%s/pulls" % repository,
             {"title": title, "head": head, "base": base, "body": body, "draft": True},
+            idempotent=False,
         )
 
     def download_archive(self, repository: str, ref: str) -> bytes:
@@ -359,7 +431,7 @@ class GitHubAppAuthenticator:
                      "X-GitHub-Api-Version": "2022-11-28", "User-Agent": USER_AGENT,
                      "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with _open_url(request, timeout=30) as response:
             result = json.loads(response.read().decode("utf-8"))
         expires = result.get("expires_at", "")
         try:

@@ -23,9 +23,20 @@ MAX_RETRY_AFTER_SECONDS = 30.0
 # return empty or truncated content; retrying with a doubled budget escapes
 # the runaway without weakening the per-call policy for other failures.
 MAX_OUTPUT_TOKEN_CAP = 65536
+# A malformed or compromised provider must not be able to exhaust process
+# memory with an unbounded response body.
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 FENCE_BLOCK = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 TRAILING_COMMA = re.compile(r",\s*([}\]])")
+
+
+class ModelResponseError(RuntimeError):
+    """The provider replied, but its completion cannot be used."""
+
+    def __init__(self, provider, code):
+        self.code = code
+        super().__init__("%s: %s" % (provider, code))
 
 
 def parse_model_json(content: str, finish_reason: str = "") -> Dict[str, Any]:
@@ -137,7 +148,13 @@ class JsonChatClient:
             )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    body = json.loads(response.read().decode("utf-8"))
+                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+                    if len(raw) > MAX_RESPONSE_BYTES:
+                        raise ValueError(
+                            "model response exceeds the %d byte limit"
+                            % MAX_RESPONSE_BYTES
+                        )
+                    body = json.loads(raw.decode("utf-8"))
                 content, finish_reason = self._extract_content(body)
                 try:
                     result = parse_model_json(content, finish_reason)

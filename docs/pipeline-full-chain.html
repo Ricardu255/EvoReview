@@ -1,0 +1,1959 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EvoReview 全链路图 · 按功能拆解</title>
+<style>
+  :root {
+    --bg: #f5f3ee; --card: #ffffff; --ink: #1e2748; --ink-2: #46536f;
+    --line: #dce2f1; --code-bg: #1e2748; --code-ink: #dce2f1;
+    --blue: #1e2748; --teal: #46536f; --purple: #5c6884;
+    --amber: #9b6a7d; --green: #4b6b73; --rose: #a4576b; --slate: #46536f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+         background: var(--bg); color: var(--ink); line-height: 1.7; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+  header h1 { font-size: 30px; letter-spacing: .5px; }
+  header p.sub { color: var(--ink-2); margin-top: 8px; font-size: 14.5px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .meta span { background: #fff; border: 1px solid var(--line); border-radius: 999px;
+               padding: 3px 12px; font-size: 12.5px; color: var(--ink-2); }
+  nav { position: sticky; top: 0; z-index: 50; background: rgba(246,248,251,.92);
+        backdrop-filter: blur(6px); border-bottom: 1px solid var(--line);
+        margin: 26px -20px 26px; padding: 10px 20px; display: flex; gap: 8px;
+        flex-wrap: wrap; }
+  nav a { text-decoration: none; font-size: 12.5px; color: var(--ink-2);
+          border: 1px solid var(--line); background: #fff; border-radius: 999px;
+          padding: 4px 12px; transition: all .15s; white-space: nowrap; }
+  nav a:hover { color: var(--blue); border-color: var(--blue); }
+  nav a.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .diagram-card { background: var(--card); border: 1px solid var(--line);
+                  border-radius: 16px; padding: 18px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
+  .diagram-card svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px;
+            font-size: 12.5px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
+              margin-right: 5px; vertical-align: -1px; }
+  section.card { background: var(--card); border: 1px solid var(--line);
+                 border-radius: 16px; margin-top: 34px; overflow: hidden;
+                 box-shadow: 0 1px 3px rgba(15,23,42,.05); scroll-margin-top: 70px;
+                 transition: box-shadow .3s; }
+  section.card.flash { box-shadow: 0 0 0 3px var(--blue); }
+  .card-head { display: flex; align-items: center; gap: 14px; padding: 18px 24px 14px; }
+  .num { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px;
+         display: flex; align-items: center; justify-content: center;
+         font-weight: 700; font-size: 18px; color: #fff; }
+  .card-head h2 { font-size: 19px; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .files code { font-family: Consolas, "JetBrains Mono", monospace; font-size: 11.5px;
+                background: #f2f2ee; border: 1px solid var(--line); border-radius: 5px;
+                padding: 1px 7px; color: var(--ink-2); }
+  .card-body { padding: 0 24px 22px; }
+  .card-body h3 { font-size: 14px; margin: 16px 0 6px; color: var(--ink);
+                  display: flex; align-items: center; gap: 6px; }
+  .card-body h3::before { content: ""; width: 4px; height: 14px; border-radius: 2px;
+                          background: var(--ink-2); }
+  .card-body p, .card-body li { font-size: 14px; color: var(--ink-2); }
+  .card-body ul { padding-left: 20px; margin-top: 4px; }
+  .card-body li { margin: 3px 0; }
+  .card-body b { color: var(--ink); }
+  code.inline { font-family: Consolas, "JetBrains Mono", monospace; font-size: 12.5px;
+                background: #f2f2ee; border-radius: 4px; padding: 1px 6px;
+                color: #8a5a6d; }
+  .code-block { margin-top: 12px; border-radius: 10px; overflow: hidden;
+                border: 1px solid #1e2748; }
+  .code-head { background: #1e2748; color: #a9b3cc; font-size: 12px;
+               font-family: Consolas, monospace; padding: 7px 14px;
+               display: flex; justify-content: space-between; }
+  .code-head .lang { color: #5c6884; }
+  pre { background: var(--code-bg); color: var(--code-ink); padding: 14px 16px;
+        overflow-x: auto; font-size: 12.5px; line-height: 1.6;
+        font-family: Consolas, "JetBrains Mono", monospace; }
+  pre .k { color: #1e2748; font-weight: 600; }
+  pre .s { color: #8a5a6d; }
+  pre .c { color: #5c6884; font-style: italic; }
+  pre .n { color: #6b7ba3; }
+  .tip { background: #faf1f3; border: 1px solid #e8c9d0; border-radius: 8px;
+         padding: 8px 14px; font-size: 13px; color: #7a4a5c; margin-top: 12px; }
+  .tip::before { content: "💡 "; }
+  .diagram-card { scroll-margin-top: 70px; }
+  .diagram-title { font-size: 19px; margin: 4px 6px 4px; }
+  .diagram-sub { font-size: 13px; color: var(--ink-2); margin: 2px 6px 14px; }
+  /* 模块间上下游数据流条 */
+  .flow-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+                margin: 0 0 8px; padding: 10px 12px; background: #faf9f5;
+                border: 1px dashed var(--line); border-radius: 10px; }
+  .fs-cap { flex: 0 0 auto; font-size: 11px; color: #a9b3cc; font-weight: 700;
+            letter-spacing: 1px; writing-mode: vertical-lr; line-height: 1; }
+  .fs-box { border: 1px solid var(--line); background: #fff; border-radius: 8px;
+            padding: 5px 10px; font-size: 12px; color: var(--ink-2);
+            font-family: Consolas, "JetBrains Mono", monospace; }
+  .fs-box.cur { background: var(--blue); border-color: var(--blue);
+                color: #fff; font-weight: 600; }
+  .fs-arrow { display: flex; flex-direction: column; align-items: center;
+              min-width: 76px; }
+  .fs-label { font-size: 10.5px; color: #5c6884; white-space: nowrap; }
+  .fs-line { color: #a9b3cc; font-size: 16px; line-height: 1; }
+  .fs-col { display: flex; flex-direction: column; gap: 6px; }
+  .fs-col .fs-box { align-self: flex-start; }
+  footer { margin-top: 46px; color: var(--ink-2); font-size: 13px;
+           border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 700px) { .card-head { flex-wrap: wrap; } }
+
+  /* ================================================================
+     Maison des Mots · 法式纸雕视觉层
+     设计 token 来自 maison-des-mots-skill-main/SKILL.md §2。
+     取舍：保留技术文档的信息架构（sticky 档案标签导航、浅纸代码块、
+     等宽代码字体、12 张卡片），只重绘「纸」的外观；字体用本地栈，
+     不引外部字体请求，保证断网 / 大陆网络下零依赖可用。
+     ================================================================ */
+  :root {
+    /* 覆盖原变量名，让已有的 var(--xx) 自动换成纸雕色板 */
+    --bg: #f5f3ee; --card: #fffdf8; --ink: #1e2748; --ink-2: #46536f;
+    --line: rgba(30,39,72,.16); --code-bg: #fbfaf6; --code-ink: #1e2748;
+    --blue: #1e2748; --teal: #46536f; --purple: #5c6884;
+    --amber: #9b6a7d; --green: #4b6b73; --rose: #a4576b; --slate: #5c6884;
+    /* 纸雕专有 token */
+    --fog: #5c6884; --fog-light: #a9b3cc; --silver: #bfc8e0;
+    --ink-soft: #46536f;
+    --silver-light: #dce2f1; --paper: #fbf9f4; --paper-light: #fffdf8;
+    --paper-deep: #eef0f5; --lotus: #e8c9d0; --lotus-deep: #a4576b;
+    --hairline: rgba(30,39,72,.16);
+    --paper-shadow: 0 0 0 3px rgba(255,255,255,.88),
+                    0 0 0 4px rgba(30,39,72,.12),
+                    0 16px 30px rgba(30,39,72,.14);
+    --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
+    --hand: "LXGW WenKai", "Kaiti SC", KaiTi, "Microsoft YaHei", sans-serif;
+    --type: "Special Elite", "Courier New", Consolas, monospace;
+  }
+  body {
+    font-family: var(--hand);
+    background:
+      radial-gradient(1200px 700px at 10% -8%, rgba(220,226,241,.58), transparent 62%),
+      radial-gradient(900px 620px at 96% 10%, rgba(232,201,208,.26), transparent 64%),
+      radial-gradient(1100px 900px at 50% 102%, rgba(220,226,241,.34), transparent 66%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  /* 全屏纸颗粒：内联 SVG，无外部请求 */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: .022; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  }
+  .wrap {
+    max-width: 1180px; margin: 26px auto 64px; padding: 32px 36px 54px;
+    background: var(--paper); border: 1px solid var(--hairline);
+    box-shadow: var(--paper-shadow); position: relative; z-index: 1;
+  }
+  /* 内缩 1px 墨蓝内框 + 四角 L 形花角（装饰，不参与交互） */
+  .wrap::before { content: ""; position: absolute; inset: 9px;
+                  border: 1px solid var(--hairline); pointer-events: none; }
+  .corners { position: absolute; inset: 0; pointer-events: none; }
+  .corners i { position: absolute; width: 22px; height: 22px; opacity: .5; }
+  .corners .tl { top: 9px; left: 9px; border-top: 1px solid var(--fog-light); border-left: 1px solid var(--fog-light); }
+  .corners .tr { top: 9px; right: 9px; border-top: 1px solid var(--fog-light); border-right: 1px solid var(--fog-light); }
+  .corners .bl { bottom: 9px; left: 9px; border-bottom: 1px solid var(--fog-light); border-left: 1px solid var(--fog-light); }
+  .corners .br { bottom: 9px; right: 9px; border-bottom: 1px solid var(--fog-light); border-right: 1px solid var(--fog-light); }
+
+  /* 报头：品牌 / 章节 / 版次，加一处法文花体做气质点缀 */
+  .masthead { display: flex; justify-content: space-between; align-items: baseline;
+              flex-wrap: wrap; gap: 6px; padding: 0 2px 10px;
+              border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+  .masthead .brand, .masthead .edition {
+    font-family: var(--type); font-size: 10.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--fog); }
+  .masthead .chapter { font-family: var(--serif); font-size: 12px; color: var(--ink-soft); }
+  header h1 { font-family: var(--serif); font-size: clamp(30px, 4vw, 42px);
+              font-weight: 600; letter-spacing: -.04em; line-height: 1.28; }
+  header p.sub { font-family: var(--hand); max-width: 76ch; }
+  header .flourish { font-family: var(--serif); font-style: italic;
+                     color: var(--lotus-deep); font-size: 17px; text-align: right;
+                     margin-top: 2px; transform: rotate(-2deg); }
+  .meta span { background: var(--paper-light); border: 1px solid var(--hairline);
+               border-radius: 2px; font-family: var(--type); font-size: 10.5px;
+               letter-spacing: .04em; color: var(--fog); box-shadow: 0 0 0 2px rgba(255,255,255,.8); }
+
+  /* 右缘书签式档案标签：不做横条导航的浮夸感，但保留 12 个直达入口 */
+  nav { background: rgba(251,249,244,.94); border-bottom: 1px solid var(--line);
+        margin: 22px -36px 26px; padding: 12px 36px; backdrop-filter: none; }
+  nav a { background: var(--paper-light); border: 1px solid var(--hairline);
+          border-radius: 2px; color: var(--ink-soft); font-family: var(--serif);
+          font-size: 12px; padding: 5px 11px; min-height: 32px;
+          display: inline-flex; align-items: center;
+          box-shadow: 0 0 0 2px rgba(255,255,255,.85);
+          transition: transform .16s ease, color .16s ease, border-color .16s ease; }
+  nav a:hover { color: var(--ink); border-color: var(--line); transform: translateY(-3px); }
+  nav a.active { background: var(--ink); color: var(--paper-light);
+                 border-color: var(--ink); transform: translateY(-3px); }
+
+  .diagram-card { background: var(--paper-light); border: 1px solid var(--hairline);
+                  border-radius: 3px; box-shadow: var(--paper-shadow); padding: 20px; }
+  .diagram-title { font-family: var(--serif); font-weight: 600; letter-spacing: -.02em; }
+  .diagram-sub { font-family: var(--hand); color: var(--fog); }
+  .legend { color: var(--fog); font-family: var(--hand); }
+
+  /* 每一张卡片 = 一页模切纸 */
+  section.card { background: var(--paper-light); border: 1px solid var(--hairline);
+                 border-radius: 3px; box-shadow: var(--paper-shadow);
+                 margin-top: 40px; overflow: visible; }
+  section.card::before { content: ""; position: absolute; inset: 7px;
+                         border: 1px solid var(--hairline); pointer-events: none; }
+  section.card { position: relative; }
+  section.card.flash { box-shadow: 0 0 0 3px var(--lotus-deep), var(--paper-shadow); }
+  .card-head { padding: 22px 26px 14px; }
+  .num { border-radius: 2px; font-family: var(--type); font-size: 16px;
+         font-weight: 400; box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 3px 8px rgba(30,39,72,.18); }
+  .card-head h2 { font-family: var(--serif); font-size: 20px; font-weight: 600;
+                  letter-spacing: -.03em; }
+  .files code { font-family: var(--type); background: var(--paper-deep);
+                border: 1px solid var(--hairline); border-radius: 2px;
+                color: var(--fog); font-size: 10.5px; }
+  .card-body { padding: 0 26px 26px; }
+  .card-body h3 { font-family: var(--serif); font-size: 15px; font-weight: 600; }
+  .card-body h3::before { background: var(--lotus-deep); width: 3px; height: 13px; border-radius: 0; }
+  .card-body p, .card-body li { color: var(--ink-soft); }
+  code.inline { font-family: var(--type); background: var(--paper-deep);
+                color: var(--lotus-deep); }
+  .code-block { border: 1px solid var(--hairline); border-radius: 3px;
+                box-shadow: inset 0 0 0 3px rgba(255,255,255,.7); }
+  .code-head { background: var(--paper-deep); color: var(--fog);
+               border-bottom: 1px solid var(--hairline); font-family: var(--type);
+               font-size: 10.5px; letter-spacing: .03em; }
+  .code-head .lang { color: var(--fog-light); }
+  pre { background: var(--code-bg); color: var(--code-ink); }
+  pre .k { color: #1e2748; font-weight: 700; }
+  pre .s { color: #8a5a6d; }
+  pre .c { color: var(--fog); }
+  pre .n { color: #6b7ba3; }
+  .tip { background: #faf1f3; border: 1px solid var(--lotus);
+         border-radius: 3px; color: #7a4a5c; font-family: var(--hand); }
+  .tip::before { content: "✦ "; }
+
+  .flow-strip { background: var(--paper); border: 1px dashed var(--line);
+                border-radius: 3px; padding: 11px 14px; }
+  .fs-cap { font-family: var(--type); letter-spacing: .12em; color: var(--fog-light); }
+  .fs-box { background: var(--paper-light); border: 1px solid var(--hairline);
+            border-radius: 2px; font-family: var(--type); font-size: 10.5px;
+            color: var(--ink-soft); box-shadow: 0 0 0 2px rgba(255,255,255,.8); }
+  .fs-box.cur { background: var(--ink); border-color: var(--ink); color: var(--paper-light); }
+  .fs-label { font-family: var(--hand); color: var(--fog); }
+  .fs-line { color: var(--fog-light); }
+
+  /* ---- 每个模块一张内部流程图 ---- */
+  .module-figure { margin: 16px 0 4px; padding: 13px 16px 10px;
+                   background: #fdfcf8; border: 1px solid var(--hairline);
+                   box-shadow: inset 0 0 0 4px rgba(255,255,255,.8);
+                   position: relative; }
+  .module-figure::after { content: ""; position: absolute; top: -6px; left: 50%;
+                          width: 58px; height: 14px; transform: translateX(-50%) rotate(-2deg);
+                          background: rgba(232,201,208,.5); pointer-events: none; }
+  .mf-head { display: flex; justify-content: space-between; align-items: baseline;
+             flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--hairline);
+             padding-bottom: 7px; margin-bottom: 4px; }
+  .mf-no { font-family: var(--type); font-size: 10px; letter-spacing: .16em;
+           color: var(--fog-light); }
+  .mf-title { font-family: var(--serif); font-size: 15px; font-weight: 600;
+              color: var(--ink); margin-left: 10px; }
+  .mf-tag { font-family: var(--type); font-size: 9.5px; color: var(--fog-light);
+            text-transform: uppercase; letter-spacing: .12em; }
+  .mf-cap { font-family: var(--hand); font-size: 11.5px; color: var(--fog);
+            margin: 2px 0 6px; }
+  .mf-scroll { overflow-x: auto; }
+  .module-figure svg { width: 100%; height: auto; display: block; }
+  .mf-legend { display: flex; flex-wrap: wrap; gap: 16px; padding-top: 7px;
+               border-top: 1px solid var(--hairline); margin-top: 4px;
+               font-family: var(--hand); font-size: 11px; color: var(--fog); }
+  .mf-legend i { display: inline-block; width: 16px; height: 0;
+                 border-top: 1.5px solid var(--line); vertical-align: 3px;
+                 margin-right: 5px; }
+  .mf-legend i.dash { border-top-style: dashed; border-color: var(--lotus-deep); }
+  .mf-legend i.box { height: 9px; border: 1px solid var(--line); background: var(--paper-deep); }
+
+  footer { border-top: 1px solid var(--line); color: var(--fog);
+           font-family: var(--hand); }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+  @keyframes paperIn { from { opacity: 0; transform: translateY(8px); }
+                       to   { opacity: 1; transform: none; } }
+  header, .diagram-card, section.card { animation: paperIn .42s ease both; }
+  .module-figure { animation: paperIn .38s ease both; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important;
+                             scroll-behavior: auto !important; }
+  }
+  @media (max-width: 1080px) { .wrap { margin: 12px; padding: 24px 20px 42px; }
+                               nav { margin-left: -20px; margin-right: -20px; padding-left: 20px; padding-right: 20px; } }
+  @media (max-width: 640px) { .wrap { padding: 20px 14px 36px; }
+                              .card-head { padding: 18px 16px 12px; }
+                              .card-body { padding: 0 16px 20px; }
+                              nav { margin-left: -14px; margin-right: -14px; padding: 10px 14px; }
+                              .module-figure svg { min-width: 620px; }
+                              header .flourish { display: none; } }
+
+  /* ---- 双解释：详细解释（源码视角） / 大白话 ---- */
+  .explain-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+                     margin: -10px 0 26px; }
+  .explain-toolbar .et-label { font-family: var(--type); font-size: 10px;
+      letter-spacing: .14em; text-transform: uppercase; color: var(--fog); margin-right: 4px; }
+  .explain-toolbar button { font-family: var(--hand); font-size: 12.5px;
+      color: var(--ink-soft); background: var(--paper-light);
+      border: 1px solid var(--hairline); border-radius: 2px; padding: 5px 12px;
+      cursor: pointer; box-shadow: 0 0 0 2px rgba(255,255,255,.85);
+      transition: transform .16s ease, color .16s ease, background .16s ease; }
+  .explain-toolbar button:hover { transform: translateY(-2px); color: var(--ink); }
+  .explain-toolbar button.on { background: var(--ink); color: var(--paper-light);
+      border-color: var(--ink); }
+  .explain-pair { display: grid;
+                  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+                  gap: 14px; align-items: start; margin: 16px 0 4px; }
+  .explain-col { position: relative; padding: 15px 16px 13px; border-radius: 2px;
+                 border: 1px solid var(--hairline); min-width: 0;
+                 box-shadow: inset 0 0 0 3px rgba(255,255,255,.75); }
+  .explain-col.tech { background: var(--paper-light); }
+  .explain-col.plain { background: #fdf5f3; border-color: var(--lotus); }
+  .explain-col.plain::before { content: ""; position: absolute; top: -6px; left: 24px;
+      width: 56px; height: 13px; transform: rotate(-3deg);
+      background: rgba(232,201,208,.6); pointer-events: none; }
+  .explain-col h3 { margin-top: 0 !important; }
+  .explain-col .explain-badge { font-family: var(--type); font-size: 9px;
+      letter-spacing: .12em; font-weight: 400; color: var(--fog-light);
+      margin-left: 8px; text-transform: uppercase; }
+  .explain-col.plain p { font-family: var(--hand); }
+  .explain-col.plain .plain-one { font-size: 13px; margin-top: 11px; padding: 8px 11px;
+      background: rgba(255,255,255,.72); border-left: 2px solid var(--lotus-deep);
+      color: #7a4a5c; }
+  .plain-one b, .plain-risk b { color: var(--lotus-deep); }
+  .explain-col .plain-risk { margin-top: 8px !important; font-size: 12.5px !important;
+      color: var(--fog) !important; }
+  .io-grid { margin-top: 12px; padding-top: 9px;
+             border-top: 1px dashed var(--hairline); }
+  .io-grid > div { display: flex; gap: 9px; margin: 4px 0; }
+  .io-grid .io-k { flex: 0 0 58px; padding-top: 2px; font-family: var(--type);
+      font-size: 9.5px; letter-spacing: .04em; color: var(--lotus-deep); }
+  .io-grid .io-v { flex: 1 1 auto; min-width: 0; font-family: var(--hand);
+      font-size: 12.5px; line-height: 1.6; color: var(--ink-soft); }
+  body.mode-tech .explain-col.plain,
+  body.mode-plain .explain-col.tech { display: none; }
+  body.mode-tech .explain-pair,
+  body.mode-plain .explain-pair { grid-template-columns: minmax(0,1fr); }
+  @media (max-width: 900px) { .explain-pair { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="corners" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+
+<div class="masthead">
+  <span class="brand">EvoReview · Atelier de lecture</span>
+  <span class="chapter">全链路档案 / La chaîne complète</span>
+  <span class="edition">Feuilles N° 001—012 · 2026</span>
+</div>
+
+<header>
+  <h1>EvoReview 全链路图</h1>
+  <p class="flourish">Douze feuillets, un seul fil</p>
+  <p class="sub">一次代码审查从「入口」到「报告交付 / 自动修复」的完整旅程。除两张全局图外，<b>每个功能块都配了一张模块内部流程图</b>，并附真实代码（节选自当前 HEAD <code class="inline">3cec762</code>，行号可对照源码）。每个功能块同时给出<b>详细解释（源码视角：输入 / 输出 / 失败出口 / 不变量）</b>与<b>大白话解释（生活类比 + 一句话 + 做坏了会怎样）</b>，可用上方按钮切换阅读方式。版式采用法式纸雕档案风：奶白纸、1px 墨蓝线、模切白边。</p>
+  <div class="meta">
+    <span>纯标准库 HTTP Server（无框架）</span><span>SQLite / PostgreSQL 双后端</span>
+    <span>Redis Streams 队列（可降级进程内）</span><span>LLM 多角色协作</span>
+    <span>证据门禁四道闸</span><span>多租户 RBAC</span>
+  </div>
+</header>
+
+<nav id="nav">
+  <a href="#m0">模块流程图</a>
+  <a href="#s1">① 入口层</a><a href="#s2">② 任务编排</a><a href="#s3">③ 状态机</a>
+  <a href="#s4">④ 上下文准备</a><a href="#s5">⑤ Lead 分派</a><a href="#s6">⑥ Worker 审查</a>
+  <a href="#s7">⑦ Critic 与终审</a><a href="#s8">⑧ 证据门禁</a><a href="#s9">⑨ 报告持久化</a>
+  <a href="#s10">⑩ GitHub 交付</a><a href="#s11">⑪ 自动修复链</a><a href="#s12">⑫ 横向支撑</a>
+</nav>
+
+<div class="explain-toolbar" role="group" aria-label="解释阅读方式">
+  <span class="et-label">Lecture / 阅读方式</span>
+  <button type="button" data-mode="both" class="on" aria-pressed="true">详细 + 大白话</button>
+  <button type="button" data-mode="tech" aria-pressed="false">只看详细解释</button>
+  <button type="button" data-mode="plain" aria-pressed="false">只看大白话</button>
+</div>
+
+
+<div class="diagram-card">
+  <svg viewBox="0 0 980 1010" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+        <path d="M0,0 L8,4.5 L0,9 z" fill="#a9b3cc"/>
+      </marker>
+      <marker id="arr-rose" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+        <path d="M0,0 L8,4.5 L0,9 z" fill="#a4576b"/>
+      </marker>
+    </defs>
+    <g id="svg-nodes"></g>
+    <!-- 支撑设施面板 -->
+    <g class="node" data-target="s12" style="cursor:pointer">
+      <rect x="560" y="292" width="390" height="500" rx="14" fill="#faf9f5" stroke="#46536f" stroke-width="1.5"/>
+      <text x="755" y="330" text-anchor="middle" font-size="16" font-weight="700" fill="#334155">⑫ 横向支撑设施</text>
+      <text x="755" y="352" text-anchor="middle" font-size="11.5" fill="#5c6884">贯穿所有链路环节</text>
+      <g font-size="13" fill="#46536f">
+        <rect x="580" y="372" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="394" font-weight="600" fill="#334155">认证与授权</text>
+        <text x="594" y="412" font-size="11.5">JWT + 每次鉴权回查库 · 多租户 RBAC</text>
+        <rect x="580" y="434" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="456" font-weight="600" fill="#334155">仓库授权 Grants</text>
+        <text x="594" y="474" font-size="11.5">白名单 + auto_fix 显式 opt-in</text>
+        <rect x="580" y="496" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="518" font-weight="600" fill="#334155">租户配额</text>
+        <text x="594" y="536" font-size="11.5">每日审查数 / Token / 成本上限</text>
+        <rect x="580" y="558" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="580" font-weight="600" fill="#334155">审计日志</text>
+        <text x="594" y="598" font-size="11.5">audit_log 按租户隔离，可配保留期</text>
+        <rect x="580" y="620" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="642" font-weight="600" fill="#334155">可观测性</text>
+        <text x="594" y="660" font-size="11.5">OpenTelemetry span + Prometheus 指标</text>
+        <rect x="580" y="682" width="350" height="52" rx="8" fill="#fff" stroke="#dce2f1"/>
+        <text x="594" y="704" font-weight="600" fill="#334155">数据保留 / 死信</text>
+        <text x="594" y="722" font-size="11.5">报告·审计·告警定期清理 · 队列死信</text>
+        <text x="755" y="768" text-anchor="middle" font-size="11.5" fill="#5c6884">详情见 ⑫ 节</text>
+      </g>
+    </g>
+    <g id="svg-arrows" stroke="#a9b3cc" stroke-width="2" fill="none" marker-end="url(#arr)"></g>
+    <path d="M 270 842 L 270 864" stroke="#a4576b" stroke-width="2" stroke-dasharray="6 4" fill="none" marker-end="url(#arr-rose)"/>
+    <text x="284" y="858" font-size="11.5" fill="#a4576b">POST /v1/tasks/{id}/fix</text>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#eef0f5;border:1px solid #1e2748"></i>入口层</span>
+    <span><i style="background:#f1f3f7;border:1px solid #46536f"></i>编排与状态机</span>
+    <span><i style="background:#f4f2f6;border:1px solid #5c6884"></i>智能体协作</span>
+    <span><i style="background:#faf1f3;border:1px solid #9b6a7d"></i>质量门禁</span>
+    <span><i style="background:#eef2f1;border:1px solid #4b6b73"></i>报告与交付</span>
+    <span><i style="background:#f9eff1;border:1px solid #a4576b"></i>自动修复</span>
+    <span><i style="background:#faf9f5;border:1px solid #46536f"></i>横向支撑</span>
+    <span style="margin-left:auto">点击任意节点跳转到对应详解</span>
+  </div>
+</div>
+
+<!-- 模块级调用与数据流图 -->
+<div class="diagram-card" id="m0">
+  <h2 class="diagram-title">模块间调用与数据流图</h2>
+  <p class="diagram-sub">每个节点是一个<b>真实模块（文件）</b>，箭头上标注的是两者之间传递的<b>数据或调用</b>。实线 = 数据主链，虚线 = 控制流/分支。点击节点跳转到对应详解。</p>
+  <svg viewBox="0 0 1000 1010" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+        <path d="M0,0 L8,4.5 L0,9 z" fill="#a9b3cc"/>
+      </marker>
+      <marker id="arr-rose2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+        <path d="M0,0 L8,4.5 L0,9 z" fill="#a4576b"/>
+      </marker>
+    </defs>
+
+    <!-- 节点 -->
+    <g class="node" data-target="s1" style="cursor:pointer">
+      <rect x="60" y="30" width="300" height="58" rx="10" fill="#eef0f5" stroke="#1e2748" stroke-width="1.5"/>
+      <text x="76" y="52" font-size="15" font-weight="700" fill="#1e2748">api.py</text>
+      <text x="76" y="72" font-size="11" fill="#5c6884">HTTP 路由 · 鉴权 · 限流 · 审计</text>
+    </g>
+    <g class="node" data-target="s1" style="cursor:pointer">
+      <rect x="620" y="30" width="320" height="58" rx="10" fill="#eef0f5" stroke="#1e2748" stroke-width="1.5"/>
+      <text x="636" y="52" font-size="15" font-weight="700" fill="#1e2748">app/github.py</text>
+      <text x="636" y="72" font-size="11" fill="#5c6884">Webhook 验签 · 一次性 state · 租户绑定</text>
+    </g>
+    <g class="node" data-target="s10" style="cursor:pointer">
+      <rect x="620" y="118" width="320" height="58" rx="10" fill="#eef0f5" stroke="#1e2748" stroke-width="1.5"/>
+      <text x="636" y="140" font-size="15" font-weight="700" fill="#1e2748">adapters/github.py</text>
+      <text x="636" y="160" font-size="11" fill="#5c6884">GitHub REST · URL 白名单 · token 域隔离</text>
+    </g>
+    <g class="node" data-target="s2" style="cursor:pointer">
+      <rect x="60" y="206" width="300" height="58" rx="10" fill="#f1f3f7" stroke="#46536f" stroke-width="1.5"/>
+      <text x="76" y="228" font-size="15" font-weight="700" fill="#1e2748">app/review_lifecycle.py</text>
+      <text x="76" y="248" font-size="11" fill="#5c6884">校验 → 配额 → 授权 → 建任务</text>
+    </g>
+    <g class="node" data-target="s12" style="cursor:pointer">
+      <rect x="620" y="206" width="320" height="58" rx="10" fill="#f1f3f7" stroke="#46536f" stroke-width="1.5"/>
+      <text x="636" y="228" font-size="15" font-weight="700" fill="#1e2748">stores/（TaskStore）</text>
+      <text x="636" y="248" font-size="11" fill="#5c6884">SQLite / PostgreSQL · 任务·租户·审计</text>
+    </g>
+    <g class="node" data-target="s3" style="cursor:pointer">
+      <rect x="620" y="294" width="320" height="58" rx="10" fill="#f1f3f7" stroke="#46536f" stroke-width="1.5"/>
+      <text x="636" y="316" font-size="15" font-weight="700" fill="#1e2748">队列</text>
+      <text x="636" y="336" font-size="11" fill="#5c6884">Redis Streams（可降级进程内）</text>
+    </g>
+    <g class="node" data-target="s3" style="cursor:pointer">
+      <rect x="60" y="382" width="300" height="58" rx="10" fill="#f1f3f7" stroke="#46536f" stroke-width="1.5"/>
+      <text x="76" y="404" font-size="15" font-weight="700" fill="#1e2748">agent/harness.py</text>
+      <text x="76" y="424" font-size="11" fill="#5c6884">状态机 · 断点续跑 · 恰好一次</text>
+    </g>
+    <g class="node" data-target="s4" style="cursor:pointer">
+      <rect x="60" y="470" width="300" height="58" rx="10" fill="#f4f2f6" stroke="#5c6884" stroke-width="1.5"/>
+      <text x="76" y="492" font-size="15" font-weight="700" fill="#1e2748">agent/reviewer.py</text>
+      <text x="76" y="512" font-size="11" fill="#5c6884">上下文组装 · 规则 / 记忆 / Skills / 工具</text>
+    </g>
+    <g class="node" data-target="s5" style="cursor:pointer">
+      <rect x="60" y="558" width="300" height="88" rx="10" fill="#f4f2f6" stroke="#5c6884" stroke-width="1.5"/>
+      <text x="76" y="582" font-size="15" font-weight="700" fill="#1e2748">agent/orchestration.py</text>
+      <text x="76" y="606" font-size="11" fill="#5c6884">Lead 分派 → Security / Correctness 并行</text>
+      <text x="76" y="624" font-size="11" fill="#5c6884">→ Critic 质疑 → Lead 终审</text>
+    </g>
+    <g class="node" data-target="s7" style="cursor:pointer">
+      <rect x="60" y="676" width="300" height="58" rx="10" fill="#f4f2f6" stroke="#5c6884" stroke-width="1.5"/>
+      <text x="76" y="698" font-size="15" font-weight="700" fill="#1e2748">agent/findings.py</text>
+      <text x="76" y="718" font-size="11" fill="#5c6884">候选 finding 规整</text>
+    </g>
+    <g class="node" data-target="s8" style="cursor:pointer">
+      <rect x="620" y="676" width="320" height="58" rx="10" fill="#faf1f3" stroke="#9b6a7d" stroke-width="1.5"/>
+      <text x="636" y="698" font-size="15" font-weight="700" fill="#1e2748">domain/gates.py</text>
+      <text x="636" y="718" font-size="11" fill="#5c6884">format / evidence / confidence / release</text>
+    </g>
+    <g class="node" data-target="s9" style="cursor:pointer">
+      <rect x="60" y="764" width="300" height="58" rx="10" fill="#eef2f1" stroke="#4b6b73" stroke-width="1.5"/>
+      <text x="76" y="786" font-size="15" font-weight="700" fill="#1e2748">domain/models.py + report</text>
+      <text x="76" y="806" font-size="11" fill="#5c6884">ReviewReport → Markdown / SARIF / JSON</text>
+    </g>
+    <g class="node" data-target="s10" style="cursor:pointer">
+      <rect x="620" y="764" width="320" height="58" rx="10" fill="#eef2f1" stroke="#4b6b73" stroke-width="1.5"/>
+      <text x="636" y="786" font-size="15" font-weight="700" fill="#1e2748">app/comments.py</text>
+      <text x="636" y="806" font-size="11" fill="#5c6884">评论 upsert · 行内评论 · Check Run</text>
+    </g>
+    <g class="node" data-target="s11" style="cursor:pointer">
+      <rect x="60" y="852" width="300" height="58" rx="10" fill="#f9eff1" stroke="#a4576b" stroke-width="1.5"/>
+      <text x="76" y="874" font-size="15" font-weight="700" fill="#1e2748">app/fixes.py</text>
+      <text x="76" y="894" font-size="11" fill="#5c6884">修复入口 · 授权 · 预算</text>
+    </g>
+    <g class="node" data-target="s11" style="cursor:pointer">
+      <rect x="620" y="852" width="320" height="58" rx="10" fill="#f9eff1" stroke="#a4576b" stroke-width="1.5"/>
+      <text x="636" y="874" font-size="15" font-weight="700" fill="#1e2748">adapters/patching.py + verifier.py</text>
+      <text x="636" y="894" font-size="11" fill="#5c6884">AST 补丁 · compile + 行为测试（fail-closed）</text>
+    </g>
+    <g class="node" data-target="s12" style="cursor:pointer">
+      <rect x="60" y="940" width="880" height="52" rx="10" fill="#faf9f5" stroke="#46536f" stroke-width="1.5" stroke-dasharray="7 4"/>
+      <text x="76" y="962" font-size="13.5" font-weight="700" fill="#334155">横向支撑：app/policies.py · adapters/auth.py · stores/shared/sql.py · telemetry / audit_log</text>
+      <text x="76" y="980" font-size="11" fill="#5c6884">鉴权 / 授权 / 配额 / 审计贯穿上面每个模块（↕），另见总览图右侧面板</text>
+    </g>
+
+    <!-- 主链箭头 -->
+    <g stroke="#a9b3cc" stroke-width="2" fill="none">
+      <path d="M 360 59 L 614 59" marker-end="url(#arr2)"/>
+      <path d="M 780 88 L 780 112" marker-end="url(#arr2)"/>
+      <path d="M 210 88 L 210 200" marker-end="url(#arr2)"/>
+      <path d="M 700 88 L 700 102 L 560 102 L 560 278 L 306 278 L 306 270" marker-end="url(#arr2)"/>
+      <path d="M 360 235 L 614 235" marker-end="url(#arr2)"/>
+      <path d="M 360 252 L 400 252 L 400 323 L 614 323" marker-end="url(#arr2)"/>
+      <path d="M 700 352 L 700 368 L 480 368 L 480 411 L 366 411" marker-end="url(#arr2)"/>
+      <path d="M 210 440 L 210 464" marker-end="url(#arr2)"/>
+      <path d="M 210 528 L 210 552" marker-end="url(#arr2)"/>
+      <path d="M 210 646 L 210 670" marker-end="url(#arr2)"/>
+      <path d="M 360 705 L 614 705" marker-end="url(#arr2)"/>
+      <path d="M 780 734 L 780 748 L 470 748 L 470 793 L 366 793" marker-end="url(#arr2)"/>
+      <path d="M 360 780 L 614 780" marker-end="url(#arr2)"/>
+      <path d="M 360 881 L 614 881" marker-end="url(#arr2)"/>
+    </g>
+    <!-- 控制流 / 长距离回边 -->
+    <g fill="none">
+      <path d="M 210 264 L 210 376" stroke="#46536f" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr2)"/>
+      <path d="M 940 780 L 964 780 L 964 147 L 946 147" stroke="#4b6b73" stroke-width="2" marker-end="url(#arr2)"/>
+      <path d="M 940 866 L 984 866 L 984 165 L 946 165" stroke="#a4576b" stroke-width="2" marker-end="url(#arr-rose2)"/>
+      <path d="M 60 59 L 36 59 L 36 881 L 54 881" stroke="#a4576b" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arr-rose2)"/>
+    </g>
+
+    <!-- 箭头标注 -->
+    <g font-size="11" fill="#5c6884">
+      <text x="487" y="50" text-anchor="middle">POST /webhooks/github（HMAC 签名）</text>
+      <text x="790" y="105">验签 · fetch_diff</text>
+      <text x="220" y="150">已校验 diff + principal</text>
+      <text x="630" y="96" text-anchor="middle">webhook 创建 review</text>
+      <text x="487" y="227" text-anchor="middle">建任务 · 配额 · 审计</text>
+      <text x="500" y="316" text-anchor="middle">enqueue(task_id)</text>
+      <text x="560" y="362" text-anchor="middle">claim task_id（恰好一次）</text>
+      <text x="222" y="458">PLANNING · 组装上下文</text>
+      <text x="222" y="546">context + 工具套件</text>
+      <text x="222" y="664">候选 finding</text>
+      <text x="487" y="697" text-anchor="middle">Finding[]（候选列表）</text>
+      <text x="625" y="742" text-anchor="middle">accepted / rejected</text>
+      <text x="487" y="772" text-anchor="middle">markdown / SARIF / JSON</text>
+      <text x="487" y="873" text-anchor="middle">AST 补丁 → 双重验证</text>
+      <text x="220" y="330">进程内降级直跑</text>
+    </g>
+    <text transform="rotate(-90 972 470)" x="972" y="470" text-anchor="middle" font-size="11" fill="#4b6b73">upsert 评论 · Check Run（经 adapters/github.py）</text>
+    <text transform="rotate(-90 992 500)" x="992" y="500" text-anchor="middle" font-size="11" fill="#a4576b">Draft PR · atomic commit（经 adapters/github.py）</text>
+    <text transform="rotate(-90 30 470)" x="30" y="470" text-anchor="middle" font-size="11" fill="#a4576b">POST /v1/tasks/{id}/fix（需 auto_fix 授权）</text>
+  </svg>
+  <div class="legend">
+    <span><i style="background:#eef0f5;border:1px solid #1e2748"></i>入口 / GitHub 客户端</span>
+    <span><i style="background:#f1f3f7;border:1px solid #46536f"></i>编排 · 状态机 · 存储 · 队列</span>
+    <span><i style="background:#f4f2f6;border:1px solid #5c6884"></i>智能体协作</span>
+    <span><i style="background:#faf1f3;border:1px solid #9b6a7d"></i>质量门禁</span>
+    <span><i style="background:#eef2f1;border:1px solid #4b6b73"></i>报告与交付</span>
+    <span><i style="background:#f9eff1;border:1px solid #a4576b"></i>自动修复</span>
+    <span>实线 = 数据主链 · 虚线 = 控制流 / 分支</span>
+  </div>
+</div>
+
+<!-- ① 入口层 -->
+<section class="card" id="s1">
+  <div class="card-head">
+    <div class="num" style="background:var(--blue)">①</div>
+    <div><h2>入口层：REST API 与 GitHub Webhook</h2>
+      <div class="files"><code>evoagent/api.py</code><code>evoagent/adapters/github.py</code><code>evoagent/app/github.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>链路的两个入口。API 入口接受 <code class="inline">POST /v1/reviews</code> 直接提交 diff（同步或 <code class="inline">?async=true</code> 异步）；Webhook 入口接收 GitHub <code class="inline">pull_request</code> 事件，从 payload 中取 <code class="inline">diff_url</code> 拉取 PR diff。</p>
+        <ul>
+          <li><b>防伪造</b>：每个 Webhook 必须通过 <code class="inline">X-Hub-Signature-256</code> 的 HMAC-SHA256 校验，比较使用 <code class="inline">compare_digest</code> 防时序侧信道。</li>
+          <li><b>防重放</b>：<code class="inline">pull_request.updated_at</code> 与当前时间偏差超过 <code class="inline">EVOAGENT_WEBHOOK_MAX_AGE_SECONDS</code>（默认 600s）直接拒绝。</li>
+          <li><b>租户绑定</b>：payload 带 <code class="inline">installation.id</code> 时必须已通过 <code class="inline">/github/setup</code> 绑定到租户，防止任意人把 App 安装事件投进别人的租户。</li>
+          <li><b>幂等去重</b>：<code class="inline">claim_webhook(delivery_id)</code> 保证同一次投递重复推送不会产生两个任务。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">POST /v1/reviews</code> 的 diff，或 <code class="inline">POST /webhooks/github</code> 的 payload 与 <code class="inline">X-Hub-Signature-256</code> 头。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v">已验签、已防重放、已绑定租户的 diff + <code class="inline">tenant_id</code> + <code class="inline">principal</code>，交给 <code class="inline">enqueue_review()</code>。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">事件不符 → 202 ignored；secret 未配置 → 503；签名或时效不符 → 401；installation 未绑定 → <code class="inline">PermissionError</code>。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v"><code class="inline">claim_webhook(delivery_id)</code> 幂等；外呼 URL 只有通过 <code class="inline">is_github_url()</code> 白名单才携带 Token。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>把这一步想成公司前台收包裹。有人递来一份代码改动，前台先核对：寄件人是不是 GitHub、封条（签名）有没有被拆过、快递单上的时间是不是几天前的旧单（防止有人捡到旧单反复投递）、包裹上写的部门在我们登记册里存不存在。</p>
+        <p>任何一项对不上，当场退回，绝不会把包裹送进办公区。同一个人重复送同一个包裹也不怕，登记本上有编号，只收一次。</p>
+        <div class="plain-one"><b>一句话</b> 门口先验身份、验封条、验时间、认部门，验不过就不让进。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 少了验签或时间校验，别人就能伪造一个「PR 更新」把任意代码塞进来，或者重放旧事件，让系统白白跑一堆审查。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/api.py · Webhook 鉴权与防重放（:724-742）</span><span class="lang">python</span></div>
+      <pre data-lang="python">if path == "/webhooks/github":
+    if self.headers.get("X-GitHub-Event", "") != "pull_request":
+        self._send_json(202, {"ignored": True, "reason": "unsupported GitHub event"})
+        return
+    if not self.settings.github_webhook_secret:
+        self._send_json(503, {"error": "GitHub webhook secret is not configured"})
+        return
+    if not verify_signature(self.settings.github_webhook_secret, body,
+                            self.headers.get("X-Hub-Signature-256", "")):
+        self._send_json(401, {"error": "invalid webhook signature"})
+        return
+    payload = self._read_json(body)
+    updated_at = (payload.get("pull_request") or {}).get("updated_at")
+    if updated_at:
+        event_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        age = abs((datetime.now(timezone.utc) - event_time).total_seconds())
+        # 超过 webhook_max_age_seconds 即视为重放，拒绝处理</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/adapters/github.py · HMAC 签名校验（:45-49）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def verify_signature(secret: str, body: bytes, signature: str) -> bool:
+    if not secret or not signature.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/app/github.py · installation 与租户绑定（:36-57）</span><span class="lang">python</span></div>
+      <pre data-lang="python">installation_id = (payload.get("installation") or {}).get("id")
+bound_tenant = None
+if installation_id is not None:
+    installation_id = int(installation_id)
+    # 未绑定的 installation 不能落入 default 租户，
+    # 否则任何账号安装 App 就能把审查投进别人的租户工作区。
+    bound_tenant = self.store.installation_tenant(installation_id)
+    if bound_tenant is None and not self.settings.allow_unbound_installations:
+        raise PermissionError("GitHub installation is not bound to a tenant; "
+                              "complete /github/setup first")</pre>
+    </div>
+    <div class="tip">安全加固记录：GitHub 客户端所有外呼 URL 均需通过 <code class="inline">is_github_url()</code> 白名单（https + 官方域 + 无 userinfo + 443），Bearer Token 绝不发给白名单外的主机。</div>
+  </div>
+</section>
+
+<!-- ② 任务编排 -->
+<section class="card" id="s2">
+  <div class="card-head">
+    <div class="num" style="background:var(--teal)">②</div>
+    <div><h2>任务编排：校验 → 配额 → 授权 → 建任务 → 入队</h2>
+      <div class="files"><code>evoagent/app/review_lifecycle.py</code><code>evoagent/app/policies.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>无论请求来自 API 还是 Webhook，最终都汇聚到 <code class="inline">enqueue_review()</code>。它是链路的「总闸门」，在真正开始消耗模型调用之前把所有廉价检查做完：</p>
+        <ul>
+          <li><b>输入校验</b>：repository 非空且 ≤250 字符、diff 非空且 ≤ <code class="inline">max_diff_bytes</code>；必须是合法 unified diff 且有新增行。</li>
+          <li><b>模式解析</b>：<code class="inline">RunMode.parse(mode)</code>，默认 <code class="inline">AGENTIC</code>（多角色智能体）；未配置模型直接抛 <code class="inline">ModelNotConfigured</code>（HTTP 503）。</li>
+          <li><b>授权链</b>：仓库根目录白名单 → enabled_agents / enabled_skills 校验 → 租户仓库授权（grants）。</li>
+          <li><b>建任务 + 入队</b>：任务落库（状态 PENDING），payload 存 <code class="inline">github_issue_url / installation_id</code> 以便断点续跑后还能用同一套凭据回帖；然后提交队列（Redis Streams，message_id = task_id）。入队失败会把任务置 FAILED 并记录 trace。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">repository</code> / diff / <code class="inline">tenant_id</code> / mode / <code class="inline">repository_root</code> / enabled_agents / enabled_skills。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">task_id</code>、状态 PENDING、<code class="inline">queue.submit(message_id=task_id)</code>，指标 <code class="inline">reviews_enqueued_total</code> +1。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">参数不合法 → 4xx；未配置模型 → 503 <code class="inline">ModelNotConfigured</code>；授权拒绝或入队失败 → 任务置 FAILED 并写 trace。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">所有廉价校验都发生在任何模型调用之前；回帖凭据随任务一起落库，便于断点续跑后仍用同一套 installation 发评论。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>像去办事大厅叫号。工作人员不会一上来就开工，先检查表格填全没有、这个仓库是不是授权我们审、额度还够不够、模型服务有没有开机。全部通过才给你一个号码，把号码投进排队箱。</p>
+        <p>万一排队箱坏了，也会把这张单子标成「失败」并记一笔，不会悄悄丢掉，让你永远等不到结果。</p>
+        <div class="plain-one"><b>一句话</b> 先把便宜的检查全做完，再发号排队，绝不先花钱叫模型。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 顺序反过来会为无效请求、越权请求白烧模型费用；入队失败不记账，任务就会变成永远查不到的「幽灵单」。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/app/review_lifecycle.py · enqueue_review（:138-184）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def enqueue_review(self, repository, diff, pull_request=None, source="api",
+                   github_issue_url="", installation_id=None,
+                   tenant_id="default", mode="", repository_root="",
+                   enabled_agents=None, enabled_skills=None):
+    self.policy.validate_review(repository, diff)
+    selected_mode = RunMode.parse(mode) if mode else RunMode.AGENTIC
+    self.policy.require_agentic_model(self.chat_client_provider())
+    repository_root = self.policy.resolve_repository_root(repository, repository_root, tenant_id)
+    self.policy.validate_enabled_agents(enabled_agents)
+    self.policy.validate_enabled_skills(enabled_skills, tenant_id)
+    self.policy.authorize_repository(tenant_id, repository)
+    task_id = self.create_task(repository, diff, pull_request, source, tenant_id,
+                               repository_root, enabled_agents, enabled_skills,
+                               selected_mode.value)
+    # 持久化投递元数据：续跑的任务要用同一套 installation 凭据回帖
+    self.store.update_task_input(task_id, {
+        "github_issue_url": github_issue_url,
+        "installation_id": installation_id,
+    })
+    self.queue.submit({
+        "task_id": task_id, "repository": repository,
+        "pull_request": pull_request, "github_issue_url": github_issue_url,
+        "installation_id": installation_id, "tenant_id": tenant_id,
+    }, message_id=task_id)
+    self.metrics.inc("reviews_enqueued_total")
+    return {"task_id": task_id, "state": "PENDING", "queue": self.queue.backend}</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ③ 状态机 -->
+<section class="card" id="s3">
+  <div class="card-head">
+    <div class="num" style="background:var(--teal)">③</div>
+    <div><h2>运行时状态机：PLANNING → EXECUTING → REVIEWING → SUCCESS</h2>
+      <div class="files"><code>evoagent/agent/harness.py</code><code>evoagent/domain/models.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>队列消费者取出任务后，<code class="inline">ReviewHarness</code> 用一个显式状态机驱动审查。每次状态迁移都受 <code class="inline">ALLOWED</code> 转移表约束，非法迁移直接报错——这保证任务永远不会「跳步」。</p>
+        <ul>
+          <li><b>PLANNING</b>：<code class="inline">parse_unified_diff()</code> 把 diff 解析成 <code class="inline">ParsedDiff</code>（文件列表 + 逐行新增内容）。没有新增行直接判失败。</li>
+          <li><b>EXECUTING</b>：调用 reviewer 的 <code class="inline">review_with_context()</code>，跑完整条多角色链（④-⑧）。</li>
+          <li><b>REVIEWING</b>：汇总 finding、计算风险等级、装配 <code class="inline">ReviewReport</code>（含 collaboration / run_mode / components / execution 元数据）。</li>
+          <li><b>断点续跑</b>：每步都写 checkpoint + trace；<code class="inline">LeadSession</code> 按 phase（scanned → delegated → workers-completed → …）持久化，进程崩溃后 <code class="inline">POST /v1/tasks/{id}/resume</code> 能从上一个完成阶段继续，已完成的模型调用不重跑。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v">队列 <code class="inline">claim(task_id)</code> 拿到的任务快照：diff / repository / tenant_id / 检查点。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v">每个阶段的 state + checkpoint + <code class="inline">TraceEvent</code>，最终产出 <code class="inline">ReviewReport</code> 并置 SUCCESS。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">diff 没有有效新增行 → FAILED；<code class="inline">ALLOWED</code> 转移表之外的跃迁 → <code class="inline">RuntimeError</code>。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v"><code class="inline">PLANNING → EXECUTING → REVIEWING → SUCCESS</code> 不跳步；<code class="inline">/resume</code> 按 phase 续跑，已完成的模型调用不重跑。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>像流水线上的工位牌：一个任务只能按「待办 → 备料 → 施工 → 验收」的顺序挪牌，不能从备料直接跳到已完工。每做完一步就拍张照片（检查点）存好。</p>
+        <p>万一中途停电，来电后照着照片从断掉的那一步接着做，前面做过的活不用重来，也不会重复扣模型调用的钱。</p>
+        <div class="plain-one"><b>一句话</b> 按顺序搬牌子，每步留快照，断了能接着干。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 允许跳步会出现「还没审完却显示成功」；没有检查点则重启后整条链重跑一遍，成本翻倍还可能重复发评论。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/harness.py · 三个阶段的处理与迁移（:121-178）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def _planning(self, state):
+    parsed = parse_unified_diff(state["diff"])
+    if not parsed.files and not parsed.added_lines:
+        raise ValueError("diff does not contain a valid unified diff with added lines")
+    self._transition(TaskState.PLANNING, "Input accepted; preparing review plan")
+    return {"parsed": self._serialize_parsed(parsed)}
+
+def _executing(self, state):
+    parsed = self._deserialize_parsed(state["parsed"])
+    self._transition(TaskState.EXECUTING, "Reviewing %d changed files" % len(parsed.files))
+    findings = self.reviewer.review_with_context(
+        state["task_id"], state["diff"], parsed,
+        repository=state["repository"], tenant_id=state.get("tenant_id", "default"),
+    )
+    return {"findings": [item.to_dict() for item in findings]}
+
+def _reviewing(self, state):
+    parsed = self._deserialize_parsed(state["parsed"])
+    findings = [self._finding_from_dict(item) for item in state["findings"]]
+    self._transition(TaskState.REVIEWING, "Validating and ranking %d findings" % len(findings))
+    risk = self._risk(findings)
+    report = ReviewReport(
+        repository=state["repository"], pull_request=state.get("pull_request"),
+        summary=self._summary(findings, len(parsed.files), risk), risk=risk,
+        findings=findings, files_reviewed=parsed.files, reviewer=self.reviewer.name,
+        collaboration=collaboration, run_mode=run_mode,
+        components=components, execution=execution,
+    )
+    return {"report": report.to_dict()}
+
+def _transition(self, target, message):
+    if target not in ALLOWED.get(self._ctx.state, set()):
+        raise RuntimeError("invalid state transition: %s -> %s" % (
+            self._ctx.state.value, target.value))
+    self._ctx.step += 1
+    self._ctx.state = target
+    self.store.transition(self._ctx.task_id,
+        TraceEvent(self._ctx.step, target, message, utc_now()))</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ④ 上下文准备 -->
+<section class="card" id="s4">
+  <div class="card-head">
+    <div class="num" style="background:var(--purple)">④</div>
+    <div><h2>上下文准备：规则扫描 · 记忆召回 · Agent Skills · 工具套件</h2>
+      <div class="files"><code>evoagent/agent/reviewer.py</code><code>evoagent/agent/scanning.py</code><code>evoagent/agent/memory.py</code><code>evoagent/evaluation/skills.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>智能体开工前，先为整条链准备「弹药」。这一步在 <code class="inline">_review_with_context()</code> 里完成，产物会被 Lead 和所有 Worker 共享：</p>
+        <ul>
+          <li><b>规则扫描器</b>：内置确定性扫描（本地规则 + 声明式规则），另可按租户挂载自定义扫描器；产出的规则 findings 会作为 Lead 分派的参考输入。</li>
+          <li><b>记忆召回</b>：<code class="inline">memory_manager.recall()</code> 按租户 + 仓库检索历史审查沉淀（如「该文件上次出现过 XX 问题」），失败静默降级为空并记录 ledger，不阻塞主链路。召回结果明确标注 <b>「untrusted historical hints」</b>——历史记忆必须用当前 diff 或工具复核。</li>
+          <li><b>Agent Skills</b>：按租户加载技能目录（含 <code class="inline">catalog_entry()</code> 元数据）；请求了未注册的 skill 直接报错。资源读取用 <code class="inline">realpath</code> 防 symlink 逃逸。</li>
+          <li><b>工具套件</b>：<code class="inline">RepositoryToolSuite</code> 绑定仓库本地检出（可选）、AST 分析、semgrep/bandit/eslint/typecheck 等只读工具，以及可选的仓库测试命令——它们产出的「证据」稍后是过门禁的硬通货。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">task_id</code> / diff / <code class="inline">ParsedDiff</code> / <code class="inline">tenant_id</code> / requested skills。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v">scanners、<code class="inline">memory_context</code>、<code class="inline">available_skills</code>、<code class="inline">RepositoryToolSuite</code>、<code class="inline">ExecutionLedger</code>，一并交给 <code class="inline">_agentic()</code>。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">请求未注册 skill → <code class="inline">ValueError</code>；记忆召回失败静默降级为空并写 ledger；<code class="inline">read_resource()</code> 用 realpath 拒绝 symlink 逃逸。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">记忆只标为 untrusted historical hints，必须用当前 diff 或工具复核；工具只读；每次模型/工具调用都进账本，最终写进报告的 <code class="inline">execution</code>。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>工人上岗前先发资料袋和工具箱：一份不用动脑的查错清单（规则扫描）、过去审过这个仓库的笔记本（只当线索，不能当结论）、可选的技能手册，以及一堆只读工具（看文件、看语法树、跑静态扫描）。同时发一本账本，谁调用了什么、花了多少都记上。</p>
+        <p>如果 AI 想借一本库房里根本没有的手册，直接拒绝，不许它自己编一本出来。</p>
+        <div class="plain-one"><b>一句话</b> 先把资料、工具和账本摆齐，再让智能体开工。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 历史笔记被当成事实会污染这次判断；工具不设只读边界，AI 就可能改到仓库里的真实文件。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/reviewer.py · 准备阶段（:137-178）</span><span class="lang">python</span></div>
+      <pre data-lang="python">self.context_manager.begin(task_id)
+ledger = ExecutionLedger(resolution.effective.value, self.input_cost_per_million,
+                         self.output_cost_per_million)
+root = str(task_input.get("repository_root") or "")
+suite = RepositoryToolSuite(root, diff, parsed, ledger, self.review_test_command)
+enabled = set(task_input.get("enabled_agents") or self.enabled_roles)
+scanners = self.scanners + (list(self.scanner_provider(tenant_id))
+                            if self.scanner_provider else [])
+available_skills = {skill.name: skill
+                    for skill in (list(self.skill_provider(tenant_id))
+                                  if self.skill_provider else [])}
+unknown_skills = set(requested_skills).difference(available_skills)
+if unknown_skills:
+    raise ValueError("unknown enabled Agent Skill(s): %s" % ", ".join(sorted(unknown_skills)))
+memory_query = self.context_manager.memory_query(diff, parsed.files)
+recalled = self.memory_manager.recall(tenant_id, repository, memory_query) \
+           if self.memory_manager is not None else []
+self.context_manager.record_memory_recall(task_id, memory_query, recalled)
+memory_context = self.context_manager.format_memories(recalled)
+findings, collaboration, components = self._agentic(
+    task_id, diff, parsed, suite, ledger, enabled, scanners, memory_context,
+    available_skills, requested_skills,
+)</pre>
+    </div>
+    <div class="tip">所有模型与工具调用都会写入 <code class="inline">ExecutionLedger</code>：角色、Token、成本、耗时、错误，最终进报告的 <code class="inline">execution</code> 字段，审计可追溯。</div>
+  </div>
+</section>
+
+<!-- ⑤ Lead 分派 -->
+<section class="card" id="s5">
+  <div class="card-head">
+    <div class="num" style="background:var(--purple)">⑤</div>
+    <div><h2>Lead 分派：一次模型调用决定「谁审什么、风险多高」</h2>
+      <div class="files"><code>evoagent/agent/orchestration.py</code><code>evoagent/agent/lead.py</code><code>evoagent/agent/lead_session.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>Lead Agent 先做一次 <b>delegate</b> 调用：拿到 diff、变更文件、规则扫描结果、记忆和可用 Skills 目录后，输出结构化的 <code class="inline">delegations</code>（每个 Worker 一个任务书：目标 objective、聚焦文件、建议 skills）和一个 <code class="inline">risk_level</code>（low / high）。</p>
+        <ul>
+          <li><b>风险分级驱动预算</b>：高风险任务 Worker 最多 3 步工具、开放完整工具权限（可读仓库上下文）；普通任务默认只读工具或禁用工具，成本可控。</li>
+          <li><b>可恢复</b>：delegation 结果持久化在 LeadSession（phase=delegated），崩溃续跑时不会重复分派。</li>
+          <li><b>归一化</b>：<code class="inline">normalize_delegations()</code> 会把模型输出约束到合法 Worker 角色与真实文件列表上，防止幻觉出的任务书。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">model_diff</code> + changed_files + enabled_workers + skills catalog + scanner_findings + recalled_memory。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">normalize_delegations()</code> 后的作业单、<code class="inline">normalize_risk_level()</code>，以及 <code class="inline">phase=delegated</code> 的 LeadSession。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">模型输出里的非法角色 / 文件 / skill 被归一化剔除；本次调用固定 <code class="inline">max_steps=1</code>、<code class="inline">allow_tools=False</code>。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">一次 delegate 调用定分工；只有 <code class="inline">risk_level=high</code> 才开放完整工具与 3 步预算；续跑不重复分派。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>像工头扫一眼图纸就分工：「这块动了支付逻辑，风险高，让安全组和逻辑组各自细看，允许他们多翻资料；那边只改了文档，随便扫一眼就行。」分工结果写成作业单存档。</p>
+        <p>要是模型胡乱点了个不存在的组员或不存在的文件，归一化会把名单改回真实存在的那些，不让下游拿着空任务书白跑。</p>
+        <div class="plain-one"><b>一句话</b> 一次分工定谁审哪块、给多少预算，危险活才多给工具。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 不做归一化，编造的文件名会让审查跑偏；不做风险分级，改个 README 也会烧满工具预算。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/orchestration.py · delegate 调用（:52-85）</span><span class="lang">python</span></div>
+      <pre data-lang="python">decision = self.lead._run_lead("delegate", {
+    **self.runtime.model_diff(diff, task_id, "lead:delegate", focus_files=parsed.files),
+    "changed_files": parsed.files,
+    "enabled_workers": worker_roles,
+    "available_agent_skills": [available_skills[name].catalog_entry()
+                               for name in sorted(available_skills)],
+    "requested_agent_skills": requested_skills,
+    "scanner_findings": session.scanner_findings,
+    "recalled_memory": memory_context,
+}, suite, ledger, task_id, max_steps=1, allow_tools=False)
+session.delegations = LeadSession.normalize_delegations(
+    decision.get("delegations"), worker_roles, parsed.files,
+    set(available_skills), requested_skills,
+)
+session.lead_delegation = self.findings._public_decision(decision)
+session.risk_level = LeadSession.normalize_risk_level(decision.get("risk_level"))
+session.phase = "delegated"
+self.sessions._save_lead_session(task_id, session, ledger)</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ⑥ Worker 审查 -->
+<section class="card" id="s6">
+  <div class="card-head">
+    <div class="num" style="background:var(--purple)">⑥</div>
+    <div><h2>Worker 并行审查与高风险返工：Security / Correctness-Reliability</h2>
+      <div class="files"><code>evoagent/agent/assignments.py</code><code>evoagent/agent/bounded_role.py</code><code>evoagent/agent/orchestration.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>按任务书并行运行 Worker 角色：<b>Security</b>（注入、凭据、越权面）与 <b>Correctness-Reliability</b>（逻辑缺陷、错误处理、边界条件）。每个 Worker 受「有界角色」约束：</p>
+        <ul>
+          <li><b>步数与工具受控</b>：<code class="inline">max_steps</code> + 工具白名单；高风险才能用完整工具面，普通任务收敛为只读。</li>
+          <li><b>证据驱动</b>：Worker 调用 AST / 扫描器 / git 上下文等工具产生带 <code class="inline">evidence_id</code> 的观测记录，finding 引用这些 ID 才算「有证据」。</li>
+          <li><b>高风险返工（revision round）</b>：Worker 完成后，Lead 再做一次 <code class="inline">assess-workers</code> 评估；不满意时生成 <code class="inline">revision_requests</code>（附 guidance 与 required_evidence），Worker 带 Lead 反馈重跑一轮（最多 1 轮，防止无限循环）。</li>
+          <li><b>恰好一次</b>：revision 结果按 <code class="inline">run_id = "1:{assignment_id}"</code> 记账，续跑时已完成的返工不会重做。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">delegations ×N</code> + <code class="inline">max_steps</code> + <code class="inline">tool_scope</code> + 可用工具与技能。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">worker_results</code>、带 <code class="inline">evidence_id</code> 观测记录的候选 <code class="inline">Finding[]</code>。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">仅 <code class="inline">risk_level == "high"</code> 触发 <code class="inline">assess-workers</code> 与最多 1 轮 revision；<code class="inline">run_id="1:{assignment_id}"</code> 记账防重复返工。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">Security / Correctness-Reliability 是「有界角色」；finding 必须引用真实存在的证据 ID 才算有证据。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>两个审查员分头看代码：一个专盯安全（有没有把密钥写死、有没有越权），一个盯逻辑（边界条件、异常处理）。他们不能凭感觉下结论，得拿出「我在第几行看到了什么」的证据条。</p>
+        <p>工头觉得这次改动危险，会看完初稿后退回一句「证据不够，补一下」，但只补一轮，不让他们无限返工、无限花钱。</p>
+        <div class="plain-one"><b>一句话</b> 分头查、拿证据说话，危险的活儿最多退回重做一次。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 不限制工具步数，成本会失控；没有 evidence_id，后面的门禁就没法核实结论是不是真对着这行代码。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/orchestration.py · Worker 执行与高风险分支（:87-98, 102-119）</span><span class="lang">python</span></div>
+      <pre data-lang="python">risk_level = session.risk_level
+high_risk = risk_level == "high"
+self.assignments._run_pending_assignments(
+    task_id, session, diff, parsed, suite, ledger,
+    session.delegations, revision_round=0,
+    memory_context=memory_context, available_skills=available_skills,
+    max_steps=3 if high_risk else max(1, self.normal_tool_steps + 1),
+    allow_tools=high_risk or self.normal_tool_steps > 0,
+    tool_scope="full" if high_risk else ("read-only" if self.normal_tool_steps else "none"),
+)
+session.phase = "workers-completed"
+
+final_assessment = {}
+if high_risk:
+    candidates = self.sessions._session_candidates(session)
+    assessment = self.lead._run_lead("assess-workers", {
+        **self.runtime.model_diff(diff, task_id, "lead:assess-workers", ...),
+        "assignments": session.delegations,
+        "worker_results": list(session.worker_results.values()),
+        "candidate_findings": [item.to_dict() for item in candidates],
+        "revision_round": 0, "remaining_revision_rounds": 1,
+        "recalled_memory": memory_context,
+    }, suite, ledger, task_id, max_steps=1, allow_tools=False)
+    # assessment.revision_requests → 生成 revision 任务书（round=1）再跑一轮
+    session.revision_rounds = 1
+    session.phase = "revision-1-completed"</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ⑦ Critic 与终审 -->
+<section class="card" id="s7">
+  <div class="card-head">
+    <div class="num" style="background:var(--purple)">⑦</div>
+    <div><h2>Critic 质疑 + Lead 终审：候选 finding 的「红队」与「裁决」</h2>
+      <div class="files"><code>evoagent/agent/orchestration.py</code><code>evoagent/agent/findings.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>Worker 产出的是<b>候选</b> finding，还要过两道智能体裁决：</p>
+        <ul>
+          <li><b>Critic（红队）</b>：逐条质疑候选 finding——证据够不够、会不会误报；可以调低 <code class="inline">confidence_adjustment</code>、补充 supporting_evidence_ids。没有明确 decision 的 finding 一律按「不通过」处理（<code class="inline">accepted = False</code>），宁可漏报不误报。</li>
+          <li><b>Lead 终审</b>：综合 Critic 决定与 Worker 结果，输出 <code class="inline">accepted_finding_indices</code>（发布哪些）与逐条置信度微调；模型没返回该字段时回退为「Critic 通过的全部采纳」。</li>
+          <li><b>合并去重</b>：<code class="inline">_merge()</code> 按 (path, line, rule_id+cwe 规范身份) 去重、保留高置信度版本，再按严重级别排序。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">candidate_findings</code> + <code class="inline">critic_decisions</code> + <code class="inline">worker_results</code>。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">_apply_lead_final()</code> 后的待发布集合、<code class="inline">phase=completed</code>，并由 <code class="inline">_merge()</code> 去重排序。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">Critic 未明确给出 <code class="inline">accepted=True</code> → 记为不通过；Lead 没返回 <code class="inline">accepted_finding_indices</code> → 回退为「Critic 通过项全部采纳」。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">宁可漏报不误报；<code class="inline">confidence_adjustment</code> 钳制在 [0,1]；合并按 (path, line, rule_id+cwe 规范身份) 保留高置信度版本。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>初审结果先交给一个专门唱反调的人：「你说这里会崩，证据呢？会不会是误报？」他没明确点头的问题一律不算数。然后工头做最后裁决，决定哪些能写进对外报告。</p>
+        <p>重复的问题会合并成一条，再按严重程度排队。原则是宁可少报一条，也别在 PR 上乱喊狼来了，喊多了就没人信了。</p>
+        <div class="plain-one"><b>一句话</b> 先唱反调再拍板，含糊其辞的候选问题一律不发。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 把「没决定」当成「通过」，一堆凭空想象的问题会直接发到 PR 上，开发者很快就会关掉这个机器人。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/orchestration.py · Critic 与 finalize（:170-220）</span><span class="lang">python</span></div>
+      <pre data-lang="python">if "critic" in enabled and not session.critic_complete:
+    critic_result = self.lead._run_critic(
+        diff, candidates, str(final_assessment.get("critic_objective", "")),
+        suite, ledger, task_id, memory_context, max_steps=1, allow_tools=False,
+    )
+    candidates, decisions = self.findings._apply_critic(critic_result, candidates)
+    session.critic_decisions = decisions
+    session.critic_complete = True
+
+if not session.lead_final:
+    final_decision = self.lead._run_lead("finalize", {
+        **self.runtime.model_diff(diff, task_id, "lead:finalize", ...),
+        "candidate_findings": [{"finding_index": i, **item.to_dict()}
+                               for i, item in enumerate(candidates)],
+        "critic_decisions": session.critic_decisions,
+        "worker_results": list(session.worker_results.values()),
+        "instruction": ("Return the indices that should be published. "
+                        "Resolve critic objections explicitly and prefer "
+                        "changed-line tool evidence."),
+    }, suite, ledger, task_id, max_steps=1, allow_tools=False)
+accepted = self.findings._apply_lead_final(session.lead_final, candidates)
+session.phase = "completed"</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/findings.py · Critic 决定应用（:71-99）</span><span class="lang">python</span></div>
+      <pre data-lang="python">for index, finding in enumerate(candidates):
+    decision = by_index.get(index)
+    accepted = bool(decision and _strict_bool(decision.get("accepted")))
+    if decision:
+        adjustment = float(decision.get("confidence_adjustment", 0))
+        finding.confidence = max(0.0, min(1.0, finding.confidence + adjustment))
+        finding.evidence_refs.extend(evidence[str(v)]
+            for v in decision.get("supporting_evidence_ids") or []
+            if str(v) in evidence)
+    decisions.append({
+        "finding_index": index, "accepted": accepted,
+        "objections": (decision or {}).get("objections",
+            ["critic returned no explicit decision"]),
+    })</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ⑧ 证据门禁 -->
+<section class="card" id="s8">
+  <div class="card-head">
+    <div class="num" style="background:var(--amber)">⑧</div>
+    <div><h2>证据门禁 FindingGate：四道确定性闸，模型说了不算</h2>
+      <div class="files"><code>evoagent/domain/gates.py</code><code>evoagent/agent/reviewer.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>这是整套系统反幻觉的核心：不管 LLM 输出多「确定」，每条 finding 都要过 <b>纯代码实现的四道闸</b>，任何一道不过即被拒绝并记录原因：</p>
+        <ul>
+          <li><b>Format Gate</b>：(path, line) 必须落在 diff 真实新增行上；rule_id / title / explanation 非空。→ 杜绝「审查不存在的代码」。</li>
+          <li><b>Evidence Gate</b>：必须有「逐字命中新增行」的证据，或合法工具证据引用，或调用链；<b>高危 finding（critical/high）额外要求强证据工具</b>（AST 分析、扫描器、调用链）。</li>
+          <li><b>Confidence Gate</b>：置信度 &lt; 0.55（<code class="inline">minimum_confidence</code>）拒绝。</li>
+          <li><b>Release Gate</b>：高危 finding 必须同时给出 fix 与 test 建议，否则不发布。</li>
+        </ul>
+        <p>被拒的 finding 不会消失——进入报告的 <code class="inline">execution.rejected_findings</code>（含拒绝原因），可审计、可评测误报率。</p>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v">终审后的候选 <code class="inline">Finding[]</code> + <code class="inline">ParsedDiff.added_lines</code>。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">GateResult(accepted, rejected, checks)</code>；被拒项连同原因写进 <code class="inline">execution.rejected_findings</code>。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">format / evidence / confidence(&lt;0.55) / release 任一不过即拒绝；CRITICAL/HIGH 还需强证据工具（AST、扫描器、调用链）与 fix + test 建议。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">四道闸是纯代码判定，不经过模型；通过后先 <code class="inline">redact_secret_evidence()</code> 脱敏，才允许进入报告。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>这是最后一道安检口，而且安检员是台不讲情面的机器，完全不听 AI 怎么解释。四道检查：你指的行号在这次改动里真的存在吗？你引用的那句代码对得上吗，说人家有高危漏洞还得拿出扫描器这种硬证据？把握有没有到及格线？说了高危却没给修法和测试建议？——那也别发。</p>
+        <p>被拦下的问题不会凭空消失，会记在「被拦下」清单里，方便以后复盘是不是拦错了、误报率有没有下降。</p>
+        <div class="plain-one"><b>一句话</b> AI 说了不算，机器按四条硬规矩逐条查，拦下也留档。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 把判定交给模型，等于让被检查的人自己盖章；不留拒绝原因，误报率就永远没法优化。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/domain/gates.py · FindingGate.apply（:30-83）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def apply(self, findings, parsed):
+    valid_locations = {(item.path, item.line): item.content for item in parsed.added_lines}
+    accepted, rejected = [], []
+    counters = {"format": 0, "evidence": 0, "confidence": 0, "release": 0}
+    for finding in findings:
+        reasons = []
+        location = (finding.path, finding.line)
+        if (location not in valid_locations or not finding.rule_id.strip()
+                or not finding.title.strip() or not finding.explanation.strip()):
+            reasons.append("format gate: invalid location or required field")
+
+        quoted = finding.evidence.strip()
+        line = valid_locations.get(location, "").strip()
+        exact_line = bool(quoted and quoted in line)          # 证据逐字命中新增行
+        strong_refs = [item for item in valid_refs
+                       if str(item.get("tool")) in self.STRONG_EVIDENCE_TOOLS]
+        if not exact_line and not valid_refs and not finding.call_chain:
+            reasons.append("evidence gate: no matching code, call chain or tool evidence")
+        if finding.severity in {Severity.CRITICAL, Severity.HIGH} and not (
+                strong_refs or finding.call_chain):
+            reasons.append("evidence gate: high-risk finding requires "
+                           "AST/scanner/call-chain evidence")
+        if finding.confidence < self.minimum_confidence:
+            reasons.append("confidence gate: score below %.2f" % self.minimum_confidence)
+        if finding.severity in {Severity.CRITICAL, Severity.HIGH} and (
+                not finding.fix.strip() or not finding.test.strip()):
+            reasons.append("release gate: high-risk finding lacks fix or test guidance")
+
+        finding.gate = {"passed": not reasons, "reasons": reasons,
+                        "exact_location_evidence": exact_line,
+                        "strong_evidence_count": len(strong_refs)}
+        if reasons:
+            rejected.append({"rule_id": finding.rule_id, "path": finding.path,
+                             "line": finding.line, "reasons": reasons})
+        else:
+            accepted.append(finding)
+    return GateResult(accepted, rejected, {
+        "format": {"rejected": counters["format"]},
+        "evidence": {"rejected": counters["evidence"]},
+        "confidence": {"minimum": self.minimum_confidence, ...},
+    })</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/agent/reviewer.py · 门禁后的收尾（:179-188）</span><span class="lang">python</span></div>
+      <pre data-lang="python">gated = self.gate.apply(findings, parsed)
+for finding in gated.accepted:
+    finding.evidence = redact_secret_evidence(finding.rule_id, finding.evidence)
+ledger.trace("evidence-gate", "completed", **gated.checks)
+self._persist_task_memory(task_id, tenant_id, repository, findings, gated,
+                          parsed.files, collaboration)</pre>
+    </div>
+    <div class="tip">门禁通过后证据文本会做 <code class="inline">redact_secret_evidence()</code> 脱敏，密钥类内容不会原样进入报告。</div>
+  </div>
+</section>
+
+<!-- ⑨ 报告持久化 -->
+<section class="card" id="s9">
+  <div class="card-head">
+    <div class="num" style="background:var(--green)">⑨</div>
+    <div><h2>报告生成与持久化：ReviewReport + 多格式输出</h2>
+      <div class="files"><code>evoagent/domain/models.py</code><code>evoagent/domain/report.py</code><code>evoagent/adapters/stores/*</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>状态机进入 REVIEWING 后装配 <code class="inline">ReviewReport</code>：summary、risk 等级、最终 findings、协作过程（delegations / worker_results / critic_decisions / stop_reason）、执行账本（每次模型调用的 Token 与成本）、四道闸的统计与被拒清单。落库之后可按需输出：</p>
+        <ul>
+          <li><b>Markdown</b>（<code class="inline">to_markdown()</code>，受 <code class="inline">report_max_findings</code> 截断）→ GitHub PR 评论正文。</li>
+          <li><b>SARIF</b> → 可导入 GitHub Code Scanning / IDE。</li>
+          <li><b>JSON</b> → <code class="inline">GET /v1/tasks/{id}</code> 与报告下载。</li>
+        </ul>
+        <p>存储层按租户隔离，报告保留期可配（<code class="inline">EVOAGENT_RETENTION_*</code>），审计行同样可配清理。</p>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v"><code class="inline">gated.accepted</code> + collaboration（delegations / worker_results / critic_decisions）+ ledger + parsed.files + gate checks。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">ReviewReport</code> → <code class="inline">to_dict()</code> / <code class="inline">to_markdown()</code> / <code class="inline">to_sarif()</code>，再由 <code class="inline">store.succeed()</code> 落库。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">证据未脱敏不外发；Markdown 受 <code class="inline">report_max_findings</code> 截断；报告与审计行按 <code class="inline">EVOAGENT_RETENTION_*</code> 清理。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">同一份 report 供 <code class="inline">/v1/tasks/{id}</code>、⑩ 交付、⑪ 修复链消费；存储按租户隔离，SUCCESS 状态与报告一起落库。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>把这一趟的结论装订成一份档案：发现了几个问题、整体风险多高、每个问题在哪一行、谁审的、花了多少 token、哪些问题被安检拦下了。同一份档案有三种装帧——给人看的清单（发到 PR）、给代码扫描平台看的 SARIF、给程序看的 JSON。</p>
+        <p>装订前会先把不小心带进来的密钥涂黑，太长的清单也会截断，免得 PR 评论区被机器人刷屏。</p>
+        <div class="plain-one"><b>一句话</b> 一次审查写成一份档案，换个格式给不同对象看。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 不脱敏会把仓库里的密钥直接贴到 PR 评论上；不落库、不截断，报告和审计线索留不住，也没法重投或触发自动修复。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ⑩ GitHub 交付 -->
+<section class="card" id="s10">
+  <div class="card-head">
+    <div class="num" style="background:var(--green)">⑩</div>
+    <div><h2>GitHub 交付：评论 upsert · 行内评论 · Check Run</h2>
+      <div class="files"><code>evoagent/app/comments.py</code><code>evoagent/adapters/github.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>报告生成后，异步任务在队列消费者里做交付。三种形态：</p>
+        <ul>
+          <li><b>PR 总评</b>：先按 marker 检索已有评论——同 marker 的更新（PATCH），没有才新建（POST）。marker 由 <code class="inline">tenant_id + issue_url + task_id</code> 哈希生成，保证多租户、多次审查互不覆盖、重投不重复。</li>
+          <li><b>行内评论</b>：<code class="inline">EVOAGENT_INLINE_REVIEW_COMMENTS=true</code> 时逐条发布 accepted finding 的行内评论。</li>
+          <li><b>Check Run</b>：<code class="inline">EVOAGENT_AUTO_POST_CHECKS=true</code> 且使用 GitHub App 时发布检查结果：高危 → failure，一般 → neutral，干净 → success（PAT 通常没有 checks 权限）。</li>
+          <li><b>可靠投递</b>：最多 3 次指数退避；全部失败则记 <code class="inline">comment.delivery_failed</code> 审计并告警，可通过 <code class="inline">POST /v1/tasks/{id}/redeliver</code> 手动重投。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v">report + <code class="inline">task_input</code> 里的 <code class="inline">github_issue_url</code> / <code class="inline">installation_id</code> / <code class="inline">head_sha</code>。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v">按 marker 命中则 PATCH、否则 POST 的 PR 总评；可选行内评论；Check Run 结论（高危 failure / 一般 neutral / 干净 success）。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">3 次指数退避（1s / 2s / 4s）后写 <code class="inline">comment.delivery_failed</code> 审计并告警，可用 <code class="inline">/redeliver</code> 手动重投。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">marker = hash(tenant_id + issue_url + task_id)，多租户与多次审查互不覆盖；所有外呼仍受 GitHub 域名白名单约束。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>档案写好了要送到 PR 页面上。先拿一张专属便签（marker）去找有没有上次贴过的总评：有就改那张，没有才新贴一张，这样反复审查不会刷出一串一模一样的机器人评论。</p>
+        <p>还可以把具体意见贴到出问题的那一行，给 PR 挂一盏「检查通过 / 有问题」的状态灯。网络抽风就隔 1 秒、2 秒、4 秒重试三次，还送不到就记一笔失败日志，之后能手动补投——绝不假装已经送到了。</p>
+        <div class="plain-one"><b>一句话</b> 认准便签更新评论，顺手贴行内意见和状态灯，送不到就记账。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 不用 marker 去重，每重跑一次就多一条重复评论；把异常吞掉不记日志，审查做完了开发者却什么都没看到。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/app/comments.py · 交付循环（:62-79）</span><span class="lang">python</span></div>
+      <pre data-lang="python">for attempt in range(1, self.ATTEMPTS + 1):
+    try:
+        client = self.github_client_for_installation(installation_id)
+        client.upsert_comment(
+            issue_url,
+            to_markdown(value, self.settings.report_max_findings),
+            review_comment_marker(tenant_id, issue_url, task_id),
+        )
+        self.metrics.inc("comment_delivered_total")
+        self._deliver_inline(client, task_id, tenant_id, repository,
+                             pull_request, value, task_input, head_sha)
+        self._deliver_check_run(client, task_id, tenant_id, repository,
+                                pull_request, head_sha, value, task_input)
+        return True
+    except Exception as exc:
+        error = exc
+        if attempt < self.ATTEMPTS:
+            time.sleep(self.BACKOFF_SECONDS * (2 ** (attempt - 1)))</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ⑪ 自动修复链 -->
+<section class="card" id="s11">
+  <div class="card-head">
+    <div class="num" style="background:var(--rose)">⑪</div>
+    <div><h2>自动修复链：授权 → LLM 出补丁 → 静态/行为双重验证 → Draft PR</h2>
+      <div class="files"><code>evoagent/app/fixes.py</code><code>evoagent/adapters/patching.py</code><code>evoagent/adapters/verifier.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <p>对已完成的 PR 任务，<code class="inline">POST /v1/tasks/{id}/fix</code> 触发自动修复。整条链层层 fail-closed，任何一步不达标都不会碰源分支：</p>
+        <ul>
+          <li><b>授权三连</b>：任务必须是本租户的 PR 任务 → 仓库授权（grants）→ <code class="inline">auto_fix=true</code> 的显式 opt-in（<code class="inline">EVOAGENT_REQUIRE_AUTO_FIX_GRANT</code> 默认开启）；GitHub App 模式还校验 installation 归属。</li>
+          <li><b>Fix Agent 出补丁</b>：LLM 按 unified diff 格式生成补丁，只允许改 evidence 支持的文件；应用后与原文对比，零改动直接报错。</li>
+          <li><b>静态验证</b>：AST/CST + <code class="inline">compile()</code> 编译检查，不过 → <code class="inline">status=blocked</code>。</li>
+          <li><b>行为验证</b>：必须配置 <code class="inline">EVOAGENT_REPAIR_TEST_COMMAND</code>——没配置时只返回 <b>suggestion-only</b>，不提交任何 commit、不宣称测试通过；配置了则下载源码 zip，在隔离副本上先跑基线（before）、再套补丁跑（after），对比结果不达标 → blocked。</li>
+          <li><b>发布</b>：全部通过后，原子 commit 到新分支 <code class="inline">evoagent/fix-pr-{n}-*</code>，开 <b>Draft</b> PR（永不直改源分支）。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v">已完成且含 PR 的 <code class="inline">task_id</code> + 显式 <code class="inline">auto_fix=true</code> grant + 归属正确的 installation。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v"><code class="inline">status</code> ∈ 原子提交并开 Draft PR / <code class="inline">blocked</code> / <code class="inline">suggestion-only</code>。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">未授权 → <code class="inline">PermissionError</code>；AST/CST + compile 不过 → blocked；无 <code class="inline">test_command</code> → suggestion-only；before/after 行为回归 → blocked。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">任何一步不达标都不碰源分支；无测试命令时不提交、也不写「tests passed」；新分支 <code class="inline">evoagent/fix-pr-*</code> 只开 Draft PR；测试命令须在隔离沙箱执行。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>这是「顺手帮你改」，比「帮你查」谨慎得多。先问三遍：仓库主人同意自动改了吗？改的是这个 PR 吗？GitHub 凭据确实属于本租户吗？然后 AI 写补丁，先用语法检查确认代码能编译，再把改前、改后两份代码各自在副本里跑一遍测试做对比。</p>
+        <p>没配测试命令就只把建议递给人，绝不假装「测试通过」、绝不提交。全都过了，才在新分支上开一个草稿 PR，原来的分支一根手指都不碰，合不合并不由机器人说了算。</p>
+        <div class="plain-one"><b>一句话</b> 没授权、没测试就不动代码；要动也只开草稿 PR 等人来点合并。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 跳过测试对比就提交，可能把本来能跑的代码改坏还标着「测试通过」；直接在源分支提交，等于把写生产代码的权限交给机器人。另外测试命令会执行 PR 里的代码，部署时必须放进隔离沙箱。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/app/fixes.py · 授权与触发（:33-69）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def create_fix(self, task_id, installation_id=None, tenant_id=None):
+    task = self.store.get(task_id, tenant_id)
+    if not task or not task.get("report"):
+        raise ValueError("completed task not found")
+    if task.get("pull_request") is None:
+        raise ValueError("fix commits require a GitHub pull request task")
+    self._authorize(actual_tenant, task["repository"])   # grants + auto_fix opt-in
+    if resolved_installation is not None:
+        owner = self.store.installation_tenant(resolved_installation)
+        if owner != actual_tenant:                        # installation 必须属于本租户
+            raise PermissionError("GitHub installation is not authorized for this tenant")
+    client = self.github_client_for_installation(resolved_installation)
+    result = self.fixer.create_fix_commits(
+        client, task["repository"], task["pull_request"], task["report"],
+    )
+    self.metrics.inc("fix_runs_total")
+    return result</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/adapters/patching.py · 验证与发布（:171-200）</span><span class="lang">python</span></div>
+      <pre data-lang="python">structural = self.verifier.verify_contents(changed)
+if not structural["passed"]:
+    return {"status": "blocked", "branch": None, "commits": [],
+            "note": "Patch failed AST/CST or compilation checks."}
+if not self.verifier.test_command:
+    # 未配置测试命令：只给建议，绝不提交
+    return {"status": "suggestion-only", "branch": None, "commits": [],
+            "note": "No repository test command is configured; this is a "
+                    "suggestion, not a successful automatic fix."}
+archive = client.download_archive(source_repository, source_sha)
+baseline = self.verifier.verify_archive(archive, {})       # before
+patched  = self.verifier.verify_archive(archive, changed)  # after
+comparison = self.verifier.compare(baseline, patched)
+if not comparison["passed"]:
+    return {"status": "blocked", "note": "Patch was blocked by "
+            "before/after isolated-copy verification."}
+commit = client.create_atomic_commit(repository, branch, source_sha, changed, ...)
+draft = client.create_draft_pull_request(repository, "fix: verified ...", branch, ...)</pre>
+    </div>
+    <div class="tip">部署提示：test command 会在 PR 源码副本内执行（可能是攻击者 fork），环境变量受限但<b>无网络/容器隔离</b>，仅对可信仓库启用或放在一次性环境中。</div>
+  </div>
+</section>
+
+<!-- ⑫ 横向支撑 -->
+<section class="card" id="s12">
+  <div class="card-head">
+    <div class="num" style="background:var(--slate)">⑫</div>
+    <div><h2>横向支撑设施：贯穿链路每个环节</h2>
+      <div class="files"><code>evoagent/adapters/auth.py</code><code>evoagent/app/policies.py</code><code>evoagent/app/quotas.py</code><code>evoagent/adapters/stores/shared/auth.py</code></div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="explain-pair">
+      <div class="explain-col tech">
+        <h3>详细解释 <span class="explain-badge">TECHNICAL / 源码视角</span></h3>
+        <ul>
+          <li><b>认证与授权</b>：JWT（HS256）+ PBKDF2 密码哈希；每次鉴权都回查用户表（禁用/移除立即生效，token 不过期也失效）；多租户 RBAC（read/review/fix/manage/audit），platform_admin 与租户 manage 分离。用户名全局唯一，防跨租户账号认领。</li>
+          <li><b>仓库授权 Grants</b>：按租户白名单仓库；自动修复额外要求 <code class="inline">auto_fix=true</code> 显式授权（默认强制，<code class="inline">EVOAGENT_REQUIRE_AUTO_FIX_GRANT=false</code> 可回退旧行为）。</li>
+          <li><b>配额</b>：每租户每日审查数 / Token / 成本上限，超限返回 429。</li>
+          <li><b>审计</b>：登录、建用户、改授权、修复合条、投递失败等关键动作写 <code class="inline">audit_log</code>，按租户隔离。</li>
+          <li><b>可观测</b>：OpenTelemetry span（可选）+ Prometheus 风格指标 + 失败率告警（连续失败自动评估 alert）。</li>
+          <li><b>持久化</b>：SQLite / PostgreSQL 双后端共享同一套方言转换 mixin（<code class="inline">_sql()</code> 把 <code class="inline">?</code> 换 <code class="inline">%s</code>），业务 SQL 只写一份。</li>
+        </ul>
+        <div class="io-grid">
+          <div><span class="io-k">输入</span><span class="io-v">每个 HTTP 请求 / 每次队列消费携带的 <code class="inline">Principal</code> + <code class="inline">tenant_id</code>。</span></div>
+          <div><span class="io-k">输出</span><span class="io-v">允许 / 403 越权 / 429 超额；<code class="inline">audit_log</code>、Prometheus 指标、TraceEvent、OpenTelemetry span；SQLite/PostgreSQL 或 Redis 队列落点。</span></div>
+          <div><span class="io-k">失败出口</span><span class="io-v">越权、配额超限、JWT 对应用户已被禁用或移除（每次鉴权都回查用户表）均立即拒绝；<code class="inline">trusted_proxies</code> 非空且关闭认证时直接拒绝启动。</span></div>
+          <div><span class="io-k">不变量</span><span class="io-v">用户名全局唯一；grants 按租户白名单且 auto_fix 另行 opt-in；<code class="inline">_sql()</code> 统一方言让双后端共用一份业务 SQL；platform_admin 与租户 manage 权限分离。</span></div>
+        </div>
+      </div>
+      <div class="explain-col plain">
+        <h3>大白话 <span class="explain-badge">PLAIN WORDS</span></h3>
+        <p>这些不是流水线上的某一站，而是整栋楼的规矩：进门刷卡（登录后每次还回查这人还在不在册）、每个部门只能进自己的房间（租户隔离）、每月有额度（配额）、谁在什么时候动了什么都记在监控和台账里（审计 + 指标 + 追踪）。</p>
+        <p>档案柜可以换 SQLite 或 PostgreSQL，但格子规格一样；排队箱可以用 Redis，也能临时降级成进程内的小盒子，业务代码不用改。</p>
+        <div class="plain-one"><b>一句话</b> 刷卡、分房间、限额度、记台账，十二个模块都得守这套规矩。</div>
+        <p class="plain-risk"><b>做坏了会怎样</b> 任一模块绕过统一鉴权或把 tenant_id 弄丢，就会出现「看到别人家任务 / 报告」的越权；没有审计和指标，出事只能靠猜。</p>
+      </div>
+    </div>
+    <h3>代码展示</h3>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/app/policies.py · 仓库授权与修复 opt-in（:53-67）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def authorize_auto_fix(self, tenant_id: str, repository: str) -> None:
+    """Automatic repair requires an explicit per-repository ``auto_fix`` grant."""
+    self.authorize_repository(tenant_id, repository)
+    if not self.settings.require_auto_fix_grant:
+        return
+    if not self.store.has_repository_grants(tenant_id):
+        raise PermissionError(
+            "automatic repair requires an explicit auto_fix grant for this repository")
+    if not self.store.repository_allowed(tenant_id, repository, require_auto_fix=True):
+        raise PermissionError("automatic repair is not enabled for this repository")</pre>
+    </div>
+    <div class="code-block">
+      <div class="code-head"><span>evoagent/adapters/stores/shared/auth.py · 仓库白名单（:175-190）</span><span class="lang">python</span></div>
+      <pre data-lang="python">def repository_allowed(self, tenant_id, repository, require_auto_fix=False):
+    total = ...  # SELECT COUNT(*) FROM repository_grants WHERE tenant_id=?
+    row   = ...  # SELECT auto_fix FROM repository_grants WHERE tenant_id=? AND repository=?
+    if total == 0:
+        # 无任何 grant：保持单租户旧行为（审查开放）；
+        # 运维要默认拒绝可开 EVOAGENT_REQUIRE_REPOSITORY_GRANTS
+        return True
+    return bool(row and (not require_auto_fix or row["auto_fix"]))</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p><b>对照源码</b>：以上代码均为节选（部分长行省略），文件路径与行号对应当前 HEAD。每张「模块内部流程图」的节点也对应源码里真实存在的调用、判断或返回值：① api.py / app/github.py · ② review_lifecycle.py · ③ harness.py · ④ reviewer.py · ⑤⑥⑦ orchestration.py / findings.py · ⑧ gates.py · ⑨ models.py / report.py / sarif.py · ⑩ comments.py · ⑪ fixes.py / patching.py · ⑫ policies.py / stores/shared。整链路精简版见 <code class="inline">docs/MODEL_RUNTIME_FLOW.md</code>；逐段文字版见 <code class="inline">docs/PROJECT_KNOWLEDGE_AND_QA.zh-CN.md</code> §3.1-3.4。</p>
+  <p style="margin-top:6px"><b>版式</b>：采用 Maison des Mots 纸雕美术方向的设计 token（奶白 / 银蓝 / 墨蓝 / 藕粉、模切白边、1px 线、克制动效与 reduced-motion 支持）。字体使用本地栈回退，不含任何外部字体或图片请求，断网可完整查看；技术正文与代码保留无衬线/等宽字体以确保可读性。</p>
+  <p style="margin-top:6px"><b>双解释读法</b>：左栏「详细解释」是给开发 / 评审看的——列出该模块的输入、输出、失败出口与代码级不变量，配合下方真实源码与模块内部流程图核对；右栏「大白话」用生活类比说明这一步到底在干什么、一句话能怎么概括、以及省掉它会出什么事，适合产品、运维与新人快速建立全局印象。两栏说的是同一件事，可按需切换阅读方式。</p>
+  <p style="margin-top:6px">本地查看：直接用浏览器打开本文件即可，无外部依赖。</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  // ---------- Python 语法高亮（零依赖） ----------
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function highlight(src) {
+    var re = /(#.*$)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|\b(def|class|return|if|elif|else|for|while|try|except|finally|with|as|import|from|raise|in|not|and|or|is|None|True|False|self|lambda|yield|pass|continue|break|async|await|assert|global|del)\b|\b(\d+(?:\.\d+)?)\b/gm;
+    var out = "", last = 0, m;
+    var text = esc(src);
+    while ((m = re.exec(text)) !== null) {
+      out += text.slice(last, m.index);
+      if (m[1]) out += '<span class="c">' + m[1] + '</span>';
+      else if (m[2]) out += '<span class="s">' + m[2] + '</span>';
+      else if (m[3]) out += '<span class="k">' + m[3] + '</span>';
+      else if (m[4]) out += '<span class="n">' + m[4] + '</span>';
+      last = m.index + m[0].length;
+    }
+    return out + text.slice(last);
+  }
+  document.querySelectorAll("pre[data-lang]").forEach(function (pre) {
+    pre.innerHTML = highlight(pre.textContent);
+  });
+
+  // ---------- SVG 流程图 ----------
+  var STAGES = [
+    { id: 1,  color: "#1e2748", bg: "#eef0f5", t: "① 入口层",          s: "REST API · GitHub Webhook（签名/防重放/租户绑定）" },
+    { id: 2,  color: "#46536f", bg: "#f1f3f7", t: "② 任务编排",        s: "校验 → 配额 → 授权 → 建任务 → 入队" },
+    { id: 3,  color: "#46536f", bg: "#f1f3f7", t: "③ 运行时状态机",    s: "PLANNING → EXECUTING → REVIEWING（可断点续跑）" },
+    { id: 4,  color: "#5c6884", bg: "#f4f2f6", t: "④ 上下文准备",      s: "规则扫描 · 记忆召回 · Skills · 工具套件" },
+    { id: 5,  color: "#5c6884", bg: "#f4f2f6", t: "⑤ Lead 分派",        s: "delegations + risk_level（高风险开完整工具）" },
+    { id: 6,  color: "#5c6884", bg: "#f4f2f6", t: "⑥ Worker 并行审查", s: "Security / Correctness（高风险 → 一次返工）" },
+    { id: 7,  color: "#5c6884", bg: "#f4f2f6", t: "⑦ Critic + Lead 终审", s: "红队质疑 → 裁决发布索引" },
+    { id: 8,  color: "#9b6a7d", bg: "#faf1f3", t: "⑧ 证据门禁",        s: "format / evidence / confidence / release 四道闸" },
+    { id: 9,  color: "#4b6b73", bg: "#eef2f1", t: "⑨ 报告与持久化",    s: "ReviewReport → Markdown / SARIF / JSON" },
+    { id: 10, color: "#4b6b73", bg: "#eef2f1", t: "⑩ GitHub 交付",     s: "评论 upsert · 行内评论 · Check Run" },
+  ];
+  var X = 40, W = 460, H = 56, STEP = 84, Y0 = 30;
+  var nodesG = document.getElementById("svg-nodes");
+  var arrowsG = document.getElementById("svg-arrows");
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, text) {
+    var n = document.createElementNS(NS, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text) n.textContent = text;
+    return n;
+  }
+  STAGES.forEach(function (st, i) {
+    var y = Y0 + i * STEP;
+    var g = el("g", { "class": "node", "data-target": "s" + st.id, style: "cursor:pointer" });
+    g.appendChild(el("rect", { x: X, y: y, width: W, height: H, rx: 10,
+      fill: st.bg, stroke: st.color, "stroke-width": 1.5 }));
+    g.appendChild(el("circle", { cx: X + 30, cy: y + H / 2, r: 15, fill: st.color }));
+    g.appendChild(el("text", { x: X + 30, y: y + H / 2 + 5, "text-anchor": "middle",
+      "font-size": 13, "font-weight": 700, fill: "#fff" }, String(st.id)));
+    g.appendChild(el("text", { x: X + 58, y: y + 23, "font-size": 15.5,
+      "font-weight": 700, fill: "#1e2748" }, st.t));
+    g.appendChild(el("text", { x: X + 58, y: y + 43, "font-size": 11.5, fill: "#5c6884" }, st.s));
+    g.addEventListener("click", function () { jump("s" + st.id); });
+    nodesG.appendChild(g);
+    if (i < STAGES.length - 1) {
+      arrowsG.appendChild(el("path", { d: "M " + (X + W / 2) + " " + (y + H) + " L " + (X + W / 2) + " " + (y + STEP),
+        "marker-end": "url(#arr)" }));
+    }
+  });
+  // ⑪ 修复链节点（分支）
+  var fixG = el("g", { "class": "node", "data-target": "s11", style: "cursor:pointer" });
+  fixG.appendChild(el("rect", { x: X, y: Y0 + 10 * STEP, width: W, height: H, rx: 10,
+    fill: "#f9eff1", stroke: "#a4576b", "stroke-width": 1.5, "stroke-dasharray": "7 4" }));
+  fixG.appendChild(el("circle", { cx: X + 30, cy: Y0 + 10 * STEP + H / 2, r: 15, fill: "#a4576b" }));
+  fixG.appendChild(el("text", { x: X + 30, y: Y0 + 10 * STEP + H / 2 + 5, "text-anchor": "middle",
+    "font-size": 13, "font-weight": 700, fill: "#fff" }, "11"));
+  fixG.appendChild(el("text", { x: X + 58, y: Y0 + 10 * STEP + 23, "font-size": 15.5,
+    "font-weight": 700, fill: "#1e2748" }, "⑪ 自动修复链"));
+  fixG.appendChild(el("text", { x: X + 58, y: Y0 + 10 * STEP + 43, "font-size": 11.5, fill: "#5c6884" },
+    "patch → 静态/行为验证 → Draft PR（fail-closed）"));
+  fixG.addEventListener("click", function () { jump("s11"); });
+  nodesG.appendChild(fixG);
+
+  function jump(id) {
+    var t = document.getElementById(id);
+    if (!t) return;
+    t.scrollIntoView({ behavior: "smooth", block: "start" });
+    t.classList.add("flash");
+    setTimeout(function () { t.classList.remove("flash"); }, 1600);
+  }
+  document.querySelectorAll(".node").forEach(function (g) {
+    g.addEventListener("click", function () { jump(g.getAttribute("data-target")); });
+  });
+
+  // ---------- 每个功能块的上下游模块数据流条 ----------
+  var FLOWS = {
+    s1:  { up: ["GitHub 客户端 / Webhook"], a: "diff · HMAC 签名 · headers",
+           cur: "① api.py · app/github.py", b: "已校验 diff + principal",
+           down: ["app/review_lifecycle.py（②）", "adapters/github.py（验签 / 取 diff）"] },
+    s2:  { up: ["① api.py · app/github.py"], a: "建任务 · 配额 · 审计",
+           cur: "② app/review_lifecycle.py", b: "enqueue(task_id)",
+           down: ["stores/ TaskStore（持久化）", "队列（Redis Streams / 进程内）"] },
+    s3:  { up: ["队列 task_id"], a: "claim（恰好一次）",
+           cur: "③ agent/harness.py", b: "状态推进 + 检查点落库",
+           down: ["④ agent/reviewer.py", "stores/（状态 · 检查点）"] },
+    s4:  { up: ["③ agent/harness.py"], a: "任务上下文 + diff",
+           cur: "④ agent/reviewer.py", b: "context + 工具套件",
+           down: ["⑤ agent/orchestration.py"] },
+    s5:  { up: ["④ agent/reviewer.py"], a: "context",
+           cur: "⑤ Lead 分派（orchestration.py）", b: "delegations · risk_level",
+           down: ["⑥ Worker ×N 并行审查"] },
+    s6:  { up: ["⑤ Lead 分派"], a: "delegation",
+           cur: "⑥ Worker（Security / Correctness）", b: "draft findings",
+           down: ["⑦ Critic 质疑 + Lead 终审"] },
+    s7:  { up: ["⑥ Worker 输出"], a: "候选 finding",
+           cur: "⑦ Critic + Lead 终审（findings.py）", b: "规整后的候选列表",
+           down: ["⑧ domain/gates.py"] },
+    s8:  { up: ["⑦ agent/findings.py"], a: "Finding[]",
+           cur: "⑧ 证据门禁 FindingGate", b: "accepted / rejected",
+           down: ["⑨ 报告生成", "stores/（rejected 留档）"] },
+    s9:  { up: ["⑧ domain/gates.py"], a: "accepted findings",
+           cur: "⑨ 报告（models + report）", b: "markdown / SARIF / JSON",
+           down: ["stores/（持久化）", "⑩ comments · ⑪ fixes"] },
+    s10: { up: ["⑨ 报告"], a: "markdown / SARIF",
+           cur: "⑩ app/comments.py", b: "REST（仅 GitHub 白名单域）",
+           down: ["adapters/github.py → GitHub API"] },
+    s11: { up: ["① api.py（POST /fix）"], a: "task_id + principal",
+           cur: "⑪ app/fixes.py", b: "授权 → patch → verify",
+           down: ["app/policies.py（auto_fix 授权）", "patching → verifier → Draft PR"] },
+    s12: { up: ["所有链路模块"], a: "每次调用 / 写入",
+           cur: "⑫ 横向支撑设施", b: "统一校验与记录",
+           down: ["RBAC · Grants · 配额 · 审计 · 可观测"] }
+  };
+  Object.keys(FLOWS).forEach(function (id) {
+    var sec = document.getElementById(id);
+    var body = sec && sec.querySelector(".card-body");
+    if (!body) return;
+    var f = FLOWS[id];
+    function box(t, cur) {
+      var d = document.createElement("div");
+      d.className = "fs-box" + (cur ? " cur" : "");
+      d.textContent = t;
+      return d;
+    }
+    function arrow(label) {
+      var d = document.createElement("div");
+      d.className = "fs-arrow";
+      var s1 = document.createElement("span"); s1.className = "fs-label"; s1.textContent = label;
+      var s2 = document.createElement("span"); s2.className = "fs-line"; s2.textContent = "\u27F6";
+      d.appendChild(s1); d.appendChild(s2);
+      return d;
+    }
+    var strip = document.createElement("div");
+    strip.className = "flow-strip";
+    var cap = document.createElement("div");
+    cap.className = "fs-cap"; cap.textContent = "模块间数据流";
+    strip.appendChild(cap);
+    strip.appendChild(box(f.up, false));
+    strip.appendChild(arrow(f.a));
+    strip.appendChild(box(f.cur, true));
+    strip.appendChild(arrow(f.b));
+    var col = document.createElement("div");
+    col.className = "fs-col";
+    f.down.forEach(function (t) { col.appendChild(box(t, false)); });
+    strip.appendChild(col);
+    body.insertBefore(strip, body.firstChild);
+  });
+
+  // ---------- 每个模块一张「内部流程图」 ----------
+  // 与顶部两张全局图的区别：这里画的是模块内部的步骤、判断分支与失败出口。
+  // 每个节点都对应源码里真实存在的调用或返回值（见各卡片的代码展示）。
+  var MF_INK = "#1e2748", MF_FOG = "#5c6884", MF_FAINT = "#a9b3cc";
+  var MF_PAPER = "#fffdf8", MF_DEEP = "#eef0f5", MF_LOTUS = "#f9eff1";
+  var MF_ROSE = "#a4576b", MF_LINE = "rgba(30,39,72,.42)";
+  var MF_FONT = "Segoe UI, Microsoft YaHei, sans-serif";
+  var MF_TYPE = "Special Elite, Courier New, monospace";
+
+  var MODULE_FLOWS = {
+    s1: { no: "01", title: "入口层 · 请求准入链", tag: "module diagram",
+      cap: "api.py / app/github.py · 任一检查失败即在该步返回，绝不进入编排",
+      cols: ["请求进入", "准入校验", "租户绑定", "入链"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "POST /v1/reviews", s: "或 /webhooks/github · diff + payload", k: "start" },
+        { id: "b", col: 1, row: 0, t: "事件 / secret / 时效", s: "pull_request · 偏差 ≤600s 防重放", k: "decision" },
+        { id: "c", col: 1, row: 1, t: "HMAC-SHA256 验签", s: "compare_digest 防时序侧信道", k: "step" },
+        { id: "g", col: 1, row: 2, t: "401 / 503 / 202 ignored", s: "签名不符、超时或事件不符即返回", k: "reject" },
+        { id: "d", col: 2, row: 0, t: "claim_webhook(id)", s: "同一次投递只产生一个任务", k: "store" },
+        { id: "e", col: 2, row: 1, t: "installation → tenant", s: "未绑定则拒绝，不落 default", k: "decision" },
+        { id: "h", col: 2, row: 2, t: "拉取 PR diff", s: "GitHub URL 白名单 + Token 限定域", k: "step" },
+        { id: "f", col: 3, row: 0, t: "enqueue_review()", s: "已校验 diff + principal", k: "end" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", "通过"], ["c", "d", "验签通过"],
+        ["d", "e", ""], ["e", "f", "绑定成功"], ["c", "h", "diff_url"],
+        ["h", "f", "PR diff"], ["b", "g", "事件不符 / 超时", "reject"],
+        ["c", "g", "签名不符", "reject"], ["e", "g", "未绑定", "reject"]
+      ] },
+
+    s2: { no: "02", title: "任务编排 · 廉价检查前置", tag: "module diagram",
+      cap: "review_lifecycle.py · 在消耗任何模型调用之前做完所有可判定的校验",
+      cols: ["输入校验", "策略授权", "任务落库", "入队"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "validate_review", s: "repo ≤250 · diff ≤max · 有新增行", k: "decision" },
+        { id: "b", col: 0, row: 1, t: "RunMode.parse", s: "默认 AGENTIC · 无模型 → 503", k: "step" },
+        { id: "c", col: 1, row: 0, t: "require_agentic_model", s: "resolve_root / enabled_* 校验", k: "step" },
+        { id: "d", col: 1, row: 1, t: "authorize_repository", s: "租户仓库授权 grants", k: "decision" },
+        { id: "e", col: 2, row: 0, t: "create_task → PENDING", s: "update_task_input 存回帖凭据", k: "store" },
+        { id: "f", col: 3, row: 0, t: "queue.submit", s: "message_id = task_id · Redis / 进程内", k: "end" },
+        { id: "g", col: 3, row: 1, t: "FAILED + trace", s: "入队失败或授权拒绝，不静默丢单", k: "reject" }
+      ],
+      edges: [
+        ["a", "c", "校验通过"], ["b", "d", "模式就绪"], ["c", "e", "授权完成"],
+        ["d", "e", "授权通过"], ["e", "f", "task_id"],
+        ["d", "g", "授权拒绝", "reject"], ["f", "g", "入队失败", "reject"]
+      ] },
+
+    s3: { no: "03", title: "状态机 · 可断点续跑的四段推进", tag: "module diagram",
+      cap: "agent/harness.py · 每次 _transition 都校验 ALLOWED 状态表并写 TraceEvent",
+      cols: ["PENDING", "PLANNING", "EXECUTING", "REVIEWING / 终态"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "队列 claim(task_id)", s: "恰好一次执行", k: "start" },
+        { id: "b", col: 1, row: 0, t: "parse_unified_diff", s: "无有效新增行 → FAILED", k: "decision" },
+        { id: "c", col: 2, row: 0, t: "review_with_context", s: "产出 findings 并写入检查点", k: "step" },
+        { id: "d", col: 3, row: 0, t: "验证并排序 findings", s: "组装 ReviewReport", k: "end" },
+        { id: "e", col: 3, row: 1, t: "SUCCESS + TraceEvent", s: "状态与报告一起落库", k: "store" },
+        { id: "f", col: 1, row: 1, t: "检查点 / resume", s: "恢复 phase 后从断点续跑", k: "store" },
+        { id: "g", col: 2, row: 1, t: "非法跃迁 → RuntimeError", s: "ALLOWED 表之外的跳转被拒", k: "reject" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", "解析通过"], ["c", "d", ""], ["d", "e", ""],
+        ["b", "f", "检查点"], ["c", "f", "检查点"], ["f", "c", "续跑"],
+        ["b", "g", "状态非法", "reject"], ["d", "g", "状态非法", "reject"]
+      ] },
+
+    s4: { no: "04", title: "上下文准备 · 规则 / 记忆 / 工具 / 技能", tag: "module diagram",
+      cap: "agent/reviewer.py · 把 diff 变成受控的上下文与工具套件，再交给多智能体",
+      cols: ["输入", "上下文组装", "工具与技能", "协作入口"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "task_id · diff · parsed", s: "review_with_context()", k: "start" },
+        { id: "b", col: 1, row: 0, t: "规则扫描 + 记忆召回", s: "scanners · memory.recall", k: "step" },
+        { id: "c", col: 1, row: 1, t: "unknown skills → ValueError", s: "技能名不在租户可用集合", k: "reject" },
+        { id: "d", col: 2, row: 0, t: "RepositoryToolSuite", s: "AST / 读文件 / 测试命令", k: "store" },
+        { id: "e", col: 2, row: 1, t: "available / requested skills", s: "按租户加载并收窄权限", k: "step" },
+        { id: "f", col: 3, row: 0, t: "_agentic(...)", s: "context + suite + ledger", k: "end" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "d", ""], ["d", "f", "工具套件"],
+        ["e", "f", "技能清单"], ["b", "c", "未知技能", "reject"]
+      ] },
+
+    s5: { no: "05", title: "Lead 分派 · 一次模型调用生成作业单", tag: "module diagram",
+      cap: "agent/orchestration.py · normalize_* 把模型输出收敛成受控的 delegations",
+      cols: ["会话", "Lead:delegate", "归一化", "分派结果"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "LeadSession.load", s: "断点续跑恢复 phase", k: "store" },
+        { id: "b", col: 0, row: 1, t: "_scan → scanner_findings", s: "规则候选先写入会话", k: "step" },
+        { id: "c", col: 1, row: 0, t: "lead._run_lead(delegate)", s: "max_steps=1 · allow_tools=False", k: "step" },
+        { id: "d", col: 2, row: 0, t: "normalize_delegations", s: "worker_roles / files / skills 约束", k: "decision" },
+        { id: "e", col: 2, row: 1, t: "normalize_risk_level", s: "high → 完整工具 + 一次返工", k: "decision" },
+        { id: "f", col: 3, row: 0, t: "assignments ×N → session", s: "phase=delegated 并落库", k: "end" }
+      ],
+      edges: [
+        ["a", "c", ""], ["b", "c", "scanner_findings"], ["c", "d", "delegations"],
+        ["c", "e", "risk_level"], ["d", "f", ""], ["e", "f", "工具范围"]
+      ] },
+
+    s6: { no: "06", title: "Worker 并行审查 · 高风险一次返工", tag: "module diagram",
+      cap: "agent/orchestration.py · 只有 risk_level=high 才开放完整工具并追加 revision_round=1",
+      cols: ["分派", "并行执行", "高风险返工", "候选输出"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "delegations ×N", s: "security / correctness-reliability", k: "start" },
+        { id: "b", col: 1, row: 0, t: "Worker 各自工具调用", s: "max_steps 3(high)/1 · tool_scope", k: "step" },
+        { id: "c", col: 1, row: 1, t: "_parse_findings", s: "位置 / 证据 / 置信度解析", k: "step" },
+        { id: "d", col: 2, row: 0, t: "risk_level == high ?", s: "仅高风险进入返工", k: "decision" },
+        { id: "e", col: 2, row: 1, t: "assess-workers → round 1", s: "一次返工并替换原结果", k: "step" },
+        { id: "f", col: 3, row: 0, t: "_session_candidates", s: "候选 Finding[]", k: "end" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", ""], ["c", "d", ""],
+        ["d", "f", "否"], ["d", "e", "是"], ["e", "f", "返工结果"]
+      ] },
+
+    s7: { no: "07", title: "Critic 质疑 → Lead 终审", tag: "module diagram",
+      cap: "orchestration.py / findings.py · 「宁漏报不误报」由终审索引决定最终发布集合",
+      cols: ["候选", "Critic", "Lead:finalize", "发布索引"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "candidate_findings", s: "session_candidates()", k: "start" },
+        { id: "b", col: 1, row: 0, t: "_run_critic", s: "红队质疑 · objections", k: "step" },
+        { id: "c", col: 1, row: 1, t: "无 critic → 默认全接受", s: "仍写入 critic_decisions", k: "store" },
+        { id: "d", col: 2, row: 0, t: "lead._run_lead(finalize)", s: "回应质疑 · 偏好变更行证据", k: "decision" },
+        { id: "e", col: 2, row: 1, t: "索引兜底", s: "模型漏给时取 critic 接受项", k: "step" },
+        { id: "f", col: 3, row: 0, t: "_apply_lead_final", s: "规整后的候选列表", k: "end" }
+      ],
+      edges: [
+        ["a", "b", ""], ["a", "c", "critic 未启用"], ["b", "d", ""], ["c", "d", ""],
+        ["d", "f", "发布索引"], ["d", "e", "缺字段时"], ["e", "f", "兜底索引"]
+      ] },
+
+    s8: { no: "08", title: "证据门禁 · 四道确定性闸", tag: "module diagram",
+      cap: "domain/gates.py · 纯代码判定，不经过模型；任一闸失败即进 rejected 并留档",
+      cols: ["输入", "确定性四道闸", "高风险附加", "结果"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "Finding[]", s: "来自 ⑦ 终审", k: "start" },
+        { id: "b", col: 1, row: 0, t: "① format", s: "位置 ∈ added_lines · 必填字段", k: "decision" },
+        { id: "c", col: 1, row: 1, t: "② evidence", s: "精确行 / refs / call_chain", k: "decision" },
+        { id: "d", col: 1, row: 2, t: "③ confidence", s: "≥ minimum_confidence", k: "decision" },
+        { id: "e", col: 2, row: 0, t: "④ release", s: "CRITICAL/HIGH 需 fix + test", k: "decision" },
+        { id: "f", col: 2, row: 1, t: "高风险需强证据", s: "AST / scanner / call-chain", k: "decision" },
+        { id: "g", col: 3, row: 0, t: "accepted → ⑨ 报告", s: "GateResult.accepted", k: "end" },
+        { id: "h", col: 3, row: 1, t: "rejected → 留档", s: "reasons + counters", k: "reject" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", ""], ["c", "d", ""], ["d", "e", ""],
+        ["e", "g", "全部通过"], ["e", "f", "高风险"], ["f", "g", "证据充分"],
+        ["b", "h", "不通过", "reject"], ["c", "h", "不通过", "reject"],
+        ["d", "h", "不通过", "reject"], ["e", "h", "不通过", "reject"],
+        ["f", "h", "不通过", "reject"]
+      ] },
+
+    s9: { no: "09", title: "报告生成与持久化", tag: "module diagram",
+      cap: "domain/models.py / report.py / sarif.py · 先脱敏，再按消费方输出三种格式",
+      cols: ["构建", "脱敏", "序列化", "落库 / 消费"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "ReviewReport", s: "summary · risk · findings", k: "start" },
+        { id: "b", col: 1, row: 0, t: "redact_secret_evidence", s: "证据脱敏，防密钥外泄", k: "step" },
+        { id: "c", col: 2, row: 0, t: "markdown / SARIF / dict", s: "to_markdown · to_sarif · to_dict", k: "store" },
+        { id: "d", col: 2, row: 1, t: "report_max_findings", s: "评论渲染时截断长度", k: "step" },
+        { id: "e", col: 3, row: 0, t: "store.succeed(report)", s: "SUCCESS + TraceEvent 落库", k: "store" },
+        { id: "f", col: 3, row: 1, t: "⑩ 交付 / ⑪ 修复", s: "消费同一份 report", k: "end" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", ""], ["c", "e", ""], ["c", "d", "评论渲染"],
+        ["d", "e", ""], ["e", "f", ""]
+      ] },
+
+    s10: { no: "10", title: "GitHub 交付 · 评论 / 行内 / Check Run", tag: "module diagram",
+      cap: "app/comments.py · 三次指数退避；失败写审计，不把异常吞掉",
+      cols: ["报告", "评论 upsert", "辅助交付", "GitHub API"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "markdown / SARIF / JSON", s: "来自 ⑨", k: "start" },
+        { id: "b", col: 1, row: 0, t: "upsert_comment(marker)", s: "租户 + URL + task 去重", k: "step" },
+        { id: "c", col: 2, row: 0, t: "_deliver_inline", s: "行内评论定位到 diff 行", k: "step" },
+        { id: "d", col: 2, row: 1, t: "_deliver_check_run", s: "Check Run 结论", k: "step" },
+        { id: "e", col: 3, row: 0, t: "adapters/github.py", s: "URL 白名单 + Token 限定域", k: "end" },
+        { id: "f", col: 3, row: 1, t: "3 次退避 → 失败审计", s: "1s / 2s / 4s 重试", k: "reject" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", ""], ["b", "d", ""], ["c", "e", ""],
+        ["d", "e", ""], ["b", "f", "异常", "reject"]
+      ] },
+
+    s11: { no: "11", title: "自动修复链 · fail-closed 双验证", tag: "module diagram",
+      cap: "app/fixes.py / patching.py · 无仓库测试命令时只给建议，绝不提交并谎报测试通过",
+      cols: ["授权", "补丁生成", "双重验证", "发布"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "POST /tasks/{id}/fix", s: "任务已完成且含 PR？", k: "decision" },
+        { id: "b", col: 1, row: 0, t: "authorize_auto_fix", s: "需显式 auto_fix grant", k: "decision" },
+        { id: "c", col: 1, row: 1, t: "installation 归属", s: "未绑定 → PermissionError", k: "decision" },
+        { id: "d", col: 2, row: 0, t: "verify_contents", s: "AST/CST + compile 静态门", k: "decision" },
+        { id: "e", col: 2, row: 1, t: "test_command 存在？", s: "默认空 → fail-closed", k: "decision" },
+        { id: "f", col: 2, row: 2, t: "verify_archive 对比", s: "隔离副本跑测试 + before/after", k: "store" },
+        { id: "g", col: 3, row: 0, t: "atomic commit → Draft PR", s: "evoagent/fix-pr-* 新分支", k: "end" },
+        { id: "h", col: 3, row: 1, t: "blocked / suggestion-only", s: "不提交 · 不写 tests passed", k: "reject" }
+      ],
+      edges: [
+        ["a", "b", ""], ["a", "c", "installation"], ["b", "d", "授权通过"],
+        ["c", "d", "凭据就绪"], ["d", "e", "静态通过"], ["e", "f", "有测试命令"],
+        ["f", "g", "对比通过"], ["b", "h", "无 grant", "reject"],
+        ["d", "h", "静态失败", "reject"], ["e", "h", "无命令", "reject"],
+        ["f", "h", "行为回归", "reject"]
+      ] },
+
+    s12: { no: "12", title: "横向支撑 · 贯穿全链路的约束", tag: "module diagram",
+      cap: "policies.py / stores/shared / queue · 每个模块调用时都经过的统一校验与记录",
+      cols: ["鉴权", "策略", "记录", "基础设施"],
+      nodes: [
+        { id: "a", col: 0, row: 0, t: "RBAC / Principal", s: "每次请求鉴权 + JWT 回查库", k: "start" },
+        { id: "b", col: 1, row: 0, t: "Grants / 配额", s: "repository_allowed · tenant quota", k: "decision" },
+        { id: "c", col: 2, row: 0, t: "Audit / Metrics / Trace", s: "审计日志 + 执行账本", k: "store" },
+        { id: "d", col: 3, row: 0, t: "SQLite / PostgreSQL", s: "shared/ 统一方言转换", k: "store" },
+        { id: "e", col: 3, row: 1, t: "Redis / 进程内降级", s: "Streams 队列后端", k: "store" },
+        { id: "f", col: 1, row: 1, t: "403 / 429 拒绝", s: "越权或超出配额", k: "reject" }
+      ],
+      edges: [
+        ["a", "b", ""], ["b", "c", "允许"], ["c", "d", "写入"], ["c", "e", "入队"],
+        ["b", "f", "拒绝", "reject"]
+      ] }
+  };
+
+  function buildModuleFigure(sid, f) {
+    var ML = 24, MW = 900, TOP = 58, NH = 54, ROWH = 78;
+    var colW = (MW - ML * 2) / f.cols.length, NW = colW - 14;
+    var maxRow = 0, i;
+    f.nodes.forEach(function (n) { if (n.row > maxRow) maxRow = n.row; });
+    var height = TOP + (maxRow + 1) * ROWH + 8;
+    var pos = {};
+    f.nodes.forEach(function (n) {
+      pos[n.id] = { x: ML + n.col * colW + 7, y: TOP + n.row * ROWH, col: n.col };
+    });
+    var svg = el("svg", { viewBox: "0 0 " + MW + " " + height, xmlns: NS,
+      "font-family": MF_FONT, role: "img", "aria-label": f.title + " 流程图" });
+    var defs = el("defs", {});
+    [["mfa", MF_LINE], ["mfr", MF_ROSE]].forEach(function (pair) {
+      var mk = el("marker", { id: pair[0] + "-" + sid, markerWidth: 8, markerHeight: 8,
+        refX: 6.5, refY: 4, orient: "auto" });
+      mk.appendChild(el("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: pair[1] }));
+      defs.appendChild(mk);
+    });
+    svg.appendChild(defs);
+    // 档案格式的列分隔虚线 + 列标题
+    f.cols.forEach(function (name, ci) {
+      if (ci > 0) svg.appendChild(el("line", {
+        x1: ML + ci * colW, y1: 40, x2: ML + ci * colW, y2: height - 8,
+        stroke: MF_FAINT, "stroke-width": 1, "stroke-dasharray": "2 5", opacity: ".55" }));
+      svg.appendChild(el("text", { x: ML + ci * colW + colW / 2, y: 30,
+        "text-anchor": "middle", "font-family": MF_TYPE, "font-size": 9.5,
+        "letter-spacing": ".1em", fill: MF_FAINT }, (ci + 1) + " / " + name));
+    });
+    // 边（先画，避免压住节点）
+    f.edges.forEach(function (e) {
+      var s = pos[e[0]], t = pos[e[1]];
+      if (!s || !t) return;
+      var bad = e[3] === "reject", d, lx, ly;
+      var bottomY = TOP + (maxRow + 1) * ROWH - 10;
+      if (bad && t.col - s.col > 1) {
+        // 跨越两列以上的拒绝边走图纸底部通道，避免水平段穿过中间节点
+        var sx0 = s.x + NW / 2, tx0 = t.x + NW / 2;
+        d = "M " + sx0 + " " + (s.y + NH) + " L " + sx0 + " " + bottomY +
+            " L " + tx0 + " " + bottomY + " L " + tx0 + " " + (t.y + NH);
+        lx = (sx0 + tx0) / 2; ly = bottomY - 6;
+      } else if (s.col === t.col) {
+        d = "M " + (s.x + NW / 2) + " " + (s.y + NH) +
+            " L " + (t.x + NW / 2) + " " + t.y;
+        lx = s.x + NW / 2 + 44; ly = (s.y + NH + t.y) / 2 + 3;
+      } else {
+        var sx = s.x + NW, sy = s.y + NH / 2, tx = t.x, ty = t.y + NH / 2, mid = tx - 12;
+        d = "M " + sx + " " + sy + " L " + mid + " " + sy +
+            " L " + mid + " " + ty + " L " + tx + " " + ty;
+        lx = (sx + tx) / 2; ly = (sy + ty) / 2 - 6;
+      }
+      svg.appendChild(el("path", { d: d, fill: "none",
+        stroke: bad ? MF_ROSE : MF_LINE, "stroke-width": bad ? 1.2 : 1.4,
+        "stroke-dasharray": bad ? "5 4" : "none",
+        "marker-end": "url(#" + (bad ? "mfr" : "mfa") + "-" + sid + ")" }));
+      if (e[2]) svg.appendChild(el("text", { x: lx, y: ly, "text-anchor": "middle",
+        "font-size": 9.5, fill: bad ? MF_ROSE : MF_FOG,
+        stroke: "#fdfcf8", "stroke-width": 3.5, "paint-order": "stroke" }, e[2]));
+    });
+    // 节点
+    f.nodes.forEach(function (n) {
+      var p = pos[n.id], g = el("g", {}), fill = MF_PAPER, stroke = MF_LINE, dash = "none", w = 1.2;
+      if (n.k === "store") { fill = MF_DEEP; }
+      else if (n.k === "reject") { fill = MF_LOTUS; stroke = MF_ROSE; dash = "5 3"; }
+      else if (n.k === "decision") { dash = "4 3"; }
+      else if (n.k === "end") { fill = "#f4f2f6"; stroke = MF_INK; w = 1.6; }
+      g.appendChild(el("rect", { x: p.x, y: p.y, width: NW, height: NH, rx: 2,
+        fill: fill, stroke: stroke, "stroke-width": w, "stroke-dasharray": dash }));
+      if (n.k === "start") g.appendChild(el("rect", { x: p.x, y: p.y, width: 3,
+        height: NH, fill: MF_INK }));
+      if (n.k === "decision") g.appendChild(el("path", {
+        d: "M " + (p.x + 1) + " " + (p.y + 10) + " l 5 -6 l 5 6 l -5 6 z",
+        fill: MF_PAPER, stroke: MF_INK, "stroke-width": 1 }));
+      var titleSize = n.t.length > 15 ? 11 : 12.5;
+      var subSize = n.s.length > 20 ? 9 : 9.8;
+      g.appendChild(el("text", { x: p.x + 11, y: p.y + 22, "font-size": titleSize,
+        "font-weight": 600, fill: n.k === "reject" ? MF_ROSE : MF_INK }, n.t));
+      g.appendChild(el("text", { x: p.x + 11, y: p.y + 40, "font-size": subSize,
+        fill: MF_FOG }, n.s));
+      svg.appendChild(g);
+    });
+    return svg;
+  }
+
+  Object.keys(MODULE_FLOWS).forEach(function (sid) {
+    var sec = document.getElementById(sid), body = sec && sec.querySelector(".card-body");
+    if (!body) return;
+    var f = MODULE_FLOWS[sid];
+    var fig = document.createElement("div");
+    fig.className = "module-figure";
+    var head = document.createElement("div"); head.className = "mf-head";
+    var no = document.createElement("span"); no.className = "mf-no";
+    no.textContent = "FEUILLE N° " + f.no;
+    var ttl = document.createElement("span"); ttl.className = "mf-title"; ttl.textContent = f.title;
+    var tag = document.createElement("span"); tag.className = "mf-tag"; tag.textContent = f.tag;
+    head.appendChild(no); head.appendChild(ttl); head.appendChild(tag);
+    var cap = document.createElement("p"); cap.className = "mf-cap"; cap.textContent = f.cap;
+    var scroll = document.createElement("div"); scroll.className = "mf-scroll";
+    scroll.appendChild(buildModuleFigure(sid, f));
+    var legend = document.createElement("div"); legend.className = "mf-legend";
+    legend.innerHTML = '<span><i></i>主链 / 数据传递</span>' +
+      '<span><i class="dash"></i>拒绝 · 失败 · 分支</span>' +
+      '<span><i class="box"></i>持久化 / 检查点</span>' +
+      '<span>虚线框 = 判断节点</span><span>粗边框 = 出口</span>';
+    fig.appendChild(head); fig.appendChild(cap); fig.appendChild(scroll); fig.appendChild(legend);
+    // 解释区已被双栏容器包裹，h3 不再是 card-body 的直接子节点；
+    // 用 .explain-pair（或第一个子节点）作为插入锚点，保证模块图仍排在最前。
+    body.insertBefore(fig, body.querySelector(".explain-pair") || body.firstChild);
+  });
+
+  // ---------- 导航高亮（scrollspy） ----------
+  var links = document.querySelectorAll("#nav a");
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute("href").slice(1)] = a; });
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        links.forEach(function (a) { a.classList.remove("active"); });
+        var a = map[e.target.id];
+        if (a) a.classList.add("active");
+      }
+    });
+  }, { rootMargin: "-80px 0px -55% 0px" });
+  Object.keys(map).forEach(function (id) {
+    var s = document.getElementById(id);
+    if (s) io.observe(s);
+  });
+
+  // ---------- 双解释阅读模式：并排对照 / 只看详细 / 只看大白话 ----------
+  var modeButtons = document.querySelectorAll(".explain-toolbar button[data-mode]");
+  function setExplainMode(mode) {
+    document.body.classList.remove("mode-tech", "mode-plain");
+    if (mode !== "both") document.body.classList.add("mode-" + mode);
+    modeButtons.forEach(function (b) {
+      var on = b.getAttribute("data-mode") === mode;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+  modeButtons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      setExplainMode(b.getAttribute("data-mode"));
+    });
+  });
+  setExplainMode("both");
+})();
+</script>
+</body>
+</html>

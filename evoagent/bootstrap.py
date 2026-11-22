@@ -186,6 +186,7 @@ def build_agentic_reviewer(
         context_manager,
         active_skills,
         settings.normal_task_tool_steps,
+        settings.test_execution_allow_untrusted,
     )
 
 
@@ -256,7 +257,8 @@ def build_container(settings: Settings) -> ServiceContainer:
     )
     github = GitHubClient(settings.github_token)
     repair_verifier = RepairVerifier(
-        settings.repair_test_command, settings.repair_verify_timeout_seconds
+        settings.repair_test_command, settings.repair_verify_timeout_seconds,
+        allow_untrusted=settings.test_execution_allow_untrusted,
     )
     fixer = (
         VerifiedPatchFixer(chat_client, repair_verifier)

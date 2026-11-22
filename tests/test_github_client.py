@@ -9,10 +9,12 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+import urllib.request
 from unittest.mock import patch
 
 from evoagent.adapters.github import (
-    GitHubAppAuthenticator, GitHubClient, is_github_url, verify_signature,
+    GitHubAppAuthenticator, GitHubClient, _SafeRedirectHandler,
+    is_github_url, verify_signature,
 )
 
 
@@ -91,7 +93,7 @@ class UrlAllowlistTests(unittest.TestCase):
 
     def test_non_github_request_is_refused_before_any_network_call(self):
         client = GitHubClient("secret-token")
-        with patch("evoagent.adapters.github.urllib.request.urlopen") as urlopen:
+        with patch("evoagent.adapters.github._open_url") as urlopen:
             with self.assertRaises(ValueError):
                 client._json("GET", "https://169.254.169.254/latest/meta-data/")
             with self.assertRaises(ValueError):
@@ -104,10 +106,24 @@ class UrlAllowlistTests(unittest.TestCase):
                 return "https://169.254.169.254/latest/meta-data/"
 
         client = GitHubClient("secret-token")
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=RedirectResponse()):
             with self.assertRaisesRegex(RuntimeError, "non-GitHub host"):
                 client._json("GET", "https://api.github.com/x")
+
+    def test_redirect_handler_rejects_the_next_hop_before_following_it(self):
+        handler = _SafeRedirectHandler()
+        request = urllib.request.Request("https://api.github.com/repos/o/r")
+        with self.assertRaises(urllib.error.HTTPError):
+            handler.redirect_request(
+                request, io.BytesIO(b""), 302, "Found", {},
+                "https://169.254.169.254/latest/meta-data/",
+            )
+        allowed = handler.redirect_request(
+            request, io.BytesIO(b""), 302, "Found", {},
+            "https://api.github.com/repos/o/r",
+        )
+        self.assertEqual("https://api.github.com/repos/o/r", allowed.full_url)
 
 
 class RequestTests(unittest.TestCase):
@@ -125,7 +141,7 @@ class RequestTests(unittest.TestCase):
 
     def test_json_request_construction(self):
         requests, fake = self._capture()
-        with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
+        with patch("evoagent.adapters.github._open_url", side_effect=fake):
             result = self.client._json("POST", "https://api.github.com/x", {"a": 1})
         self.assertEqual({"ok": True}, result)
         request, timeout = requests[0]
@@ -136,23 +152,23 @@ class RequestTests(unittest.TestCase):
         self.assertEqual("application/json", request.get_header("Content-type"))
 
     def test_empty_response_body_becomes_an_empty_object(self):
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=FakeResponse(b"")):
             self.assertEqual({}, self.client._json("GET", "https://api.github.com/x"))
 
     def test_fetch_diff_decodes_with_replacement(self):
         _, fake = self._capture()
-        with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
+        with patch("evoagent.adapters.github._open_url", side_effect=fake):
             body = self.client._request("GET", "https://api.github.com/d", raw=True)
         self.assertEqual(b'{"ok": true}', body)
 
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=FakeResponse(b"diff \xff")):
             self.assertEqual("diff �", self.client.fetch_diff("https://api.github.com/d"))
 
     def test_post_comment_sends_markdown(self):
         requests, fake = self._capture()
-        with patch("evoagent.adapters.github.urllib.request.urlopen", side_effect=fake):
+        with patch("evoagent.adapters.github._open_url", side_effect=fake):
             self.client.post_comment("https://api.github.com/repos/o/r/issues/1/", "hello")
         request = requests[0][0]
         self.assertEqual("https://api.github.com/repos/o/r/issues/1/comments", request.full_url)
@@ -161,7 +177,7 @@ class RequestTests(unittest.TestCase):
     def test_upsert_comment_updates_by_marker_or_posts_once(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             if method == "GET":
                 return [
@@ -179,7 +195,7 @@ class RequestTests(unittest.TestCase):
 
         calls.clear()
 
-        def fake_post(method, url, payload=None):
+        def fake_post(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             return [] if method == "GET" else {}
 
@@ -191,7 +207,7 @@ class RequestTests(unittest.TestCase):
     def test_upsert_comment_searches_later_pages(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             if method == "GET" and "page=2" not in url:
                 return [{"body": "unrelated", "url": str(index)} for index in range(100)]
@@ -216,7 +232,7 @@ class RetryTests(unittest.TestCase):
             http_error(502),
             FakeResponse(b'{"ok": true}'),
         ]
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=responses), \
                 patch("evoagent.adapters.github.time.sleep") as sleep, \
                 patch("evoagent.adapters.github.random.random", return_value=0.0):
@@ -224,14 +240,14 @@ class RetryTests(unittest.TestCase):
         self.assertEqual([1, 2], [call.args[0] for call in sleep.call_args_list])
 
     def test_retry_after_and_rate_limit_reset_control_the_delay(self):
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=[http_error(429, headers={"Retry-After": "7"}),
                                 FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep") as sleep:
             self.client._json("GET", "https://api.github.com/x")
         self.assertEqual(7.0, sleep.call_args_list[0].args[0])
 
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=[http_error(403, headers={
                        "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1100",
                    }), FakeResponse(b"{}")]), \
@@ -241,7 +257,7 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(30.0, sleep.call_args_list[0].args[0])  # capped at 30s
 
     def test_invalid_retry_headers_fall_back_to_exponential_backoff(self):
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=[http_error(503, headers={
                        "Retry-After": "soon", "X-RateLimit-Reset": "later",
                    }), FakeResponse(b"{}")]), \
@@ -253,7 +269,7 @@ class RetryTests(unittest.TestCase):
     def test_non_retryable_status_raises_immediately(self):
         for code in (400, 401, 403, 404, 422):
             with self.subTest(code=code), patch(
-                "evoagent.adapters.github.urllib.request.urlopen",
+                "evoagent.adapters.github._open_url",
                 side_effect=http_error(code, detail=b"bad request"),
             ), patch("evoagent.adapters.github.time.sleep") as sleep:
                 with self.assertRaisesRegex(RuntimeError, "HTTP %d" % code):
@@ -261,21 +277,33 @@ class RetryTests(unittest.TestCase):
             sleep.assert_not_called()
 
     def test_exhausted_retries_raise_with_the_last_error(self):
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=[http_error(500) for _ in range(4)]), \
                 patch("evoagent.adapters.github.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "HTTP 500"):
                 self.client._json("GET", "https://api.github.com/x")
 
+    def test_non_idempotent_requests_are_not_retried(self):
+        with patch("evoagent.adapters.github._open_url",
+                   side_effect=http_error(500)) as open_url, \
+                patch("evoagent.adapters.github.time.sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "HTTP 500"):
+                self.client._json(
+                    "POST", "https://api.github.com/x", {"a": 1},
+                    idempotent=False,
+                )
+        self.assertEqual(1, open_url.call_count)
+        sleep.assert_not_called()
+
     def test_url_errors_and_timeouts_are_retried_then_raised(self):
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=[urllib.error.URLError("down"),
                                 TimeoutError("slow"),
                                 FakeResponse(b"{}")]), \
                 patch("evoagent.adapters.github.time.sleep"):
             self.assertEqual({}, self.client._json("GET", "https://api.github.com/x"))
 
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    side_effect=urllib.error.URLError("down")), \
                 patch("evoagent.adapters.github.time.sleep"):
             with self.assertRaisesRegex(RuntimeError, "request failed"):
@@ -285,20 +313,20 @@ class RetryTests(unittest.TestCase):
 class ResponseLimitTests(unittest.TestCase):
     def test_declared_content_length_limit(self):
         client = GitHubClient("", max_response_bytes=10)
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=FakeResponse(b"{}", {"Content-Length": "11"})):
             with self.assertRaisesRegex(RuntimeError, "exceeds the 10 byte limit"):
                 client._json("GET", "https://api.github.com/x")
 
     def test_invalid_content_length_is_ignored(self):
         client = GitHubClient("", max_response_bytes=10)
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=FakeResponse(b"{}", {"Content-Length": "unknown"})):
             self.assertEqual({}, client._json("GET", "https://api.github.com/x"))
 
     def test_streamed_body_limit(self):
         client = GitHubClient("", max_response_bytes=10)
-        with patch("evoagent.adapters.github.urllib.request.urlopen",
+        with patch("evoagent.adapters.github._open_url",
                    return_value=FakeResponse(b"x" * 11)):
             with self.assertRaisesRegex(RuntimeError, "exceeds the 10 byte limit"):
                 client._json("GET", "https://api.github.com/x")
@@ -308,10 +336,42 @@ class EndpointTests(unittest.TestCase):
     def setUp(self):
         self.client = GitHubClient("token")
 
+    def test_fetch_pull_diff_uses_the_derived_api_url(self):
+        urls = []
+
+        def fake_fetch_diff(url):
+            urls.append(url)
+            return "diff"
+
+        with patch.object(self.client, "fetch_diff", side_effect=fake_fetch_diff):
+            self.assertEqual(
+                "diff", self.client.fetch_pull_diff("org/repo", 12),
+            )
+        self.assertEqual(
+            ["https://api.github.com/repos/org/repo/pulls/12"], urls,
+        )
+
+    def test_file_paths_reject_escapes_and_absolute_paths(self):
+        for path in (
+            "../x", "a/../../b", "/etc/passwd", "C:\\x", "a\\..\\b",
+            "", "a//b", "a/./b",
+        ):
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValueError, "file path"):
+                    self.client.get_file("org/repo", path, "main")
+
+    def test_atomic_commit_rejects_an_escaping_path_before_any_request(self):
+        with patch.object(self.client, "_json") as call:
+            with self.assertRaisesRegex(ValueError, "file path"):
+                self.client.create_atomic_commit(
+                    "org/repo", "evo/fix", "parent", {"../escape.py": "x"}, "m",
+                )
+        call.assert_not_called()
+
     def test_get_file_decodes_base64_content_and_quotes_paths(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url))
             import base64
             return {"content": base64.b64encode(b"hello\n").decode("ascii")}
@@ -325,7 +385,7 @@ class EndpointTests(unittest.TestCase):
     def test_get_pull_request_and_repository_urls(self):
         urls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             urls.append(url)
             return {}
 
@@ -338,7 +398,10 @@ class EndpointTests(unittest.TestCase):
         ], urls)
 
     def test_repository_names_reject_path_traversal(self):
-        for repository in ("../../users", "org/repo/../../x", "", "/repo", "org/repo "):
+        for repository in (
+            "../../users", "org/repo/../../x", "", "/repo", "org/repo ",
+            "../users", "../..", "org/..", "org/.", "org//repo",
+        ):
             with self.subTest(repository=repository):
                 with self.assertRaisesRegex(ValueError, "owner/name"):
                     self.client.get_pull_request(repository, 1)
@@ -350,7 +413,7 @@ class EndpointTests(unittest.TestCase):
     def test_post_review_sends_comments_to_the_reviews_endpoint(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             return {"id": 1}
 
@@ -370,7 +433,7 @@ class EndpointTests(unittest.TestCase):
     def test_create_check_run_requires_head_sha_and_posts_output(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             return {"id": 1}
 
@@ -403,7 +466,7 @@ class EndpointTests(unittest.TestCase):
     def test_branch_and_file_commit_payloads(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             return {}
 
@@ -425,7 +488,7 @@ class EndpointTests(unittest.TestCase):
     def test_atomic_commit_builds_a_tree_then_a_branch(self):
         calls = []
 
-        def fake_json(method, url, payload=None):
+        def fake_json(method, url, payload=None, **kwargs):
             calls.append((method, url, payload))
             if url.endswith("/git/commits/parent-sha"):
                 return {"tree": {"sha": "base-tree"}}
@@ -472,7 +535,7 @@ class GitHubAppAuthenticatorTests(unittest.TestCase):
             json.dumps({"token": "tok-1", "expires_at": "2035-01-01T00:00:00Z"}).encode(),
         )]
         with patch.object(authenticator, "app_jwt", return_value="jwt"), \
-                patch("evoagent.adapters.github.urllib.request.urlopen",
+                patch("evoagent.adapters.github._open_url",
                       side_effect=responses) as urlopen:
             self.assertEqual("tok-1", authenticator.installation_token(99))
             self.assertEqual("tok-1", authenticator.installation_token(99))
@@ -489,7 +552,7 @@ class GitHubAppAuthenticatorTests(unittest.TestCase):
             "token": "new", "expires_at": "2035-01-01T00:00:00Z",
         }).encode())
         with patch.object(authenticator, "app_jwt", return_value="jwt"), \
-                patch("evoagent.adapters.github.urllib.request.urlopen",
+                patch("evoagent.adapters.github._open_url",
                       return_value=response):
             self.assertEqual("new", authenticator.installation_token(7))
 
@@ -499,7 +562,7 @@ class GitHubAppAuthenticatorTests(unittest.TestCase):
             "token": "tok", "expires_at": "not-a-date",
         }).encode())
         with patch.object(authenticator, "app_jwt", return_value="jwt"), \
-                patch("evoagent.adapters.github.urllib.request.urlopen",
+                patch("evoagent.adapters.github._open_url",
                       return_value=response):
             self.assertEqual("tok", authenticator.installation_token(8))
         self.assertGreater(

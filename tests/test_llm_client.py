@@ -5,7 +5,7 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from evoagent.adapters.llm import JsonChatClient
+from evoagent.adapters.llm import MAX_RESPONSE_BYTES, JsonChatClient
 from evoagent.agent.telemetry import ExecutionLedger
 
 
@@ -45,6 +45,17 @@ class JsonChatClientTests(unittest.TestCase):
             "https://llm.test/v1", "key", "test-model", "test",
             retries=retries, backoff_seconds=0.0,
         )
+
+    def test_oversized_response_is_rejected(self):
+        client = self.make_client(retries=0)
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = (
+            b"x" * (MAX_RESPONSE_BYTES + 1)
+        )
+        with patch("evoagent.adapters.llm.urllib.request.urlopen",
+                   return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "limit"):
+                client.complete_json("role", "system", "user")
 
     def test_retries_transient_http_errors_then_succeeds(self):
         client = self.make_client()

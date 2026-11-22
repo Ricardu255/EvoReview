@@ -254,7 +254,7 @@ Invoke-RestMethod https://<公网域名>/health
 
 自动修复只覆盖可确定安全的规则，例如调试输出、`shell=True` 和硬编码 Python 凭据；结果始终提交到新的 `evoagent/fix-pr-*` 分支，不直接修改源分支。未配置 `EVOAGENT_REPAIR_TEST_COMMAND` 时，修复链在静态检查后即停止，只返回建议——不提交任何 commit，也不会宣称"测试已通过"。
 
-`EVOAGENT_REPAIR_TEST_COMMAND` 会在 PR 源仓库（可能是攻击者控制的 fork）的解压副本中执行；环境变量受限，但没有网络或容器隔离。仅对可信仓库启用，或把 EvoReview 放在一次性环境中运行。
+`EVOAGENT_REPAIR_TEST_COMMAND` 会在 PR 源仓库（可能是攻击者控制的 fork）的解压副本中执行；环境变量受限，但没有网络或容器隔离。仅对可信仓库配置该命令，或把 EvoReview 放在一次性环境中运行。设置 `EVOAGENT_TEST_EXECUTION_ALLOW_UNTRUSTED=false` 可以保留命令配置但停止执行仓库测试，编译检查仍会运行。同样的开关适用于 Agent 的 `run_repository_checks(kind="tests")` 工具；`kind="compile"` 仍然可用。
 
 ## API
 

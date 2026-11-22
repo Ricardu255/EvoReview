@@ -152,6 +152,11 @@ class Settings:
     queue_dlq_maxlen: int = 10_000
     repair_test_command: str = ""
     repair_verify_timeout_seconds: int = 120
+    # Running repository tests executes code from the reviewed repository.
+    # The default preserves the documented behaviour: configuring a test
+    # command enables it.  Set this to false to keep the command configured
+    # but stop executing repository code (compile checks still run).
+    test_execution_allow_untrusted: bool = True
     otel_endpoint: str = ""
     otel_service_name: str = "evoagent"
     alert_failure_rate: float = 0.20
@@ -166,6 +171,15 @@ class Settings:
     context_observation_token_budget: int = 4000
     context_recent_observations: int = 2
     context_map_chunk_tokens: int = 3000
+    # Lossless batched review engine.  New tasks pin the engine at creation;
+    # existing tasks keep the engine they were created with.  Set
+    # EVOAGENT_REVIEW_BATCHING_ENABLED=false to fall back to the single-pass
+    # engine for tasks created while it is off.
+    review_batching_enabled: bool = True
+    # Metered task-level token budget for a batched review.  A task pauses
+    # (PAUSED_BUDGET) instead of failing when the budget runs out and can be
+    # resumed with additional tokens.
+    review_task_token_budget: int = 64000
     enabled_agents: str = "lead,security,correctness-reliability,critic"
     # Extra read-only tool steps available to normal-risk workers.  0 preserves
     # the original fixed 5-call single-pass behaviour.
@@ -302,6 +316,8 @@ class Settings:
             raise ValueError("memory limits cannot be negative")
         if self.agent_context_input_tokens < 1 or self.agent_token_budget < 1:
             raise ValueError("agent token budgets must be positive")
+        if self.review_task_token_budget < 1:
+            raise ValueError("EVOAGENT_REVIEW_TASK_TOKEN_BUDGET must be positive")
         if (
             self.agent_context_input_tokens + self.agent_token_budget
             > self.agent_context_window_tokens
@@ -459,6 +475,9 @@ class Settings:
             queue_dlq_maxlen=_int("EVOAGENT_QUEUE_DLQ_MAXLEN", 10_000),
             repair_test_command=os.getenv("EVOAGENT_REPAIR_TEST_COMMAND", ""),
             repair_verify_timeout_seconds=_int("EVOAGENT_REPAIR_VERIFY_TIMEOUT_SECONDS", 120),
+            test_execution_allow_untrusted=_bool(
+                "EVOAGENT_TEST_EXECUTION_ALLOW_UNTRUSTED", True
+            ),
             otel_endpoint=os.getenv("EVOAGENT_OTEL_ENDPOINT", ""),
             otel_service_name=os.getenv("EVOAGENT_OTEL_SERVICE_NAME", "evoagent"),
             alert_failure_rate=float(os.getenv("EVOAGENT_ALERT_FAILURE_RATE", "0.20")),
@@ -484,6 +503,12 @@ class Settings:
             ),
             context_map_chunk_tokens=_int(
                 "EVOAGENT_CONTEXT_MAP_CHUNK_TOKENS", 3000
+            ),
+            review_batching_enabled=_bool(
+                "EVOAGENT_REVIEW_BATCHING_ENABLED", True
+            ),
+            review_task_token_budget=_int(
+                "EVOAGENT_REVIEW_TASK_TOKEN_BUDGET", 64000
             ),
             enabled_agents=os.getenv(
                 "EVOAGENT_ENABLED_AGENTS",
