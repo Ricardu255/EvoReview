@@ -291,6 +291,7 @@ class ContextManager:
         self, task: str, tools: Sequence[Dict[str, Any]], observations: Sequence[Dict[str, Any]],
         remaining_token_budget: int, remaining_time_seconds: int, system_prompt: str = "",
         max_output_tokens: int = 4000,
+        preserve_diff: bool = False,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         system_tokens = estimate_tokens(system_prompt)
         hard_input_limit = max(
@@ -320,14 +321,17 @@ class ContextManager:
             },
         }
         original_tokens = estimate_tokens(managed)
-        if original_tokens > hard_input_limit:
+        # The lossless batched engine sends pre-sized batches: compacting the
+        # task payload would silently drop covered ranges, so only tool
+        # schemas and observations shrink when preserve_diff is set.
+        if original_tokens > hard_input_limit and not preserve_diff:
             managed["task"] = self._compact_task(task, max(256, hard_input_limit - tools_tokens - observation_budget - 256))
         # A final defensive reduction handles unexpectedly large tool schemas or
         # task metadata while preserving JSON structure and list indices.
         while estimate_tokens(managed) > hard_input_limit and managed["observations"]:
             managed["observations"].pop(0)
             observation_stats["dropped"] += 1
-        if estimate_tokens(managed) > hard_input_limit:
+        if estimate_tokens(managed) > hard_input_limit and not preserve_diff:
             managed["task"] = self._minimal_task(
                 managed["task"], max(192, hard_input_limit - tools_tokens - 320)
             )

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List
 
 from .diff_parser import ParsedDiff
+from .finding_identity import RULE_TO_CWE, is_valid_cwe
 from .models import Finding, Severity
 
 
@@ -28,18 +29,38 @@ class FindingGate:
         self.minimum_confidence = minimum_confidence
 
     def apply(self, findings: Iterable[Finding], parsed: ParsedDiff) -> GateResult:
-        valid_locations = {(item.path, item.line): item.content for item in parsed.added_lines}
+        valid_locations = {
+            ("new", item.path, item.line): item.content
+            for item in parsed.added_lines
+        }
+        valid_locations.update({
+            ("old", item.path, item.line): item.content
+            for item in parsed.removed_lines
+        })
         accepted, rejected = [], []
-        counters = {"format": 0, "evidence": 0, "confidence": 0, "release": 0}
+        counters = {
+            "format": 0, "taxonomy": 0, "evidence": 0,
+            "confidence": 0, "release": 0,
+        }
         for finding in findings:
             reasons = []
-            location = (finding.path, finding.line)
+            location = (finding.line_side, finding.path, finding.line)
             if (
                 location not in valid_locations or not finding.rule_id.strip()
                 or not finding.title.strip() or not finding.explanation.strip()
             ):
                 reasons.append("format gate: invalid location or required field")
                 counters["format"] += 1
+
+            # The taxonomy gate keeps the report's CWE labels consistent with
+            # the managed rule catalog even when a model contradicts it.
+            expected_cwe = RULE_TO_CWE.get(str(finding.rule_id).strip().upper())
+            if finding.cwe and not is_valid_cwe(finding.cwe):
+                reasons.append("taxonomy gate: malformed CWE")
+                counters["taxonomy"] += 1
+            elif expected_cwe and str(finding.cwe or "").upper() != expected_cwe:
+                reasons.append("taxonomy gate: CWE conflicts with program rule mapping")
+                counters["taxonomy"] += 1
 
             quoted = finding.evidence.strip()
             line = valid_locations.get(location, "").strip()
@@ -77,7 +98,8 @@ class FindingGate:
             if reasons:
                 rejected.append({
                     "rule_id": finding.rule_id, "path": finding.path,
-                    "line": finding.line, "reasons": reasons,
+                    "line": finding.line, "line_side": finding.line_side,
+                    "reasons": reasons,
                 })
             else:
                 accepted.append(finding)
@@ -85,6 +107,7 @@ class FindingGate:
             accepted, rejected,
             {
                 "format": {"rejected": counters["format"]},
+                "taxonomy": {"rejected": counters["taxonomy"]},
                 "evidence": {"rejected": counters["evidence"]},
                 "confidence": {
                     "minimum": self.minimum_confidence,

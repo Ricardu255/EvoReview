@@ -195,17 +195,21 @@ class FindingsParsingTests(unittest.TestCase):
         self.assertEqual(1, len(findings))
         item = findings[0]
         self.assertEqual(Severity.MEDIUM, item.severity)
-        self.assertEqual(0.7, item.confidence)
+        # Calibrated: base 0.40 + evidence refs 0.08 + strong tool 0.15
+        # + call chain 0.15; the model's own confidence value is ignored.
+        self.assertEqual(0.78, item.confidence)
         self.assertEqual("security", item.source)
+        self.assertEqual(["security"], item.sources)
         self.assertEqual("e1", item.evidence_refs[0]["evidence_id"])
         self.assertEqual([{"a": 1}], item.call_chain)
 
-    def test_parse_findings_clamps_confidences(self):
-        for value, expected in ((2.5, 1.0), (-1, 0.0)):
+    def test_parse_findings_ignores_self_reported_confidence(self):
+        for value in (2.5, -1, 0.99):
             result = {"findings": [{
                 "path": "app.py", "line": 1, "confidence": value,
             }]}
-            self.assertEqual(expected, _parse_findings(result, PARSED, "r")[0].confidence)
+            # No evidence: the calibrated baseline, regardless of the claim.
+            self.assertEqual(0.4, _parse_findings(result, PARSED, "r")[0].confidence)
 
 
 class FindingPolicyTests(unittest.TestCase):
@@ -226,7 +230,8 @@ class FindingPolicyTests(unittest.TestCase):
         }
         accepted, decisions = FindingPolicy._apply_critic(result, candidates)
         self.assertTrue(decisions[0]["accepted"])
-        self.assertEqual(0.7, candidates[0].confidence)
+        # Positive bumps are capped at +0.08 and only with real tool evidence.
+        self.assertEqual(0.58, candidates[0].confidence)
         self.assertEqual("e1", candidates[0].evidence_refs[0]["evidence_id"])
         self.assertFalse(decisions[1]["accepted"])
         self.assertEqual(
@@ -240,7 +245,17 @@ class FindingPolicyTests(unittest.TestCase):
             "decisions": [{"finding_index": 0, "accepted": True,
                            "confidence_adjustment": 5}],
         }, candidates)
-        self.assertEqual(1.0, candidates[0].confidence)
+        # Without supporting tool evidence a positive adjustment is a no-op.
+        self.assertEqual(0.9, candidates[0].confidence)
+        FindingPolicy._apply_critic({
+            "_observations": [{"result": {
+                "evidence_id": "e1", "tool": "ast_analyze", "output": {},
+            }}],
+            "decisions": [{"finding_index": 0, "accepted": True,
+                           "confidence_adjustment": 5,
+                           "supporting_evidence_ids": ["e1"]}],
+        }, candidates)
+        self.assertEqual(0.98, candidates[0].confidence)
 
     def test_lead_final_filters_indices_and_applies_adjustments(self):
         candidates = [finding(confidence=0.5), finding(confidence=0.5)]
@@ -253,8 +268,9 @@ class FindingPolicyTests(unittest.TestCase):
             ],
         }, candidates)
         self.assertEqual([candidates[0], candidates[1]], accepted)
+        # The Lead may only lower confidence, never raise it.
         self.assertEqual(0.5, candidates[0].confidence)
-        self.assertEqual(0.7, candidates[1].confidence)
+        self.assertEqual(0.5, candidates[1].confidence)
 
     def test_restore_findings_skips_invalid_values(self):
         restored = FindingPolicy._restore_findings([

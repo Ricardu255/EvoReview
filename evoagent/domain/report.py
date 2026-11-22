@@ -183,7 +183,8 @@ def to_markdown(
                     _inline(item.get("title", "Finding"), 200),
                 ),
                 "",
-                "`%s:%s` · **%s** · `%s`" % (
+                "`%s%s:%s` · **%s** · `%s`" % (
+                    "old " if item.get("line_side") == "old" else "",
                     _inline(item.get("path", "")), _inline(item.get("line", 0), 20),
                     severity.upper(), _inline(item.get("rule_id", ""), 80),
                 ),

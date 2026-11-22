@@ -11,6 +11,9 @@ class TaskState(str, Enum):
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    # Batched reviews pause here when the metered task token budget is
+    # exhausted; completing batches are preserved and resume(top-up) continues.
+    PAUSED_BUDGET = "PAUSED_BUDGET"
 
 
 class Severity(str, Enum):
@@ -50,10 +53,17 @@ class Finding:
     evidence_refs: List[Dict[str, Any]] = field(default_factory=list)
     call_chain: List[Dict[str, Any]] = field(default_factory=list)
     source: str = "unknown"
+    # Every producer that reported this finding; merge provenance uses it to
+    # keep deterministic scanner facts authoritative over worker wording.
+    sources: List[str] = field(default_factory=list)
     gate: Dict[str, Any] = field(default_factory=dict)
     # Canonical taxonomy used for evaluation.  rule_id remains an internal or
     # reviewer-specific label and is not required to be stable across models.
     cwe: Optional[str] = None
+    # Which side of the diff the line number refers to: "new" (added file) or
+    # "old" (removed lines).  Old findings default gracefully from persisted
+    # reports that predate the field.
+    line_side: str = "new"
 
     def to_dict(self) -> Dict[str, Any]:
         value = asdict(self)

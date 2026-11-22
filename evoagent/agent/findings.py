@@ -1,9 +1,18 @@
-"""Finding parsing, merging and Critic/Lead decision application."""
+"""Finding parsing, merging and Critic/Lead decision application.
+
+Confidence is calibrated by the program from verifiable evidence instead of
+trusting model self-reports, deterministic scanner records win merges, and
+Critic/Lead adjustments are capped so a model cannot inflate a finding past
+the gates.  Ported from the parallel EvoAgnet branch.
+"""
 import json
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Tuple
 
 from ..domain.diff_parser import ParsedDiff
-from ..domain.finding_identity import canonical_identity
+from ..domain.finding_identity import (
+    RULE_CATALOG, canonical_identity, normalize_worker_identity,
+)
+from ..domain.gates import FindingGate
 from ..domain.models import Finding, Severity
 
 
@@ -29,39 +38,66 @@ def _strict_bool(value) -> bool:
     return bool(value)
 
 
-def _parse_findings(result: dict, parsed: ParsedDiff, role: str) -> List[Finding]:
-    valid = {(item.path, item.line) for item in parsed.added_lines}
+# Confidence comes from verifiable evidence, never from the model's self-score,
+# so a fabricated high score cannot bypass the confidence gate.
+def _calibrated_confidence(
+    exact_line: bool, known_rule: bool, refs: List[dict], chain: List[dict],
+) -> float:
+    score = 0.40
+    if exact_line:
+        score += 0.10
+    if known_rule:
+        score += 0.08
+    if refs:
+        score += 0.08
+    if any(str(item.get("tool")) in FindingGate.STRONG_EVIDENCE_TOOLS for item in refs):
+        score += 0.15
+    if chain:
+        score += 0.15
+    return round(min(0.95, score), 2)
+
+
+def _parse_findings(
+    result: dict, parsed: ParsedDiff, role: str,
+    allowed_custom_rules: Tuple[str, ...] = (),
+) -> List[Finding]:
+    valid = {("new", item.path, item.line): item.content for item in parsed.added_lines}
+    valid.update({("old", item.path, item.line): item.content for item in parsed.removed_lines})
     evidence = _collect_evidence(result.get("_observations") or [])
     findings = []
     for raw in result.get("findings") or []:
+        if not isinstance(raw, dict):
+            continue
         try:
             path, line = str(raw.get("path", "")), int(raw.get("line", 0))
         except (TypeError, ValueError):
             continue
-        if (path, line) not in valid:
+        side = str(raw.get("line_side", "new"))
+        location = (side, path, line)
+        if location not in valid:
             continue
         try:
             severity = Severity(str(raw.get("severity", "medium")).lower())
         except ValueError:
             severity = Severity.MEDIUM
         refs = [
-            evidence[item] for item in raw.get("evidence_ids") or []
+            evidence[str(item)] for item in raw.get("evidence_ids") or []
             if str(item) in evidence
         ]
         chain = [item for item in (raw.get("call_chain") or []) if isinstance(item, dict)][:20]
-        try:
-            confidence = float(raw.get("confidence", 0.7))
-        except (TypeError, ValueError):
-            confidence = 0.7
+        rule_id, cwe, known_rule = normalize_worker_identity(
+            raw.get("rule_id"), raw.get("cwe"), role, allowed_custom_rules,
+        )
+        quoted = str(raw.get("evidence", ""))[:500]
+        exact_line = bool(quoted.strip() and quoted.strip() in valid[location].strip())
         findings.append(Finding(
-            rule_id=str(raw.get("rule_id", "LLM-REVIEW"))[:80],
-            cwe=str(raw.get("cwe", "")).strip().upper() or None,
+            rule_id=rule_id, cwe=cwe or None,
             severity=severity, title=str(raw.get("title", "Review finding"))[:200],
             explanation=str(raw.get("explanation", ""))[:4000], path=path, line=line,
-            evidence=str(raw.get("evidence", ""))[:500],
+            line_side=side, evidence=quoted,
             fix=str(raw.get("fix", ""))[:4000], test=str(raw.get("test", ""))[:4000],
-            confidence=max(0.0, min(1.0, confidence)), evidence_refs=refs,
-            call_chain=chain, source=role,
+            confidence=_calibrated_confidence(exact_line, known_rule, refs, chain),
+            evidence_refs=refs, call_chain=chain, source=role, sources=[role],
         ))
     return findings
 
@@ -84,12 +120,17 @@ class FindingPolicy:
                     adjustment = float(decision.get("confidence_adjustment", 0))
                 except (TypeError, ValueError):
                     adjustment = 0.0
-                finding.confidence = max(0.0, min(1.0, finding.confidence + adjustment))
-                finding.evidence_refs.extend(
+                supporting = [
                     evidence[str(value)]
                     for value in decision.get("supporting_evidence_ids") or []
                     if str(value) in evidence
-                )
+                ]
+                finding.evidence_refs.extend(supporting)
+                # Negative review may lower the score; positive review only
+                # adds a small, capped bump when backed by real tool evidence.
+                upper = 0.08 if supporting else 0.0
+                adjustment = max(-0.15, min(upper, adjustment))
+                finding.confidence = max(0.0, min(1.0, finding.confidence + adjustment))
             decisions.append({
                 "finding_index": index, "accepted": accepted,
                 "objections": (decision or {}).get(
@@ -117,6 +158,8 @@ class FindingPolicy:
                 adjustment = float(adjustments.get(index, 0))
             except (TypeError, ValueError):
                 adjustment = 0.0
+            # The Lead curates; it never raises evidence confidence on taste.
+            adjustment = max(-0.10, min(0.0, adjustment))
             finding.confidence = max(0.0, min(1.0, finding.confidence + adjustment))
             accepted.append(finding)
         return accepted
@@ -127,17 +170,20 @@ class FindingPolicy:
         for value in values or []:
             try:
                 severity = Severity(str(value.get("severity", "medium")))
+                raw_cwe = value.get("cwe")
                 findings.append(Finding(
                     rule_id=str(value.get("rule_id", "REVIEW")), severity=severity,
-                    cwe=str(value.get("cwe", "")).strip().upper() or None,
+                    cwe=(str(raw_cwe).strip().upper() or None) if raw_cwe else None,
                     title=str(value.get("title", "Review finding")),
                     explanation=str(value.get("explanation", "")),
                     path=str(value.get("path", "")), line=int(value.get("line", 0)),
+                    line_side=str(value.get("line_side", "new")),
                     evidence=str(value.get("evidence", "")), fix=str(value.get("fix", "")),
                     test=str(value.get("test", "")), confidence=float(value.get("confidence", 0.7)),
                     evidence_refs=list(value.get("evidence_refs") or []),
                     call_chain=list(value.get("call_chain") or []),
                     source=str(value.get("source", "unknown")),
+                    sources=list(value.get("sources") or []),
                 ))
             except (TypeError, ValueError):
                 continue
@@ -154,13 +200,75 @@ class FindingPolicy:
     def _merge(findings: Iterable[Finding]) -> List[Finding]:
         merged = {}
         for finding in findings:
+            rule = str(finding.rule_id or "").strip().upper()
+            identity = (
+                "RULE:" + rule
+                if rule in RULE_CATALOG or rule.startswith("UNCLASSIFIED-") else
+                canonical_identity(rule, finding.cwe)
+            )
             key = (
-                finding.path, finding.line,
-                canonical_identity(finding.rule_id, finding.cwe),
+                finding.path, getattr(finding, "line_side", "new"), finding.line, identity,
             )
             current = merged.get(key)
-            if current is None or finding.confidence > current.confidence:
+            if current is None:
+                if not finding.sources and finding.source:
+                    finding.sources = [finding.source]
                 merged[key] = finding
+                continue
+
+            def provenance(item):
+                values = list(item.sources or [])
+                if item.source and item.source not in values:
+                    values.append(item.source)
+                return values
+
+            def deterministic(item):
+                return any("scanner" in value for value in provenance(item))
+
+            # Worker self-scores and wording cannot override scanner facts;
+            # only records without a scanner source compete by calibrated score.
+            if deterministic(finding) and not deterministic(current):
+                primary, secondary = finding, current
+            elif deterministic(current) and not deterministic(finding):
+                primary, secondary = current, finding
+            elif finding.confidence > current.confidence:
+                primary, secondary = finding, current
+            else:
+                primary, secondary = current, finding
+
+            primary_sources = provenance(primary)
+            secondary_sources = provenance(secondary)
+            sources = []
+            for value in primary_sources + secondary_sources:
+                if value and value not in sources:
+                    sources.append(value)
+            primary.sources = sources
+
+            seen_refs = {
+                (str(item.get("evidence_id", "")), str(item.get("tool", "")))
+                for item in primary.evidence_refs if isinstance(item, dict)
+            }
+            for item in secondary.evidence_refs:
+                marker = (
+                    str(item.get("evidence_id", "")), str(item.get("tool", ""))
+                ) if isinstance(item, dict) else ("", "")
+                if marker not in seen_refs:
+                    primary.evidence_refs.append(item)
+                    seen_refs.add(marker)
+
+            seen_chain = {json.dumps(item, sort_keys=True) for item in primary.call_chain}
+            for item in secondary.call_chain:
+                marker = json.dumps(item, sort_keys=True)
+                if marker not in seen_chain:
+                    primary.call_chain.append(item)
+                    seen_chain.add(marker)
+
+            # An independent source adds a small, capped corroboration bonus;
+            # it never inherits the secondary record's self-declared confidence.
+            corroborated = any(value not in primary_sources for value in secondary_sources)
+            if corroborated:
+                primary.confidence = round(min(0.98, primary.confidence + 0.03), 2)
+            merged[key] = primary
         order = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3}
         return sorted(merged.values(), key=lambda item: (order[item.severity], item.path, item.line))
 

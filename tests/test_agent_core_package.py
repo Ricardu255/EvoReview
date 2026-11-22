@@ -4,11 +4,12 @@ import unittest
 
 
 AGENT_MODULES = {
-    "__init__.py", "assignments.py", "bounded_role.py", "collaborators.py",
-    "context_manager.py", "findings.py", "harness.py", "lead.py",
-    "lead_session.py", "memory.py", "memory_hooks.py", "orchestration.py",
-    "repository_tools.py", "review_rules.py", "reviewer.py", "reviewers.py",
-    "runtime.py", "scanning.py", "session.py", "telemetry.py", "tools.py",
+    "__init__.py", "assignments.py", "batch_review.py", "bounded_role.py",
+    "collaborators.py", "context_manager.py", "findings.py", "harness.py",
+    "lead.py", "lead_session.py", "memory.py", "memory_hooks.py",
+    "orchestration.py", "repository_tools.py", "review_batches.py",
+    "review_rules.py", "reviewer.py", "reviewers.py", "runtime.py",
+    "scanning.py", "session.py", "telemetry.py", "tools.py",
 }
 
 

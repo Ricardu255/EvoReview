@@ -190,11 +190,30 @@ class SqliteTaskStoreMixin:
         with self._lock, self._connect() as conn:
             cursor = conn.execute(
                 "UPDATE tasks SET cancel_requested=0,state=?,error=NULL,updated_at=? "
-                "WHERE id=? AND tenant_id=? AND state IN (?,?)",
+                "WHERE id=? AND tenant_id=? AND state IN (?,?,?)",
                 (TaskState.PENDING.value, utc_now(), task_id, tenant_id,
-                 TaskState.FAILED.value, TaskState.CANCELLED.value),
+                 TaskState.FAILED.value, TaskState.CANCELLED.value,
+                 TaskState.PAUSED_BUDGET.value),
             )
             return cursor.rowcount == 1
+
+    def interrupted_tasks(self) -> list:
+        """Batched-engine tasks stuck in a non-terminal state after a restart.
+
+        Budget-paused tasks are excluded: resuming them needs an explicit
+        additional token grant, not an automatic redelivery.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM tasks WHERE state IN (?,?,?,?) "
+                "AND json_extract(input_json,'$.review_engine') IS NOT NULL "
+                "ORDER BY created_at",
+                (
+                    TaskState.PENDING.value, TaskState.PLANNING.value,
+                    TaskState.EXECUTING.value, TaskState.REVIEWING.value,
+                ),
+            ).fetchall()
+        return [row["id"] for row in rows]
 
     def cancel(self, task_id: str, event: TraceEvent) -> None:
         with self._lock, self._connect() as conn:

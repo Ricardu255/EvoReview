@@ -15,8 +15,20 @@ from ..time_utils import utc_now
 ALLOWED = {
     TaskState.PENDING: {TaskState.PLANNING, TaskState.FAILED, TaskState.CANCELLED},
     TaskState.PLANNING: {TaskState.EXECUTING, TaskState.FAILED, TaskState.CANCELLED},
-    TaskState.EXECUTING: {TaskState.REVIEWING, TaskState.FAILED, TaskState.CANCELLED},
-    TaskState.REVIEWING: {TaskState.SUCCESS, TaskState.FAILED, TaskState.CANCELLED},
+    TaskState.EXECUTING: {
+        TaskState.REVIEWING, TaskState.PAUSED_BUDGET,
+        TaskState.FAILED, TaskState.CANCELLED,
+    },
+    TaskState.REVIEWING: {
+        TaskState.SUCCESS, TaskState.PAUSED_BUDGET,
+        TaskState.FAILED, TaskState.CANCELLED,
+    },
+    # Batched reviews resume by re-entering the engine, which replans and
+    # skips completed batches before transitioning back to EXECUTING.
+    TaskState.PAUSED_BUDGET: {
+        TaskState.EXECUTING, TaskState.REVIEWING,
+        TaskState.FAILED, TaskState.CANCELLED,
+    },
 }
 
 
@@ -207,12 +219,18 @@ class ReviewHarness:
                 {"path": item.path, "line": item.line, "content": item.content}
                 for item in parsed.added_lines
             ],
+            "removed_lines": [
+                {"path": item.path, "line": item.line, "content": item.content}
+                for item in parsed.removed_lines
+            ],
         }
 
     @staticmethod
     def _deserialize_parsed(value: Dict[str, Any]) -> ParsedDiff:
         return ParsedDiff(
-            list(value["files"]), [ChangedLine(**item) for item in value["added_lines"]]
+            list(value["files"]),
+            [ChangedLine(**item) for item in value["added_lines"]],
+            [ChangedLine(**item) for item in value.get("removed_lines") or []],
         )
 
     @staticmethod

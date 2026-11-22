@@ -58,5 +58,9 @@ class TaskStorePort(ReviewStore, Protocol):
     ) -> None:
         ...
 
+    def interrupted_tasks(self) -> list:
+        """IDs of batched-engine tasks stuck in a non-terminal state."""
+        ...
+
     def purge_expired_task_data(self, before: str, limit: int = 1000) -> Dict[str, int]:
         ...

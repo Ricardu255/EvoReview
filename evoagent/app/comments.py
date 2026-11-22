@@ -119,6 +119,9 @@ class ReviewCommentService:
             for finding in value.get("findings", [])[:20]:
                 if not finding.get("path") or not finding.get("line"):
                     continue
+                if str(finding.get("line_side") or "new") != "new":
+                    # Removed-side findings have no anchor in the new file.
+                    continue
                 comments.append({
                     "path": str(finding["path"]),
                     "line": int(finding["line"]),

@@ -13,15 +13,18 @@ APP = ROOT / "evoagent" / "app"
 class ReviewAppServiceTests(unittest.TestCase):
     def test_reviews_facade_is_small_and_composes_two_services(self):
         source = (APP / "reviews.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(source.splitlines()), 130)
+        # +lines: batch details/accept pass-through for the batched engine.
+        self.assertLessEqual(len(source.splitlines()), 165)
         self.assertIn("ReviewExecutionService(", source)
         self.assertIn("ReviewLifecycleService(", source)
 
     def test_execution_and_lifecycle_stay_focused(self):
         execution = (APP / "review_execution.py").read_text(encoding="utf-8")
         lifecycle = (APP / "review_lifecycle.py").read_text(encoding="utf-8")
-        self.assertLessEqual(len(execution.splitlines()), 250)
-        self.assertLessEqual(len(lifecycle.splitlines()), 230)
+        # +lines: batched-engine dispatch, paused-delivery short-circuit and
+        # the resume top-up (additional_tokens) validation.
+        self.assertLessEqual(len(execution.splitlines()), 290)
+        self.assertLessEqual(len(lifecycle.splitlines()), 265)
         self.assertIn("class ReviewExecutionService", execution)
         self.assertIn("class ReviewLifecycleService", lifecycle)
 

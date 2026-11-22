@@ -7,6 +7,9 @@ from .bounded_role import BoundedRole
 from ..prompts import RELIABILITY_PROMPT, SECURITY_PROMPT
 from .runtime import ToolRegistry
 from .findings import _parse_findings
+from ..domain.finding_identity import (
+    extract_declared_rule_ids, worker_rule_catalog,
+)
 from .tools import READ_ONLY_TOOL_NAMES
 
 
@@ -37,12 +40,18 @@ class AssignmentRunner(RuntimeBackref):
                 for name in assignment.get("skills") or []
                 if name in (available_skills or {})
             ]
+            custom_rule_ids = sorted(extract_declared_rule_ids(
+                skill.instructions for skill in selected_skills
+            ))
             prompt = SECURITY_PROMPT if worker == "security" else (
                 RELIABILITY_PROMPT + "\n" + SECURITY_PROMPT.split("Final action:", 1)[-1]
             )
             if self.prompt_overlay:
                 prompt += "\nActive validated prompt overlay:\n" + self.prompt_overlay
-            if selected_skills:
+            # In lossless (batched) mode the skill instructions travel inside
+            # the metered task context instead of the prompt, keeping the
+            # pre-charged request within the role budget.
+            if selected_skills and not getattr(self.client, "lossless", False):
                 prompt += "\n\nActive Agent Skills:\n" + "\n\n".join(
                     "<agent-skill name=\"%s\">\n%s\n</agent-skill>" % (
                         skill.name, skill.instructions,
@@ -69,14 +78,23 @@ class AssignmentRunner(RuntimeBackref):
                 "scanner_findings": session.scanner_findings,
                 "recalled_memory": memory_context or {"items": []},
                 "active_agent_skills": [skill.runtime_entry() for skill in selected_skills],
+                "finding_rule_catalog": worker_rule_catalog(worker),
+                "custom_skill_rule_ids": custom_rule_ids,
                 "instruction": (
                     (
                         "This is a one-shot review with no tools. Return final findings now; "
                         "do not request a tool. "
                     ) if not allow_tools else ""
                 ) + (
-                    "Report only to the Lead. Return final findings with exact changed-line "
-                    "evidence and address every required_evidence item."
+                    "Report only to the Lead. Choose rule_id only from finding_rule_catalog "
+                    "or custom_skill_rule_ids; if none fits, use UNCLASSIFIED-SECURITY or "
+                    "UNCLASSIFIED-CORRECTNESS as appropriate. Do not infer CWE. Return final "
+                    "findings with exact changed-line evidence and address every "
+                    "required_evidence item."
+                ) + (
+                    " Review additions and removals. For deleted evidence, use line_side='old', "
+                    "the old path and old line number."
+                    if getattr(self.client, "lossless", False) else ""
                 ),
             }
             tools = (
@@ -91,19 +109,27 @@ class AssignmentRunner(RuntimeBackref):
             )
             if allow_tools:
                 self.tools._register_skill_resource_tool(tools, selected_skills)
-            return role.run(
-                json.dumps(context, ensure_ascii=False),
-                tools, ledger,
-            )
+            return {
+                "role_result": role.run(
+                    json.dumps(context, ensure_ascii=False), tools, ledger,
+                ),
+                "custom_rule_ids": custom_rule_ids,
+            }
 
-        with ThreadPoolExecutor(max_workers=max(1, len(pending))) as pool:
+        lossless = getattr(self.client, "lossless", False)
+        failure = None
+        # Metered budget accounting is per ledger; serial workers keep the
+        # reservation order deterministic in batched mode.
+        with ThreadPoolExecutor(max_workers=1 if lossless else max(1, len(pending))) as pool:
             futures = {pool.submit(run, item): item for item in pending}
             for future in as_completed(futures):
                 assignment = futures[future]
                 run_id = str(assignment.get("run_id") or assignment["assignment_id"])
                 try:
+                    completed = future.result()
                     findings = _parse_findings(
-                        future.result(), parsed, assignment["worker"]
+                        completed["role_result"], parsed, assignment["worker"],
+                        completed["custom_rule_ids"],
                     )
                     result = {
                         "assignment_id": assignment["assignment_id"],
@@ -112,6 +138,15 @@ class AssignmentRunner(RuntimeBackref):
                         "findings": [item.to_dict() for item in findings], "error": "",
                     }
                 except Exception as exc:
+                    if lossless:
+                        # A metered worker failure means its budget is already
+                        # charged; fail fast instead of burning the remaining
+                        # budget on siblings heading for the same outage.
+                        self.sessions._save_lead_session(task_id, session, ledger)
+                        failure = failure or exc
+                        for waiting in futures:
+                            waiting.cancel()
+                        continue
                     result = {
                         "assignment_id": assignment["assignment_id"],
                         "run_id": run_id, "worker": assignment["worker"],
@@ -126,3 +161,5 @@ class AssignmentRunner(RuntimeBackref):
                     findings=len(result["findings"]), revision_round=revision_round,
                 )
                 self.sessions._save_lead_session(task_id, session, ledger)
+        if failure:
+            raise failure

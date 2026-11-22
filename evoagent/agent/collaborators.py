@@ -32,6 +32,14 @@ class ReviewRuntime:
             return self.default_token_budget
 
     def model_diff(self, diff, context_key, label, focus_files=(), risk_domains=()):
+        if getattr(self.client, "lossless", False):
+            # Metered batched reviews send pre-sized raw batches; compressing
+            # them would silently drop lines the batch plan promised to cover.
+            return {
+                "diff": diff,
+                "diff_context": {"format": "unified-diff-batch-v1"},
+                "change_overview": getattr(self.client, "overview", {}),
+            }
         compressed = self.context_manager.compress_diff(
             diff, context_key, label, focus_files=focus_files,
             risk_domains=risk_domains,

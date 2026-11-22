@@ -334,8 +334,14 @@ class FakeService:
     def cancel_task(self, task_id, tenant_id):
         return self.cancel_result
 
-    def resume_task(self, task_id, tenant_id):
+    def resume_task(self, task_id, tenant_id, additional_tokens=0):
         return {"resumed": True}
+
+    def review_details(self, task_id, tenant_id=None, may_review=True):
+        return self.store.get(task_id, tenant_id)
+
+    def accept_review(self, task_id, report_revision, tenant_id=None, actor=""):
+        return {"confirmed": True}
 
     def redeliver_comment(self, task_id, tenant_id):
         return self.comment_result
@@ -1104,11 +1110,12 @@ class HelperTests(unittest.TestCase):
         for path in (
             "/v1/tasks/abcdef01/comment",
             "/v1/tasks/abcdef01/cancel",
-            "/v1/tasks/abcdef01/resume",
             "/v1/skills/reload",
         ):
             self.assertTrue(body_optional(path), msg=path)
         self.assertFalse(body_optional("/v1/reviews"))
+        self.assertFalse(body_optional("/v1/tasks/abcdef01/resume"))
+        self.assertFalse(body_optional("/v1/tasks/abcdef01/accept"))
 
     def test_text_field_treats_null_as_absent(self):
         self.assertEqual("", text_field({"mode": None}, "mode"))

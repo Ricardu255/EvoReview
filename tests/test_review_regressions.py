@@ -207,8 +207,9 @@ class ReviewRegressionTests(unittest.TestCase):
         service = self.service
         task_id = service._create_task("org/a", DIFF, 1, "test", "tenant-a")
         service.cancel_task(task_id, "tenant-a")
-        with self.assertRaises(RuntimeCancelled):
-            service._run_review(task_id, "org/a", 1, DIFF, "tenant-a")
+        # The batched engine records the cancellation and reports None
+        # instead of raising past the queue boundary.
+        self.assertIsNone(service._run_review(task_id, "org/a", 1, DIFF, "tenant-a"))
         self.assertEqual("CANCELLED", service.store.get(task_id)["state"])
         with patch.object(service.queue, "submit") as submit:
             self.assertTrue(service.resume_task(task_id, "tenant-a")["resumed"])
@@ -216,7 +217,7 @@ class ReviewRegressionTests(unittest.TestCase):
             service._process_queued(submit.call_args[0][0])
         self.assertEqual("SUCCESS", service.store.get(task_id)["state"])
         pending = service._create_task("org/a", DIFF, None, "test", "tenant-a")
-        with self.assertRaisesRegex(ValueError, "only failed or cancelled"):
+        with self.assertRaisesRegex(ValueError, "only failed, cancelled or budget-paused"):
             service.resume_task(pending, "tenant-a")
 
     def webhook(self):
@@ -497,8 +498,7 @@ class ReviewRegressionTests(unittest.TestCase):
     def test_resume_queue_failure_remains_retryable(self):
         task_id = self.service._create_task("org/a", DIFF, 1, "test", "tenant-a")
         self.service.cancel_task(task_id, "tenant-a")
-        with self.assertRaises(RuntimeCancelled):
-            self.service._run_review(task_id, "org/a", 1, DIFF, "tenant-a")
+        self.assertIsNone(self.service._run_review(task_id, "org/a", 1, DIFF, "tenant-a"))
         with patch.object(self.service.queue, "submit", side_effect=RuntimeError("offline")):
             with self.assertRaisesRegex(RuntimeError, "offline"):
                 self.service.resume_task(task_id, "tenant-a")
@@ -511,14 +511,18 @@ class BodylessPostRouteTests(unittest.TestCase):
     def test_action_routes_do_not_require_a_json_body(self):
         for path in (
             "/v1/tasks/abc/comment", "/v1/tasks/abc/cancel",
-            "/v1/tasks/abc/resume", "/v1/skills/reload",
+            "/v1/skills/reload",
         ):
             self.assertTrue(body_optional(path), path)
+
+    def test_resume_accepts_an_optional_token_top_up_body(self):
+        self.assertFalse(body_optional("/v1/tasks/abc/resume"))
+        self.assertFalse(body_optional("/v1/tasks/abc/accept"))
 
     def test_json_routes_still_require_a_body(self):
         for path in (
             "/v1/reviews", "/v1/repository-grants", "/webhooks/github",
-            "/v1/tasks/abc/fix",
+            "/v1/tasks/abc/fix", "/v1/tasks/abc/resume",
         ):
             self.assertFalse(body_optional(path), path)
 

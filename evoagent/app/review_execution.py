@@ -8,9 +8,11 @@ from typing import Any, Callable, Dict, Optional
 from ..errors import PermanentTaskError
 from ..domain.finding_identity import canonical_identity
 from ..domain.models import TaskState, TraceEvent
+from ..domain.modes import BATCHED_ENGINE
 from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
 from .comments import ReviewCommentService
+from .diff_fetch import fetch_initial_diff
 from .policies import ReviewPolicy
 
 
@@ -25,7 +27,8 @@ def mark_dead_letter(
     tenant_id = payload.get("tenant_id", "default")
     task = store.get(task_id, tenant_id) if task_id else None
     if task and task.get("state") not in {
-        TaskState.SUCCESS.value, TaskState.FAILED.value, TaskState.CANCELLED.value,
+        TaskState.SUCCESS.value, TaskState.FAILED.value,
+        TaskState.CANCELLED.value, TaskState.PAUSED_BUDGET.value,
     }:
         step = max(
             [int(item.get("step", 0)) for item in task.get("trace", [])] or [0]
@@ -64,6 +67,7 @@ class ReviewExecutionService:
         github_client_for_installation: Callable[[Optional[int]], Any],
         alert_notifier=None,
         quota=None,
+        batch_runner: Optional[Callable[[Dict[str, Any], str], Any]] = None,
     ):
         self.settings = settings
         self.store = store
@@ -77,6 +81,7 @@ class ReviewExecutionService:
         self.github_client_for_installation = github_client_for_installation
         self.alert_notifier = alert_notifier
         self.quota = quota
+        self.batch_runner = batch_runner
         self.comments = ReviewCommentService(
             settings, store, metrics, github_client_for_installation,
         )
@@ -151,6 +156,16 @@ class ReviewExecutionService:
         if "prompt_version" not in task_input:
             task_input.update(self._execution_assignment(tenant_id, task_id))
             self.store.update_task_input(task_id, task_input)
+        if (
+            task_input.get("review_engine") == BATCHED_ENGINE
+            and self.batch_runner is not None
+            and not task_input.get("shadow")
+        ):
+            # The batched engine meters its own budget per batch, pauses via
+            # PAUSED_BUDGET instead of failing, and returns None for a paused
+            # or cancelled run.  Per-batch usage already reached the quota
+            # recorder, so no final accounting is needed here.
+            return self.batch_runner(task, diff)
         reviewer = self.build_agentic_reviewer(
             tenant_id, task_input["prompt_version"],
         )
@@ -187,12 +202,11 @@ class ReviewExecutionService:
                 "queue payload does not match the task's tenant and repository"
             )
         diff = self.store.get_task_payload(task_id)
-        if diff is None and payload.get("diff_url"):
-            client = self.github_client_for_installation(
-                payload.get("installation_id")
-            )
-            client.ensure_repository_access(payload["repository"])
-            diff = client.fetch_diff(payload["diff_url"])
+        if diff is None and (
+            payload.get("diff_url") or payload.get("pull_request") is not None
+        ):
+            client = self.github_client_for_installation(payload.get("installation_id"))
+            diff = fetch_initial_diff(client, payload)
             self.policy.validate_review(payload["repository"], diff)
             encoded = diff.encode("utf-8")
             self.store.save_task_payload(task_id, diff)
@@ -202,6 +216,12 @@ class ReviewExecutionService:
             })
         if diff is None:
             raise PermanentTaskError("task payload no longer exists")
+        # A paused or cancelled task must not be re-run by a redelivered queue
+        # message; only an explicit resume (with additional tokens for a
+        # budget pause) puts it back into the queue.
+        if task["state"] in {TaskState.PAUSED_BUDGET.value, TaskState.CANCELLED.value}:
+            return
+        engine = (task.get("input") or {}).get("review_engine")
         try:
             with self.observability.span(
                 "review.async", task_id, task_id=task_id, tenant_id=tenant_id,
@@ -210,19 +230,26 @@ class ReviewExecutionService:
                     task_id, payload["repository"], payload.get("pull_request"),
                     diff, tenant_id,
                 )
-            self.metrics.inc("reviews_total")
+            if report is None:
+                # PAUSED_BUDGET or cancelled inside the batched engine; the
+                # task state records why and no completion side effects run.
+                return
+            if task["state"] != TaskState.SUCCESS.value:
+                self.metrics.inc("reviews_total")
             lane = (task.get("input") or {}).get("release_lane", "stable")
-            try:
-                self.releases.observe(tenant_id, "llm-review", False, lane)
-            except Exception:
-                logger.exception("failed to record successful review release result")
-        except Exception:
+            if task["state"] != TaskState.SUCCESS.value or engine == BATCHED_ENGINE:
+                try:
+                    self.releases.observe(tenant_id, "llm-review", False, lane)
+                except Exception:
+                    logger.exception("failed to record successful review release result")
+        except Exception as exc:
             self.metrics.inc("reviews_failed_total")
             lane = (task.get("input") or {}).get("release_lane", "stable")
-            try:
-                self.releases.observe(tenant_id, "llm-review", True, lane)
-            except Exception:
-                logger.exception("failed to record failed review release result")
+            if task["state"] != TaskState.SUCCESS.value:
+                try:
+                    self.releases.observe(tenant_id, "llm-review", True, lane)
+                except Exception:
+                    logger.exception("failed to record failed review release result")
             try:
                 self.alerts.evaluate(tenant_id)
             except Exception:

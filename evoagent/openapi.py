@@ -151,6 +151,31 @@ def _schemas() -> Dict[str, Any]:
                 "report": _ref("ReviewReport"),
             },
         },
+        "ResumeRequest": {
+            "type": "object",
+            "properties": {
+                "additional_tokens": {
+                    "type": "integer",
+                    "description": (
+                        "Extra task token budget. Required when resuming a "
+                        "PAUSED_BUDGET review."
+                    ),
+                },
+            },
+        },
+        "AcceptRequest": {
+            "type": "object",
+            "required": ["report_revision"],
+            "properties": {
+                "report_revision": {
+                    "type": "string",
+                    "description": (
+                        "sha256 of the completed report; must match the "
+                        "current report_revision returned by the task detail."
+                    ),
+                },
+            },
+        },
         "Task": {
             "type": "object",
             "required": ["id", "state", "repository"],
@@ -160,7 +185,7 @@ def _schemas() -> Dict[str, Any]:
                     "type": "string",
                     "enum": [
                         "PENDING", "PLANNING", "EXECUTING", "REVIEWING",
-                        "SUCCESS", "FAILED", "CANCELLED",
+                        "SUCCESS", "FAILED", "CANCELLED", "PAUSED_BUDGET",
                     ],
                 },
                 "repository": {"type": "string"},
@@ -176,6 +201,16 @@ def _schemas() -> Dict[str, Any]:
                     "type": "array",
                     "items": {"type": "object", "additionalProperties": True},
                 },
+                "coverage": {
+                    "type": "object", "additionalProperties": True, "nullable": True,
+                    "description": "Batched review coverage; null for legacy engines.",
+                },
+                "confirmation": {
+                    "type": "object", "additionalProperties": True, "nullable": True,
+                },
+                "actions": {"type": "object", "additionalProperties": True},
+                "report_revision": {"type": "string"},
+                "partial_report": _ref("ReviewReport"),
             },
         },
         "Finding": {
@@ -540,10 +575,21 @@ def _paths() -> Dict[str, Any]:
         },
         "/v1/tasks/{task_id}/resume": {
             "post": _operation(
-                "resumeTask", "Resume a failed or cancelled task", ["tasks"],
+                "resumeTask",
+                "Resume a failed, cancelled or budget-paused task", ["tasks"],
                 {"202": _json({"type": "object", "additionalProperties": True}),
                  "404": _error("Task not found")},
-                parameters=[_task_id_parameter()],
+                request=_ref("ResumeRequest"), parameters=[_task_id_parameter()],
+            )
+        },
+        "/v1/tasks/{task_id}/accept": {
+            "post": _operation(
+                "acceptTask",
+                "Confirm a completed batched review report by revision", ["tasks"],
+                {"200": _json({"type": "object", "additionalProperties": True}),
+                 "404": _error("Task not found"),
+                 "409": _error("Revision mismatch or incomplete coverage")},
+                request=_ref("AcceptRequest"), parameters=[_task_id_parameter()],
             )
         },
         "/v1/tasks/{task_id}/comment": {

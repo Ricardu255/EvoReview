@@ -81,11 +81,13 @@ class BoundedRole:
                     ledger.trace(
                         self.name, "working_memory_unavailable", error=str(exc)[:500],
                     )
+            lossless = getattr(self.client, "lossless", False)
             managed, context_stats = self.context_manager.build_managed_context(
                 current_context, tools.catalog(), observations,
                 max(0, self.token_budget - used),
                 max(0, int(self.time_budget - elapsed)),
                 system_prompt=self.prompt, max_output_tokens=output_allowance,
+                preserve_diff=lossless,
             )
             ledger.trace(
                 self.name, "context_prepared", step=step,
@@ -94,11 +96,19 @@ class BoundedRole:
                 observations_summarized=context_stats["observations"]["summarized"],
                 observations_dropped=context_stats["observations"]["dropped"],
             )
-            action = self.client.complete_json(
-                self.name, self.prompt,
-                json.dumps(managed, ensure_ascii=False, default=str),
-                ledger, max_tokens=output_allowance,
-            )
+            request = json.dumps(managed, ensure_ascii=False, default=str)
+            if lossless:
+                # The metered client pre-charges the request and validates the
+                # action envelope before it reaches the role loop.
+                action = self.client.complete_role(
+                    self.name, self.prompt, request, ledger, output_allowance,
+                    self.token_budget - used, allow_tools=bool(tools.names()),
+                )
+            else:
+                action = self.client.complete_json(
+                    self.name, self.prompt, request, ledger,
+                    max_tokens=output_allowance,
+                )
             kind = str(action.get("action", "")).strip().lower()
             if kind not in {"tool", "final"} and isinstance(action.get("content"), dict):
                 # Some models echo the response_format spec as an outer

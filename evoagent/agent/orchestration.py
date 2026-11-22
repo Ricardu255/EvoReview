@@ -70,6 +70,31 @@ class ReviewOrchestrator(RuntimeBackref):
                 decision.get("delegations"), worker_roles, parsed.files,
                 set(available_skills), requested_skills,
             )
+            if getattr(self.runtime.client, "lossless", False):
+                # Metered batched reviews: repeating full skill instructions in
+                # every worker request would blow the pre-charged role budget,
+                # so each worker keeps at most one optional skill (explicitly
+                # requested skills always stay) and reviews the full batch.
+                distinct = {}
+                for assignment in session.delegations:
+                    distinct.setdefault(assignment["worker"], assignment)
+                for baseline in LeadSession.normalize_delegations(
+                    [], worker_roles, parsed.files,
+                    set(available_skills), requested_skills,
+                ):
+                    distinct.setdefault(baseline["worker"], baseline)
+                session.delegations = list(distinct.values())
+                for assignment in distinct.values():
+                    optional = [
+                        name for name in assignment["skills"]
+                        if name not in requested_skills
+                    ]
+                    preferred = ("security-review",) if assignment["worker"] == "security" else (
+                        "code-quality", "correctness-review", "reliability-review",
+                    )
+                    optional.sort(key=lambda name: preferred.index(name) if name in preferred else len(preferred))
+                    assignment["skills"] = list(dict.fromkeys(requested_skills + optional[:1]))
+                    assignment["files"] = parsed.files
             session.lead_delegation = self.findings._public_decision(decision)
             session.risk_level = LeadSession.normalize_risk_level(
                 decision.get("risk_level")
@@ -168,11 +193,14 @@ class ReviewOrchestrator(RuntimeBackref):
         candidates = self.sessions._session_candidates(session)
         session.candidate_findings_before_critic = len(candidates)
         if "critic" in enabled and not session.critic_complete:
+            # A high-risk critic may take up to three factual tool steps to
+            # find a counterexample; a normal critic stays a blind single pass.
             critic_result = self.lead._run_critic(
                 diff, candidates,
                 str(final_assessment.get("critic_objective", "")),
                 suite, ledger, task_id, memory_context,
-                max_steps=1, allow_tools=False,
+                max_steps=3 if high_risk else 1,
+                allow_tools=high_risk,
             )
             candidates, decisions = self.findings._apply_critic(critic_result, candidates)
             session.critic_decisions = decisions

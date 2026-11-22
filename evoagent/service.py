@@ -1,7 +1,12 @@
 """Compatibility facade for the review application services."""
+import logging
+from threading import Timer
 from typing import Any, Dict, Optional
 
+from .agent.batch_review import BatchReview, ReviewConflict
+from .agent.context_manager import ContextManager
 from .agent.reviewer import AgenticReviewer
+from .domain.models import TaskState
 from .app.evolution import EvolutionApplicationService
 from .app.feedback import FeedbackApplicationService
 from .app.fixes import FixesApplicationService
@@ -21,6 +26,10 @@ from .adapters.github import GitHubAppAuthenticator, GitHubClient
 from .agent.harness import ReviewHarness
 from .adapters.metrics import metrics
 from .agent.reviewers import OpenAICompatibleReviewer
+from .time_utils import utc_now
+
+
+logger = logging.getLogger("evoagent")
 
 
 class ReviewService:
@@ -52,6 +61,14 @@ class ReviewService:
             self._active_agent_skills,
         )
         self.quota = TenantQuotaService(self.store, self.settings)
+        self._batch_review = BatchReview(
+            self.store, self._batch_reviewer_factory,
+            self.settings.review_task_token_budget,
+            snapshot_factory=self._batch_snapshot,
+            quota_recorder=(
+                self._record_batch_usage if self.quota is not None else None
+            ),
+        )
         self._feedback_app = FeedbackApplicationService(
             self.store, self.memory, metrics,
         )
@@ -93,6 +110,11 @@ class ReviewService:
             lambda: self.chat_client,
             self.alerts.notifier,
             self.quota,
+            batch_runner=self._run_batch_review,
+            batch_details=lambda task, may_review: self._batch_review.details(
+                task, may_review,
+            ),
+            batch_accept=self._accept_review,
         )
         self._github_app = GitHubApplicationService(
             self.settings, self.store, self.queue, self._policy,
@@ -111,11 +133,145 @@ class ReviewService:
             alert_days=self.settings.alert_retention_days,
         )
         self._retention.start()
+        if not self.settings.redis_url and self.chat_client is not None:
+            self._recover_local_tasks()
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop background maintenance and delivery threads."""
         self._retention.stop()
+        if getattr(self, "_recover_timer", None) is not None:
+            self._recover_timer.cancel()
         self.queue.close(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Batched review engine wiring.
+
+    def _batch_snapshot(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Pin the model identity, budgets and context sizing at first run."""
+        client = self.chat_client
+        if client is None:
+            raise ValueError("batched review requires a configured model")
+        context = self.context_manager
+        task_input = task.get("input") or {}
+        prompt_version = task_input.get("prompt_version")
+        return {
+            "provider": getattr(client, "provider", None),
+            "model": getattr(client, "model", None),
+            "base_url": getattr(client, "base_url", None),
+            "prompt_version": prompt_version,
+            "tenant_id": (
+                task.get("tenant_id") or self.settings.default_tenant_id
+            ),
+            "task_budget": self.settings.review_task_token_budget,
+            "context": {
+                key: getattr(context, key) for key in (
+                    "context_window_tokens", "input_token_budget",
+                    "diff_token_budget", "observation_token_budget",
+                    "recent_observations", "map_chunk_tokens",
+                )
+            },
+            "batch_tokens": max(128, min(
+                context.diff_token_budget,
+                context.input_token_budget // 4,
+                context.context_window_tokens // 4,
+                self.settings.agent_token_budget // 5,
+                1600,
+            )),
+            "skill_versions": (
+                {"llm-review": prompt_version} if prompt_version else {}
+            ),
+        }
+
+    def _batch_reviewer_factory(self, scoped_store, snapshot):
+        client = self.chat_client
+        if (
+            getattr(client, "provider", None), getattr(client, "model", None),
+            getattr(client, "base_url", None),
+        ) != (snapshot["provider"], snapshot["model"], snapshot["base_url"]):
+            raise ReviewConflict(
+                "The pinned model is unavailable. Restore its configuration and resume."
+            )
+        context = ContextManager(**snapshot["context"])
+        reviewer = build_agentic_reviewer(
+            self.settings, self.store, client, self.registry, self.memory,
+            context, self._active_agent_skills,
+            snapshot.get("tenant_id"), snapshot.get("prompt_version"),
+        )
+        # Version lookups above intentionally use the parent store; engine
+        # checkpoints (lead session, summary) belong to this batch's scope.
+        reviewer.store = scoped_store
+        reviewer.runtime.store = scoped_store
+        reviewer.persist_review_memory = False
+        return reviewer
+
+    def _record_batch_usage(self, tenant_id: str, tokens: int, cost_usd: float) -> None:
+        self.quota.record_usage(tenant_id, tokens, cost_usd)
+
+    def _run_batch_review(self, task, diff):
+        return self._batch_review.run(task, diff)
+
+    def _accept_review(self, task_id, tenant_id, actor, revision):
+        task = self.store.get(task_id, tenant_id)
+        if not task:
+            raise ValueError("task not found")
+        task = self._batch_review.details(task, True)
+        if not revision or revision != task.get("report_revision"):
+            raise ReviewConflict("Open the latest completed report before confirming")
+        if task.get("confirmation"):
+            return task["confirmation"]
+        if not task.get("actions", {}).get("accept"):
+            raise ReviewConflict(
+                "Only completed reports with full text coverage can be confirmed"
+            )
+        confirmation = {
+            "report_revision": revision, "actor": actor,
+            "accepted_at": utc_now(),
+        }
+        self.store.save_checkpoint(task_id, "review-v2-confirmation", confirmation)
+        self.store.audit(
+            tenant_id, actor, "review.accept", task_id,
+            {"report_revision": revision},
+        )
+        return confirmation
+
+    # ------------------------------------------------------------------
+    # Startup recovery for tasks orphaned by a crash of the local worker.
+
+    def _recover_local_tasks(self):
+        pending = self.store.interrupted_tasks()
+        if not pending:
+            return
+
+        def recover():
+            for task_id in pending:
+                try:
+                    task = self.store.get(task_id)
+                except Exception:
+                    continue
+                if not task or task["state"] not in {
+                    TaskState.PENDING.value, TaskState.PLANNING.value,
+                    TaskState.EXECUTING.value, TaskState.REVIEWING.value,
+                }:
+                    continue
+                task_input = task.get("input") or {}
+                try:
+                    self.queue.submit({
+                        "task_id": task_id,
+                        "repository": task["repository"],
+                        "pull_request": task.get("pull_request"),
+                        "github_issue_url": task_input.get("github_issue_url", ""),
+                        "installation_id": task_input.get("installation_id"),
+                        "tenant_id": task.get("tenant_id") or "default",
+                    }, message_id=task_id)
+                except Exception:
+                    logger.exception("failed to resubmit interrupted task %s", task_id)
+
+        recover()
+        # A crashed worker's last delivery claim may still look alive at
+        # startup; try once more after the claim lease has certainly expired.
+        self._recover_timer = Timer(31, recover)
+        self._recover_timer.daemon = True
+        self._recover_timer.start()
 
     @property
     def repository_roots(self):
@@ -293,8 +449,25 @@ class ReviewService:
             task_id, category, finding, note, tenant_id,
         )
 
-    def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
-        return self._reviews_app.resume_task(task_id, tenant_id)
+    def resume_task(
+        self, task_id: str, tenant_id: Optional[str] = None,
+        additional_tokens: int = 0,
+    ) -> dict:
+        return self._reviews_app.resume_task(task_id, tenant_id, additional_tokens)
+
+    def review_details(
+        self, task_id: str, tenant_id: Optional[str] = None,
+        may_review: bool = True,
+    ) -> Dict[str, Any]:
+        return self._reviews_app.review_details(task_id, tenant_id, may_review)
+
+    def accept_review(
+        self, task_id: str, report_revision: str,
+        tenant_id: Optional[str] = None, actor: str = "",
+    ) -> Dict[str, Any]:
+        return self._reviews_app.accept_review(
+            task_id, report_revision, tenant_id, actor,
+        )
 
     def redeliver_comment(
         self, task_id: str, tenant_id: Optional[str] = None,

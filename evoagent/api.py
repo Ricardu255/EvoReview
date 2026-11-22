@@ -36,6 +36,7 @@ FIX = re.compile(r"^/v1/tasks/([0-9a-f-]+)/fix$")
 FEEDBACK = re.compile(r"^/v1/tasks/([0-9a-f-]+)/feedback$")
 CANCEL = re.compile(r"^/v1/tasks/([0-9a-f-]+)/cancel$")
 RESUME = re.compile(r"^/v1/tasks/([0-9a-f-]+)/resume$")
+ACCEPT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/accept$")
 COMMENT = re.compile(r"^/v1/tasks/([0-9a-f-]+)/comment$")
 ALERT_RESOLVE = re.compile(r"^/api/alerts/(\d+)/resolve$")
 USERS = "/v1/users"
@@ -56,7 +57,7 @@ WEB_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "web"))
 GITHUB_SETUP_STATE_TTL_SECONDS = 600
 TASK_STATES = {
     "PENDING", "PLANNING", "EXECUTING", "REVIEWING",
-    "SUCCESS", "FAILED", "CANCELLED",
+    "SUCCESS", "FAILED", "CANCELLED", "PAUSED_BUDGET",
 }
 logger = logging.getLogger("evoagent")
 
@@ -64,7 +65,7 @@ logger = logging.getLogger("evoagent")
 def body_optional(path: str) -> bool:
     """POST routes that act on the URL alone and need no JSON body."""
     return bool(
-        COMMENT.match(path) or CANCEL.match(path) or RESUME.match(path)
+        COMMENT.match(path) or CANCEL.match(path)
         or ALERT_RESOLVE.match(path)
         or path == "/v1/skills/reload"
     )
@@ -619,7 +620,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             )
             return
         if task_match:
-            task = self.service.store.get(task_match.group(1), principal.tenant_id)
+            task = self.service.review_details(
+                task_match.group(1), principal.tenant_id,
+                may_review=getattr(principal, "role", "") in {"admin", "maintainer"},
+            )
             if not task:
                 self._send_json(404, {"error": "task not found"})
                 return
@@ -791,11 +795,35 @@ class ApiHandler(BaseHTTPRequestHandler):
             match = RESUME.match(path)
             if match:
                 principal = self._principal("review")
-                result = self.service.resume_task(match.group(1), principal.tenant_id)
+                payload = self._read_json(body) if body else {}
+                additional = payload.get("additional_tokens", 0)
+                if additional is None:
+                    additional = 0
+                if not isinstance(additional, int) or isinstance(additional, bool):
+                    raise ValueError("additional_tokens must be an integer")
+                result = self.service.resume_task(
+                    match.group(1), principal.tenant_id, additional,
+                )
                 self.service.store.audit(
-                    principal.tenant_id, principal.username, "task.resume", match.group(1)
+                    principal.tenant_id, principal.username, "task.resume",
+                    match.group(1), {"additional_tokens": additional},
                 )
                 self._send_json(202, result)
+                return
+            match = ACCEPT.match(path)
+            if match:
+                principal = self._principal("review")
+                payload = self._read_json(body)
+                revision = text_field(payload, "report_revision").strip()
+                result = self.service.accept_review(
+                    match.group(1), revision, principal.tenant_id,
+                    principal.username,
+                )
+                self.service.store.audit(
+                    principal.tenant_id, principal.username, "task.accept",
+                    match.group(1), {"report_revision": revision},
+                )
+                self._send_json(200, result)
                 return
             match = COMMENT.match(path)
             if match:

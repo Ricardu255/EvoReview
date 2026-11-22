@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
-from ..domain.modes import RunMode
+from ..domain.modes import BATCHED_ENGINE, RunMode
 from ..domain.models import TaskState, TraceEvent
 from ..ports.stores import StoreProtocol
 from ..time_utils import utc_now
@@ -28,6 +28,7 @@ class ReviewLifecycleService:
         chat_client_provider: Callable[[], Any],
         execution: ReviewExecutionService,
         quota=None,
+        settings=None,
     ):
         self.store = store
         self.queue = queue
@@ -39,6 +40,13 @@ class ReviewLifecycleService:
         self.chat_client_provider = chat_client_provider
         self.execution = execution
         self.quota = quota
+        self.settings = settings
+
+    def _engine_pin(self) -> Dict[str, Any]:
+        """Pin the review engine at creation time; existing tasks keep theirs."""
+        if self.settings is not None and self.settings.review_batching_enabled:
+            return {"review_engine": BATCHED_ENGINE}
+        return {}
 
     def create_task(
         self, repository: str, diff: str, pull_request: Optional[int], source: str,
@@ -60,6 +68,7 @@ class ReviewLifecycleService:
             "repository_root": repository_root,
             "enabled_agents": enabled_agents or [],
             "enabled_skills": enabled_skills or [],
+            **self._engine_pin(),
         }, tenant_id)
         self.store.save_task_payload(task_id, diff)
         return task_id
@@ -80,6 +89,7 @@ class ReviewLifecycleService:
             **assignment,
             **payload,
             "mode": RunMode.AGENTIC.value,
+            **self._engine_pin(),
         }, tenant_id)
         return task_id
 
@@ -110,6 +120,13 @@ class ReviewLifecycleService:
                 report = self.execution.run_review(
                     task_id, repository, pull_request, diff, tenant_id,
                 )
+            if report is None:
+                # The batched engine paused the task (PAUSED_BUDGET) or it was
+                # cancelled mid-run; the stored task state records why.
+                return {
+                    "task_id": task_id,
+                    "state": (self.store.get(task_id, tenant_id) or {}).get("state"),
+                }
             self.metrics.inc("reviews_total")
             lane = (self.store.get(task_id, tenant_id).get("input") or {}).get(
                 "release_lane", "stable"
@@ -183,14 +200,29 @@ class ReviewLifecycleService:
             "queue": self.queue.backend,
         }
 
-    def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
+    def resume_task(
+        self, task_id: str, tenant_id: Optional[str] = None,
+        additional_tokens: int = 0,
+    ) -> dict:
         task = self.store.get(task_id, tenant_id)
         if not task:
             raise ValueError("task not found")
-        if task["state"] == "SUCCESS":
+        if task["state"] == TaskState.SUCCESS.value:
             return {"task_id": task_id, "state": "SUCCESS", "report": task["report"]}
-        if task["state"] not in {"FAILED", "CANCELLED"}:
-            raise ValueError("only failed or cancelled tasks can be resumed")
+        if task["state"] not in {
+            TaskState.FAILED.value, TaskState.CANCELLED.value,
+            TaskState.PAUSED_BUDGET.value,
+        }:
+            raise ValueError(
+                "only failed, cancelled or budget-paused tasks can be resumed"
+            )
+        additional = additional_tokens or 0
+        if type(additional) is not int or not 0 <= additional <= 1000000:
+            raise ValueError("additional_tokens must be an integer between 0 and 1000000")
+        if task["state"] == TaskState.PAUSED_BUDGET.value and not additional:
+            raise ValueError(
+                "additional_tokens is required to resume a budget-paused review"
+            )
         diff = self.store.get_task_payload(task_id)
         if diff is None:
             raise ValueError("task payload is no longer available")
@@ -198,6 +230,13 @@ class ReviewLifecycleService:
             self.quota.reserve_review(task.get("tenant_id", "default"))
         if not self.store.prepare_resume(task_id, task.get("tenant_id", "default")):
             raise ValueError("task state changed; resume was not applied")
+        if additional:
+            # Written only after the state transition succeeds so a retry
+            # cannot double-apply the same top-up.
+            total = int((task.get("input") or {}).get("additional_budget_tokens", 0) or 0)
+            self.store.update_task_input(
+                task_id, {"additional_budget_tokens": total + additional},
+            )
         try:
             task_input = task.get("input") or {}
             self.queue.submit({

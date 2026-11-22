@@ -73,7 +73,7 @@ class HierarchicalClient:
             if self.security_calls == 1:
                 return {"action": "final", "findings": []}
             return {"action": "final", "findings": [{
-                "rule_id": "SEC-LEAD-REVISION", "severity": "medium",
+                "rule_id": "SEC-SUBPROCESS-SHELL", "severity": "medium",
                 "title": "Dynamic execution", "explanation": "Input is executed as code.",
                 "path": "app.py", "line": 1, "evidence": "eval(user_input)",
                 "fix": "Use a constrained parser.",
@@ -191,7 +191,7 @@ class LeadWorkerCollaborationTests(unittest.TestCase):
         )
         summary = reviewer.collaboration_summary("task")
 
-        self.assertIn("SEC-LEAD-REVISION", {item.rule_id for item in findings})
+        self.assertIn("SEC-SUBPROCESS-SHELL", {item.rule_id for item in findings})
         self.assertEqual("lead-workers", summary["collaboration"]["protocol"])
         self.assertEqual(2, client.security_calls)
         self.assertEqual(1, len(summary["collaboration"]["revision_results"]))
@@ -228,7 +228,7 @@ class LeadWorkerCollaborationTests(unittest.TestCase):
             "task", DIFF, parse_unified_diff(DIFF), "org/repo"
         )
 
-        self.assertIn("SEC-LEAD-REVISION", {item.rule_id for item in findings})
+        self.assertIn("SEC-SUBPROCESS-SHELL", {item.rule_id for item in findings})
         self.assertEqual([], resumed_client.calls)
         self.assertGreater(
             resumed.collaboration_summary("task")["execution"]["llm_calls"], 0
@@ -240,7 +240,7 @@ class LeadWorkerCollaborationTests(unittest.TestCase):
 
         reviewer.review_with_context("task", DIFF, parse_unified_diff(DIFF), "org/repo")
 
-        episodes = memory.recall("default", "org/repo", "SEC-LEAD-REVISION")
+        episodes = memory.recall("default", "org/repo", "SEC-SUBPROCESS-SHELL")
         self.assertTrue(any(item["kind"] == "finding_approved" for item in episodes))
         self.assertTrue(any(item["kind"] == "task_summary" for item in episodes))
 

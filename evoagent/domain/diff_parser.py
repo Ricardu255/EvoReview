@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 from .models import ChangedLine
@@ -9,6 +9,7 @@ from .models import ChangedLine
 class ParsedDiff:
     files: List[str]
     added_lines: List[ChangedLine]
+    removed_lines: List[ChangedLine] = field(default_factory=list)
 
 
 HUNK = re.compile(
@@ -27,8 +28,10 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
     """
     files: List[str] = []
     added: List[ChangedLine] = []
+    removed: List[ChangedLine] = []
     current_path = ""
     new_line = 0
+    old_line = 0
     old_remaining = new_remaining = 0
     in_hunk = False
 
@@ -58,6 +61,8 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
                     if old_remaining <= 0:
                         in_hunk = False
                         continue
+                    removed.append(ChangedLine(current_path or "unknown", old_line, raw[1:]))
+                    old_line += 1
                     old_remaining -= 1
                 else:
                     # Context line.  A blank line in a diff may have lost its
@@ -65,6 +70,7 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
                     if old_remaining <= 0 or new_remaining <= 0:
                         in_hunk = False
                         continue
+                    old_line += 1
                     new_line += 1
                     old_remaining -= 1
                     new_remaining -= 1
@@ -83,9 +89,10 @@ def parse_unified_diff(diff: str) -> ParsedDiff:
         if match:
             old_remaining = int(match.group("old_count") or 1)
             new_remaining = int(match.group("new_count") or 1)
+            old_line = int(match.group("old_start"))
             new_line = int(match.group("new_start"))
             in_hunk = old_remaining > 0 or new_remaining > 0
             continue
 
-    return ParsedDiff(files=files, added_lines=added)
+    return ParsedDiff(files=files, added_lines=added, removed_lines=removed)
 

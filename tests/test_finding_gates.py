@@ -18,7 +18,7 @@ DIFF = (
 
 def finding(**overrides):
     values = {
-        "rule_id": "SEC-EVAL", "severity": Severity.MEDIUM,
+        "rule_id": "SEC-EVAL", "cwe": "CWE-95", "severity": Severity.MEDIUM,
         "title": "eval is unsafe", "explanation": "User input reaches eval.",
         "path": "a.py", "line": 2, "evidence": "value = eval(raw)",
         "fix": "Use json.loads.", "test": "Add a malformed-input test.",

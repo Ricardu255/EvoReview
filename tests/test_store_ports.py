@@ -64,9 +64,10 @@ class StorePortCompositionTests(unittest.TestCase):
         # Additions are deliberate: grant management (list/revoke), the
         # one-time legacy-tenant migration hook, one-time GitHub App setup
         # states (save/consume), alert resolution, tenant user management,
-        # expired task-data retention, and tenant/platform administration.
+        # expired task-data retention, and tenant/platform administration,
+        # plus batched-engine startup recovery (interrupted_tasks).
         names = {name for name in dir(StoreProtocol) if not name.startswith("_")}
-        self.assertEqual(86, len(names))
+        self.assertEqual(87, len(names))
 
 
 if __name__ == "__main__":

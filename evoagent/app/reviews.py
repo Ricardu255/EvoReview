@@ -27,19 +27,24 @@ class ReviewsApplicationService:
         chat_client_provider: Callable[[], Any],
         alert_notifier=None,
         quota=None,
+        batch_runner: Optional[Callable[[Dict[str, Any], str], Any]] = None,
+        batch_details: Optional[Callable[[Dict[str, Any], bool], Dict[str, Any]]] = None,
+        batch_accept: Optional[Callable[..., Dict[str, Any]]] = None,
     ):
         self.settings = settings
         self.store = store
         self.queue = queue
         self.policy = policy
+        self.batch_details = batch_details
+        self.batch_accept = batch_accept
         self.execution = ReviewExecutionService(
             settings, store, policy, observability, releases, alerts, metrics,
             build_agentic_reviewer, harness_factory, github_client_for_installation,
-            alert_notifier, quota,
+            alert_notifier, quota, batch_runner,
         )
         self.lifecycle = ReviewLifecycleService(
             store, queue, policy, observability, releases, alerts, metrics,
-            chat_client_provider, self.execution, quota,
+            chat_client_provider, self.execution, quota, settings,
         )
 
     def _execution_assignment(self, tenant_id: str, task_id: str) -> dict:
@@ -114,8 +119,30 @@ class ReviewsApplicationService:
     def on_dead_letter(self, payload: Dict[str, Any], error: str) -> None:
         return self.execution.on_dead_letter(payload, error)
 
-    def resume_task(self, task_id: str, tenant_id: Optional[str] = None) -> dict:
-        return self.lifecycle.resume_task(task_id, tenant_id)
+    def resume_task(
+        self, task_id: str, tenant_id: Optional[str] = None,
+        additional_tokens: int = 0,
+    ) -> dict:
+        return self.lifecycle.resume_task(task_id, tenant_id, additional_tokens)
+
+    def review_details(
+        self, task_id: str, tenant_id: Optional[str] = None,
+        may_review: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        task = self.store.get(task_id, tenant_id)
+        if not task:
+            return None
+        if self.batch_details is None:
+            return task
+        return self.batch_details(task, may_review)
+
+    def accept_review(
+        self, task_id: str, report_revision: str,
+        tenant_id: Optional[str] = None, actor: str = "",
+    ) -> Dict[str, Any]:
+        if self.batch_accept is None:
+            raise ValueError("review confirmation is not available")
+        return self.batch_accept(task_id, tenant_id, actor, report_revision)
 
     def redeliver_comment(
         self, task_id: str, tenant_id: Optional[str] = None,

@@ -20,6 +20,11 @@ class RunMode(str, Enum):
             raise ValueError("mode must be agentic") from exc
 
 
+# Review engine identifier pinned into a task's input at creation so pauses,
+# restarts and resumes keep using the engine the task was created with.
+BATCHED_ENGINE = "batched-v1"
+
+
 @dataclass(frozen=True)
 class ModeResolution:
     requested: RunMode

@@ -14,6 +14,8 @@ class FakeAgenticClient:
         managed = json.loads(user)
         task = json.loads(managed["task"])
         if role == "lead":
+            if task["phase"] == "overview":
+                return {"action": "final", "review_focus": ["Review every batch"]}
             if task["phase"] == "delegate":
                 skills = [
                     item["name"] for item in task.get("available_agent_skills") or []
